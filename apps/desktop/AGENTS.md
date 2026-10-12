@@ -6,6 +6,22 @@
 
 Settings model/agent reads use `useRecoverableRead`: mount/ready refresh, cancellation on lost host/unmount, single flight, generation guards and explicit successful-empty versus failed state. Agent details load four at a time; failures retain directory/previous data and disable editing an invented blank definition. Recovery does not reseed a dirty editor, even if its identity disappears and reappears. Auxiliary failures remain scoped diagnostics. APP-HOME-107 owns task/status; current evidence and platform limits are in `.tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md`.
 
+## 2026-10-11 Styled dropdown migration (UiSelectField)
+
+`components/ui/select-field.vue` (exported as `UiSelectField`) is the styled replacement for native `<select>`: a trigger button plus a listbox teleported to `<body>` or the nearest open native `<dialog>` (to stay in the modal top layer), positioned by `lib/dropdownPlacement.ts`, with Arrow/Home/End/Enter/Escape/outside-click handling, dismissal on external scroll/resize/dialog close, disabled-option skipping, nullable `value`/`v-model` input and `change` output, `aria-controls` wired to the listbox id while open, and `--surface-*` material tokens. Legacy native-select CSS belongs on `.ui-select-trigger`, not its wrapper; the migrated compact/context rules are `.ui-select.compact .ui-select-trigger`, `.route-candidate-add .ui-select`, and `.tools-context-bar .ui-select-trigger`, and `.settings-select` now matches only the one remaining native select. Styles live in `styles.css` (`.ui-select*`). Migrated: settings General/Storage/Appearance/AgentModes/ToolResources/ToolCenter/PromptEngineering/ToolsOverview/Pets/TinaChat, Memory/Snapshots pages, AppSidebar migration picker, PreAuthorizationDialog, ToolCatalogBrowser, TraceTimeline, SessionSelector, ComposerBar steering picker, GitChangesView pull strategy. `ModelParametersEditor` keeps its native `<select>` deliberately: its provider reload watch reverts the form after a controlled choice, so a follow-up must fix that watch before migrating it. The composer's project/ask menus are separate, already-styled surfaces and are untouched. The 2026-10-11 review reproduced the modal top-layer defect in headless Chromium and type errors in vue-tsc; component/CSS regressions and all-Desktop checks are recorded in `.tinadec_dev/reports/2026-10-11-uncommitted-review-fixes.zh-CN.md`.
+
+## 2026-10-11 CodeRabbit dropdown pass
+
+`aria-activedescendant` now points at the active option's stable id; the menu handles Escape itself (stop propagation so a native dialog does not close); a control that turns `disabled` while its teleported menu is open closes it and refuses to commit. `GitStatusWidget` uses the dedicated `context.gitWidgetRefresh` copy and the AppSidebar migration test targets `.ui-select-trigger`.
+
+## 2026-10-11 Settings language moved into General
+
+语言选项从独立的两项分区迁入 `settings/sections/GeneralSection.vue`（常规页第三个分组），`LanguageSection.vue` 与设置导航中的 `language` 项、`SettingsSection` 类型、`CENTERED_SECTIONS` 条目一并删除。切换仍只写 `tinadec-locale`（`i18n.ts` 启动时读取）；`lang-options`/`lang-option` 样式与 `data-testid`（`language-options`/`lang-zh`/`lang-en`）保持不变。Spotlight 设置表跟随导航删除独立 language 行，`palette.kwLanguage` 关键词并入 general 行，搜"语言"仍落在常规页。相关断言更新在 `src/pages/SettingsPage.smoke.test.ts`、`src/settings/settingsCssContract.test.ts`、`src/lib/spotlight.test.ts`；无新增本地化键。
+
+## 2026-10-11 Home Git status widget
+
+`lib/gitStatusSummary.ts` strictly projects a successful `git_worktree_manager status` result (staged/unstaged independent; untracked directories are Git status *items*, not physical file counts). `composables/useHomeGitStatus.ts` owns short status and separately throttled `log limit:1` reads, only when the UIE Home tab and focused renderer are visible and host business access is ready. Aborted/stale cross-workspace results never publish; history failures never falsify working-tree status; an unborn HEAD has a successful empty Git log, and real status-command errors are not `not_a_repo`. No fetch, Git mutation, new API, or local Git CLI execution. Current Electron dev screenshot/targeted tests: `.tinadec_dev/reports/2026-10-11-home-git-widget.zh-CN.md`; running old Core/Tools binaries must be restarted through normal development launch to pick up `--no-optional-locks`.
+
 ## 2026-10-10 Host IPC version mismatch
 
 APP-HOME-107 跟进：`lib/hostConnection.ts` 统一读取和重试宿主状态，已有 preload 缺方法或 host-status/host-retry 缺 handler 必须失败关闭为 restart_required / desktop_restart_required，其他 IPC 错误为 host_bridge_unavailable。只有完全没有 bridge 的浏览器读为 preview；独立注入 transport 的准入边界保留。`hostAccess` 先撤权再抛 ApiError，缓存 restart_required 避免重复 IPC；`useConnection` 停止无效计时器，广播与手动重试也遵循 revision 保护。App/Home 将本地故障交给共享 Banner，不伪装后端连接失败或重放写操作。
@@ -55,8 +71,8 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
 **Last Updated:** 2026-10-11
-**Last Updated By:** APP-HOME-107 智能体/模型目录读取恢复、草稿保护与共享传输。
-**Last Verified Commit:** df0977ff（Settings及共享读取修复）；本轮证据和全量首跑/局部复跑对账见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md。
+**Last Updated By:** 合并上游 APP-HOME-107 智能体/模型目录读取恢复与本地 UiSelectField 迁移、设置语言迁入常规页、首页 Git 信息卡。
+**Last Verified Commit:** df0977f（Settings 与共享读取修复）+ ff16bf4（合并上游后工作树）；上游对账见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md，下拉迁移、死 CSS/aria 更正与 CodeRabbit 修正见 select-field.test.ts 与 Desktop 全量 142 文件/1295 通过、TinadecUI 187 通过，Home Git 见 .tinadec_dev/reports/2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

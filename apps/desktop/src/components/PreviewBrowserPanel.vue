@@ -382,7 +382,7 @@ watch(
   overflow-wrap: anywhere;
   font-size: 10px;
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .preview-loading {

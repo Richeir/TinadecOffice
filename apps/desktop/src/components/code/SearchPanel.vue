@@ -318,7 +318,7 @@ function escapeRegex(s: string): string {
 }
 .search-result-ctx-line code,
 .search-result-match-line code {
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-all;
 }

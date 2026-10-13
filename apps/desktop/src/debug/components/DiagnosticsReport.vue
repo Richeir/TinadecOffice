@@ -111,7 +111,7 @@ function formatTime(iso: string): string {
 .meta-label { font-size: 12px; color: var(--text-muted, #6e7681); }
 .meta-value { font-size: 12px; color: var(--text-primary, #c9d1d9); }
 .meta-value.code {
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   color: var(--text-muted, #6e7681);
 }
 

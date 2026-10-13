@@ -867,7 +867,7 @@ defineExpose({ refresh: refreshBranches })
 
 .git-branch-track {
   font-size: 10px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .git-branch-empty {

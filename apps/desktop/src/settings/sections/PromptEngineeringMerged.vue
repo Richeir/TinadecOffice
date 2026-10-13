@@ -509,7 +509,7 @@ defineExpose({ refreshAll })
 }
 .pe-content-textarea {
   width: 100%;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 8px;
   border-radius: 8px;

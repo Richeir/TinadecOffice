@@ -299,7 +299,7 @@ watch(newBranch, (value) => {
   border: 1px solid var(--border-input);
   border-radius: 6px;
   font-size: 12px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .worktree-manager-form input:focus {
@@ -350,14 +350,14 @@ watch(newBranch, (value) => {
 
 .worktree-row-path {
   color: var(--text-secondary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   word-break: break-all;
 }
 
 .worktree-row-head-commit code {
   color: var(--text-muted);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
 }
 

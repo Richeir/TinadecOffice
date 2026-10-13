@@ -185,7 +185,7 @@ h3 { font-size: 13px; font-weight: 600; line-height: 1.6; margin: 16px 0 8px; }
 .is-detail .space-drag-handle { cursor: default; }
 .space-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 18px 10px; font-size: 11px; color: var(--text-secondary); }
 .space-owner { max-width: 100%; padding: 2px 7px; border-radius: 5px; background: var(--surface-section); overflow-wrap: anywhere; }
-.space-run { font-family: var(--font-mono, monospace); }
+.space-run { font-family: var(--font-mono); }
 .space-card-status { margin-left: auto; font-size: 11px; }
 .space-work-body { padding: 4px 18px 14px; flex: 1; min-height: 0; overflow: auto; user-select: text; }
 .space-work-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.65; margin: 0 0 16px; }

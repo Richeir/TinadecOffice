@@ -621,6 +621,7 @@ retry: '重试',
     gitConvBodyTooLong: '部分正文行超过 72 字符建议宽度',
   },
   settings: {
+    codeFont: '代码字体', codeFontHint: '代码块、命令、路径、差异和终端使用的等宽字体。前四种随应用内置；系统字体在缺少时改用 JetBrains Mono。', codeFontSystem: '系统等宽字体', codeFontSystemBadge: '系统',
     modelScope: {
       follows: '当前工作区「{name}」使用这里的模型配置：在这里新增、修改或删除的模型，对它的对话立即生效。',
       ownCopy: '当前工作区「{name}」使用它自己的模型配置，不随这里的修改变化。',

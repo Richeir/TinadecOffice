@@ -18,6 +18,7 @@ import {
 import { useBackground } from '@/composables/useBackground'
 import { usePanelStyles } from '@/composables/usePanelStyles'
 import { useNotifications } from '@/composables/useNotifications'
+import { CODE_FONTS, codeFont, codeFontStack, setCodeFont } from '@/lib/codeFont'
 
 /**
  * Appearance section (D7.2, relaid 2026-09).
@@ -244,6 +245,29 @@ function resetBackgroundToDefault(): void {
         <button :class="['theme-option', { active: theme === 'system' }]" @click="changeTheme('system')">
           <Monitor :size="16" />
           {{ t('settings.system') }}
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Code font ──────────────────────────────────────────────────── -->
+    <section class="appearance-group">
+      <div class="appearance-group-head">
+        <h3>{{ t('settings.codeFont') }}</h3>
+        <p>{{ t('settings.codeFontHint') }}</p>
+      </div>
+      <div class="code-font-options" role="radiogroup" :aria-label="t('settings.codeFont')" data-testid="code-font-options">
+        <button
+          v-for="font in CODE_FONTS"
+          :key="font.id"
+          type="button"
+          role="radio"
+          :aria-checked="codeFont === font.id"
+          :class="['code-font-option', { active: codeFont === font.id }]"
+          :data-testid="`code-font-${font.id}`"
+          @click="setCodeFont(font.id)"
+        >
+          <span class="code-font-name">{{ font.id === 'system' ? t('settings.codeFontSystem') : font.label }}<small v-if="!font.bundled">{{ t('settings.codeFontSystemBadge') }}</small></span>
+          <span class="code-font-sample" :style="{ fontFamily: codeFontStack(font.id) }">{ 0O 1lI } =&gt; 代码</span>
         </button>
       </div>
     </section>

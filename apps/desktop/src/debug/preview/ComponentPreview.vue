@@ -266,7 +266,7 @@ const mockTools = computed<ToolDescriptorDto[]>(() => props.data.tools)
 .file-tree-cwd {
   font-weight: 400;
   color: var(--text-muted, #6e7681);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 

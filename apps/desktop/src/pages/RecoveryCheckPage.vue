@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 
 .recovery-page__grid dt {
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   padding-top: 2px;
 }

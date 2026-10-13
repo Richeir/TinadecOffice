@@ -18,6 +18,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminal } from '@/composables/useTerminal'
+import { codeFont, codeFontStack } from '@/lib/codeFont'
 
 const props = defineProps<{
   /** Terminal instance ID from the backend */
@@ -38,6 +39,8 @@ const {
 
 const containerRef = ref<HTMLElement | null>(null)
 let term: Terminal | null = null
+// xterm measures glyphs itself, so the code font reaches it as an option, not through CSS.
+watch(codeFont, (id) => { if (term) term.options.fontFamily = codeFontStack(id) })
 let fitAddon: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
 
@@ -47,7 +50,7 @@ function createTerminal(): Terminal {
   return new Terminal({
     cursorBlink: true,
     cursorStyle: 'bar',
-    fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace",
+    fontFamily: codeFontStack(codeFont.value),
     fontSize: 13,
     lineHeight: 1.2,
     letterSpacing: 0,
@@ -160,7 +163,7 @@ defineExpose({
 }
 
 .terminal-view :deep(.xterm-rows) {
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace !important;
+  font-family: var(--font-mono) !important;
 }
 
 /* Thin scrollbar for terminal */

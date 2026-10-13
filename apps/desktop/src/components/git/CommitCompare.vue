@@ -350,7 +350,7 @@ watch(
   padding: 6px 8px;
   color: var(--text-primary);
   font-size: 12px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .commit-compare-ref-input input:focus {
@@ -411,7 +411,7 @@ watch(
 
 .commit-compare-ref-option code {
   color: var(--text-brand);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -446,7 +446,7 @@ watch(
 .commit-compare-commit code {
   display: block;
   color: var(--text-secondary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 2px 0;
   white-space: pre-wrap;
@@ -486,7 +486,7 @@ watch(
 .commit-compare-file small {
   color: var(--text-muted);
   font-size: 10px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .commit-compare-diff {

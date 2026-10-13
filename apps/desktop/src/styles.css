@@ -1,10 +1,16 @@
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/fira-code";
+@import "@fontsource-variable/cascadia-code";
 @import "tailwindcss";
 @import "./animations/page-transitions.css";
 @import "./components/ui/conversation-primitives.css";
 @import "./components/conversation/conversation.css";
 
 @theme {
+  /* The code font; lib/codeFont.ts overrides it with the user's choice. Same stack as its default. */
+  --font-mono: 'JetBrains Mono Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', 'Noto Sans CJK SC', 'Source Han Sans SC', monospace;
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -341,6 +347,10 @@ body {
   color: var(--text-primary);
   font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 13px;
+  /* Code fonts (JetBrains Mono, Fira Code, Cascadia) draw `=>`, `!=`, `->` as single glyphs
+     through contextual alternates; in commands and code what is shown must be what is typed.
+     Off everywhere, as in VS Code's default; UI text loses nothing it relies on. */
+  font-variant-ligatures: no-contextual;
   line-height: 1.45;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -2562,7 +2572,7 @@ overflow: hidden;
 .composer-command-syntax {
   grid-row: 1 / span 2;
   align-self: center;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
 }
@@ -3292,7 +3302,7 @@ margin-top: 4px;
 
 .markdown-body code {
   padding: 1px 5px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   background: var(--surface-section);
   border-radius: 4px;
@@ -3969,7 +3979,7 @@ background: var(--surface-raised);
 .approval-command code,
 .approval-target code,
 .approval-arguments code {
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .approval-tool {

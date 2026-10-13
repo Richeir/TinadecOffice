@@ -71,6 +71,24 @@ public sealed class ModelOutputStreamTests
         Assert.Equal("Inspect the file", ModelOutputStream.CompatibleReasoning(update));
     }
 
+    /// <summary>
+    /// OpenRouter-style routers (and newer vLLM) send public reasoning as "reasoning" or as
+    /// structured "reasoning_details"; only reasoning_content used to be read, so their thinking
+    /// never reached the UI. Encrypted detail parts carry no public text and stay out.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"reasoning":"Inspect the file"}""", "Inspect the file")]
+    [InlineData("""{"reasoning_details":[{"type":"reasoning.text","text":"Inspect "},{"type":"reasoning.summary","summary":"the file"},{"type":"reasoning.encrypted","data":"opaque"}]}""", "Inspect the file")]
+    [InlineData("""{"reasoning_content":"Inspect the file","reasoning":"Inspect the file"}""", "Inspect the file")]
+    [InlineData("""{"reasoning_details":[{"type":"reasoning.encrypted","data":"opaque"}]}""", null)]
+    public void CompatibleReasoningReadsRouterReasoningFields(string delta, string? expected)
+    {
+        var raw = ModelReaderWriter.Read<StreamingChatCompletionUpdate>(BinaryData.FromString(
+            "{\"id\":\"r\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":"
+            + delta + ",\"finish_reason\":null}]}"))!;
+        Assert.Equal(expected, ModelOutputStream.CompatibleReasoning(new ChatResponseUpdate { RawRepresentation = raw }));
+    }
+
     [Fact]
     public async Task RealChatSdkRetainsCompatibleReasoningOnStreamingUpdates()
     {

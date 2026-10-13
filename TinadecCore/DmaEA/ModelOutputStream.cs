@@ -77,20 +77,38 @@ internal static class ModelOutputStream
         }
     }
 
-    // OpenAI-compatible providers may send reasoning_content outside the standard
-    // text channel. The SDK retains extension JSON in its raw update; read only this
-    // allow-listed public field. Never serialize the raw object into an event.
+    // OpenAI-compatible providers send public reasoning outside the standard text channel,
+    // under one of a few names. The SDK retains extension JSON in its raw update; read only
+    // these allow-listed public fields, never serialize the raw object into an event:
+    //   reasoning_content — DeepSeek, Qwen, vLLM (older);
+    //   reasoning         — OpenRouter-style routers, newer vLLM;
+    //   reasoning_details — OpenRouter's structured form (text/summary parts; encrypted
+    //                       parts carry no public text and are skipped).
+    // Only the first present form is read, so a provider that sends two never shows it twice.
     internal static string? CompatibleReasoning(ChatResponseUpdate update)
     {
         if (update.RawRepresentation is not StreamingChatCompletionUpdate raw) return null;
         try
         {
             using var json = JsonDocument.Parse(ModelReaderWriter.Write(raw));
-            if (json.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0
-                && choices[0].TryGetProperty("delta", out var delta)
-                && delta.TryGetProperty("reasoning_content", out var reasoning)
-                && reasoning.ValueKind == JsonValueKind.String)
-                return reasoning.GetString();
+            if (!json.RootElement.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array
+                || choices.GetArrayLength() == 0 || !choices[0].TryGetProperty("delta", out var delta)
+                || delta.ValueKind != JsonValueKind.Object)
+                return null;
+            foreach (var name in (string[])["reasoning_content", "reasoning"])
+                if (delta.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String && value.GetString() is { Length: > 0 } text)
+                    return text;
+            if (delta.TryGetProperty("reasoning_details", out var details) && details.ValueKind == JsonValueKind.Array)
+            {
+                var parts = new StringBuilder();
+                foreach (var detail in details.EnumerateArray())
+                {
+                    if (detail.ValueKind != JsonValueKind.Object) continue;
+                    foreach (var key in (string[])["text", "summary"])
+                        if (detail.TryGetProperty(key, out var part) && part.ValueKind == JsonValueKind.String) { parts.Append(part.GetString()); break; }
+                }
+                return parts.Length > 0 ? parts.ToString() : null;
+            }
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or NotSupportedException) { }
         return null;

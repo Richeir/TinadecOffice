@@ -926,3 +926,46 @@ describe('HomeController independent storage scopes', () => {
     } finally { vi.useRealTimers(); homeController.setSelectedProject(null) }
   })
 })
+
+describe('HomeController session event refresh', () => {
+  /**
+   * Opening a session replays its history over the event stream. Each replayed event used to
+   * start a full reload (six reads, two of them the whole session), aborting the one before:
+   * hundreds of reloads Core still ran, and the transcript arrived last. The replay now waits
+   * for the stream's first heartbeat, and live bursts coalesce into one trailing read.
+   */
+  it('reads once after the replay instead of once per replayed event, and coalesces a live burst', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      homeController.start()
+      homeController.projects.value = []
+      homeController.setSelectedProject(null)
+      await flushPromises()
+      homeController.selectedSessionId.value = 'replayed-session'
+      await flushPromises()
+      expect(homeController.selectedSessionId.value).toBe('replayed-session')
+      const call = h.connectEvents.mock.calls.at(-1) as unknown as [string, (event: unknown) => void, () => void]
+      const [, deliver, heartbeat] = call
+      const event = (seq: number) => ({ type: 'tool.execution.completed', seq, session_id: 'replayed-session', payload: {} })
+      h.listMessages.mockClear()
+
+      for (let seq = 1; seq <= 50; seq += 1) deliver(event(seq))
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(h.listMessages).not.toHaveBeenCalled()
+
+      heartbeat()
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      expect(h.listMessages).toHaveBeenCalledTimes(1)
+
+      for (let seq = 51; seq <= 80; seq += 1) deliver(event(seq))
+      await vi.advanceTimersByTimeAsync(300)
+      await flushPromises()
+      expect(h.listMessages).toHaveBeenCalledTimes(2)
+      homeController.selectedSessionId.value = null
+      await flushPromises()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

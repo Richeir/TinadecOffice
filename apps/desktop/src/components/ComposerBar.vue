@@ -5,7 +5,8 @@ import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick, use
 import { useRouter } from 'vue-router'
 import { UiButton, UiSelectField } from '@/components/ui'
 import ComposerCommandPanel from './ComposerCommandPanel.vue'
-import ComposerModelSwitch from './ComposerModelSwitch.vue'
+import { useDefaultModel } from '@/composables/useDefaultModel'
+import { requestSettingsSection } from '@/lib/pageRequests'
 import type { PermissionLevel } from '@/types/mode'
 import type { MeetingModelOverrideDto, ModelProviderInstanceDto, ProjectDto, SpaceOptionsDto } from '@/api'
 import { homeController } from '@/controllers/HomeController'
@@ -157,6 +158,15 @@ const slashQuery = computed(() => commandsDismissed.value ? null : composerSlash
 const commandPanelOpen = computed(() => showPlusMenu.value || slashQuery.value !== null)
 const modePanelExpanded = computed(() => commandPanelOpen.value && commandPanelRef.value?.page === 'mode')
 const permissionPanelExpanded = computed(() => commandPanelOpen.value && commandPanelRef.value?.page === 'permission')
+const modelPanelExpanded = computed(() => commandPanelOpen.value && commandPanelRef.value?.page === 'model')
+const defaultModel = useDefaultModel()
+// Unknown reads as the neutral row name, never as "no default model".
+const defaultModelLabel = computed(() => defaultModel.name.value === undefined ? t('commandPanel.model')
+  : defaultModel.name.value ?? t('composer.modelSwitch.none'))
+function manageModels() {
+  requestSettingsSection('model')
+  if (router.currentRoute.value.name !== 'settings') void router.push({ name: 'settings' })
+}
 watch(() => props.modelValue, (value) => {
   commandsDismissed.value = false
   if (!showPlusMenu.value && composerSlashQuery(value) !== null) commandPage.value = 'root'
@@ -527,6 +537,7 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 onMounted(() => {
+  void defaultModel.load()
   document.addEventListener('click', handleClickOutside)
   // A draft can arrive pre-filled (edit-and-resend, a restored session), and the
   // modelValue watcher does not fire for a value that was never changed.
@@ -794,7 +805,7 @@ function confirmSteer(id: string, interrupt = false) {
           ><component :is="modeGlyph" :size="14" /><span class="mode-selector-label">{{ modeLabel }}</span><span v-if="modeUnavailable" class="mode-selector-stale" :title="t('chat.modeUnavailable')">⚠</span><ChevronDown :size="12" class="mode-selector-chevron" :class="{ 'is-expanded': modePanelExpanded }" aria-hidden="true" /></button>
           <slot v-if="spatial" name="capabilities" />
           <button class="permission-selector-trigger" type="button" :title="t('permission.nextRunHint')" aria-haspopup="dialog" :aria-expanded="permissionPanelExpanded" @click="openCommandPanel('permission')"><component :is="permissionChoice.icon" :size="14" class="composer-permission-icon" :data-risk="permissionChoice.risk" aria-hidden="true" /><span class="permission-selector-label">{{ permissionLabel }}</span><ChevronDown :size="12" class="permission-selector-chevron" :class="{ 'is-expanded': permissionPanelExpanded }" aria-hidden="true" /></button>
-          <ComposerModelSwitch />
+          <button class="permission-selector-trigger model-selector-trigger" type="button" :title="t('commandPanel.modelHint')" aria-haspopup="dialog" :aria-expanded="modelPanelExpanded" data-testid="composer-model-trigger" @click="openCommandPanel('model')"><Sparkles :size="14" aria-hidden="true" /><span class="permission-selector-label">{{ defaultModelLabel }}</span><ChevronDown :size="12" class="permission-selector-chevron" :class="{ 'is-expanded': modelPanelExpanded }" aria-hidden="true" /></button>
           <button
             ref="projectTriggerRef"
             class="project-dropdown-trigger"
@@ -833,6 +844,8 @@ function confirmSteer(id: string, interrupt = false) {
       :permission="permission"
       :mode-version-id="modeVersionId"
       :space-options="spaceOptions"
+      :default-model="defaultModel"
+      :default-model-label="defaultModelLabel"
       :settings-saving="settingsSaving"
       :settings-error="settingsError"
       :command-host="commandHost"
@@ -844,6 +857,7 @@ function confirmSteer(id: string, interrupt = false) {
       @update:mode-version-id="changeMode"
       @update:permission="changePermission"
       @update:space-options="changeSpaceOptions"
+      @manage-models="manageModels"
       @mode-label="(label, unavailable, icon) => { modeLabel = label; modeUnavailable = unavailable; modeGlyph = icon }"
     />
 

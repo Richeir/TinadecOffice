@@ -46,6 +46,8 @@ const apiMock = vi.hoisted(() => ({
   api: {
     listAgentModeTopologies: vi.fn(async () => [] as import('@/api').AgentModeTopologyDto[]),
     listModelProviders: vi.fn(async () => [] as import('@/api').ModelProviderInstanceDto[]),
+    listModelRoutes: vi.fn(async () => [] as import('@/api').ModelRouteDto[]),
+    saveModelRoute: vi.fn(async () => ({})),
     listDirectory: vi.fn(async (_cwd: string, _dir: string) => ({ data: { entries: [] as unknown[] } })),
   },
 }))
@@ -457,8 +459,7 @@ describe('ComposerBar slash commands', () => {
     const wrapper = mountComposer({ canStop: true, modelValue: '/' })
     await flushPromises()
     expect(document.querySelectorAll('[data-testid="composer-commands"] [data-testid^="composer-command-"]')).toHaveLength(4)
-    // The conversation model is chosen in the model center, never from the composer.
-    expect(document.querySelector('[data-testid="command-panel-model"]')).toBeNull()
+    expect(document.querySelector('[data-testid="command-panel-model"]')).not.toBeNull()
     expect(document.querySelector('[data-testid="command-panel-mode"]')).not.toBeNull()
     wrapper.unmount()
   })
@@ -551,6 +552,27 @@ describe('ComposerBar unified command panel', () => {
     await flushPromises()
     expect(document.querySelectorAll('.command-panel-row')).toHaveLength(1)
     expect(document.querySelector('[data-testid="command-panel-permission"]')).not.toBeNull()
+    wrapper.unmount()
+  })
+
+  /**
+   * The default model lives in the command panel, like mode and permission. Its list is the model
+   * center's projection, so a model named only on the chat route (missing before) is offered, and
+   * choosing one rewrites the chat route: the model center's default, not a per-conversation pin.
+   */
+  it('switches the default model from the panel, listing models named only on the chat route', async () => {
+    apiMock.api.listModelProviders.mockResolvedValue([{ ...provider, driver: 'openai', capabilities: ['chat'], status: 'ready', updated_at: '' }] as never)
+    apiMock.api.listModelRoutes.mockResolvedValue([{ purpose: 'chat', revision: 3, updated_at: '', candidates: [{ provider_instance_id: 'provider-1', model: 'route-only', position: 0 }] }] as never)
+    const wrapper = mountComposer({ modelValue: 'draft' })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="composer-model-trigger"]').text()).toContain('route-only')
+    await wrapper.get('[data-testid="composer-model-trigger"]').trigger('click')
+    await flushPromises()
+    expect(document.querySelector('[data-testid="command-panel-provider-1:route-only"]')?.getAttribute('aria-pressed')).toBe('true')
+    click('[data-testid="command-panel-provider-1:model-b"]')
+    await flushPromises()
+    expect(apiMock.api.saveModelRoute).toHaveBeenCalledWith('chat', { candidates: [{ provider_instance_id: 'provider-1', model: 'model-b' }] }, undefined, { expected_revision: 3 })
+    expect(wrapper.emitted('update:meetingModelOverride')).toBeUndefined()
     wrapper.unmount()
   })
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
-import { ArrowLeft, Check, ChevronRight, FileText, GitBranch, Image, Layers, ListChecks, MessageSquare, Network, Search, Users, Workflow, X } from '@lucide/vue'
+import { ArrowLeft, Check, ChevronRight, FileText, GitBranch, Image, Layers, ListChecks, MessageSquare, Network, Search, Settings, Sparkles, Users, Workflow, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { api, type AgentModeTopologyDto, type SpaceOptionsDto } from '@/api'
 import type { PermissionLevel } from '@/types/mode'
@@ -9,6 +9,7 @@ import { isCommandAvailable, slashCommands, type AppCommand, type CommandHost } 
 import { composerSettings, permissionChoices, type ComposerPage, type PermissionRisk } from '@/lib/composerCommands'
 import { defaultSpaceOptions } from '@/lib/composerSettings'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
+import type { DefaultModel } from '@/composables/useDefaultModel'
 
 const props = defineProps<{
   open: boolean
@@ -20,6 +21,9 @@ const props = defineProps<{
   permission: PermissionLevel
   modeVersionId?: string | null
   spaceOptions?: SpaceOptionsDto | null
+  /** The default model (chat route); its page switches it for every conversation. */
+  defaultModel?: DefaultModel
+  defaultModelLabel?: string
   settingsSaving?: boolean
   settingsError?: string | null
   commandHost: CommandHost
@@ -33,6 +37,7 @@ const emit = defineEmits<{
   'update:modeVersionId': [value: string | null]
   'update:permission': [value: PermissionLevel]
   'update:spaceOptions': [value: SpaceOptionsDto]
+  'manage-models': []
   'mode-label': [value: string, unavailable: boolean, icon: Component]
 }>()
 
@@ -124,7 +129,7 @@ interface Row {
   testId?: string
   run: () => void
 }
-const icons: Record<string, Component> = { mode: Layers, plan: ListChecks, spec: FileText, agents: Users, workflow: Workflow, bulletin: MessageSquare, worktree: GitBranch }
+const icons: Record<string, Component> = { model: Sparkles, mode: Layers, plan: ListChecks, spec: FileText, agents: Users, workflow: Workflow, bulletin: MessageSquare, worktree: GitBranch }
 function selectPage(next: ComposerPage) {
   if (next === page.value) return
   rootQuery.value = query.value
@@ -168,6 +173,18 @@ const allRows = computed<Row[]>(() => {
     disabled: props.settingsSaving, run: () => emit('update:permission', choice.value),
   }))
   if (page.value === 'mode' || page.value === 'workflow') return modeRows(page.value === 'workflow')
+  if (page.value === 'model') {
+    const model = props.defaultModel
+    const choices: Row[] = (model?.models.value ?? []).map(row => ({
+      id: `${row.provider_instance_id}:${row.model_id}`, label: row.display_name || row.model_id,
+      hint: row.provider_display_name ?? undefined, keywords: `${row.model_id} ${row.provider_display_name ?? ''}`, icon: Sparkles,
+      checked: model?.isCurrent(row.provider_instance_id, row.model_id) ?? false, disabled: model?.busy.value ?? false,
+      run: () => { void model?.choose(row.provider_instance_id, row.model_id) },
+    }))
+    if (model?.loaded.value && !choices.length)
+      choices.push({ id: 'no-models', label: t('composer.modelSwitch.empty'), icon: Sparkles, disabled: true, run: () => {} })
+    return [...choices, { id: 'manage-models', label: t('composer.modelSwitch.manage'), icon: Settings, run: () => emit('manage-models') }]
+  }
   const rows: Row[] = [
     { id: 'image', label: t('chat.addImage'), hint: props.canAttach ? undefined : t('commandPanel.attachmentsBusy'), keywords: 'image picture 图片', icon: Image, disabled: !props.canAttach, testId: 'composer-attach-image', run: () => emit('attach', 'image/*') },
     { id: 'file', label: t('chat.addFile'), hint: props.canAttach ? undefined : t('commandPanel.attachmentsBusy'), keywords: 'file attachment 文件 附件', icon: FileText, disabled: !props.canAttach, testId: 'composer-attach-file', run: () => emit('attach', '') },
@@ -176,7 +193,7 @@ const allRows = computed<Row[]>(() => {
     if ('surface' in setting && (setting.surface === 'space') !== Boolean(props.spatial)) continue
     const toggle = 'toggle' in setting ? setting.toggle : null
     const submenu = 'page' in setting ? setting.page : null
-    const currentValue = setting.id === 'mode' ? selectedMode.value?.display_name ?? t('chat.followDefault') : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
+    const currentValue = setting.id === 'model' ? props.defaultModelLabel : setting.id === 'mode' ? selectedMode.value?.display_name ?? t('chat.followDefault') : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
     rows.push({
       id: setting.id, label: t(setting.label), hint: t(setting.hint),
       keywords: setting.keywords,
@@ -286,6 +303,7 @@ function place() {
 async function loadCatalogs() {
   const sequence = ++loadSequence
   loading.value = true
+  void props.defaultModel?.load()
   const results = await Promise.allSettled([api.listAgentModeTopologies()])
   if (sequence !== loadSequence) return
   const [modeResult] = results
@@ -385,7 +403,7 @@ defineExpose({ keydown, activate, page, selectPage })
         <p v-if="page === 'workflow'" class="command-panel-note">{{ t('commandPanel.workflowRequirement') }}</p>
       </div>
       </div>
-      <footer class="command-panel-footer" :class="{ 'has-error': settingsError }" :role="settingsError ? 'alert' : 'status'">{{ settingsError || (settingsSaving ? t('commandPanel.saving') : t('commandPanel.nextTask')) }}</footer>
+      <footer class="command-panel-footer" :class="{ 'has-error': settingsError }" :role="settingsError ? 'alert' : 'status'">{{ settingsError || (settingsSaving ? t('commandPanel.saving') : t(page === 'model' ? 'commandPanel.modelFooter' : 'commandPanel.nextTask')) }}</footer>
     </section>
   </Teleport>
 </template>

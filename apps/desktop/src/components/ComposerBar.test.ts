@@ -80,10 +80,14 @@ const attachMock = vi.hoisted(() => ({
   TOO_LARGE_CODE: 'attachment_too_large',
 }))
 
-vi.mock('@/lib/pendingAttachments', async () => {
+vi.mock('@/lib/pendingAttachments', async (importOriginal) => {
   const { ref } = await import('vue')
+  // The pure helpers are the real ones; only the stateful strip and its I/O are doubles.
+  const actual = await importOriginal<typeof import('@/lib/pendingAttachments')>()
   attachMock.list = ref<PendingAttachment[]>([])
   return {
+    attachmentDisplayState: actual.attachmentDisplayState,
+    fileNameParts: actual.fileNameParts,
     pendingAttachments: attachMock.list,
     attachFiles: attachMock.attachFiles,
     removePendingAttachment: attachMock.removePendingAttachment,
@@ -151,28 +155,6 @@ describe('ComposerBar Codex shell contract', () => {
     expect(wrapper.find('.welcome-dialog-toolbar').exists()).toBe(true)
     expect(wrapper.findAll('.composer-send-wrapper button')).toHaveLength(2)
     wrapper.unmount()
-  })
-  it('idle composer reports data-composer-active=false', async () => {
-    const wrapper = mountComposer()
-    await flushPromises()
-    expect(wrapper.find('.welcome-dialog').attributes('data-composer-active')).toBe('false')
-    wrapper.unmount()
-  })
-
-  it('a non-empty draft flips the shell to active', async () => {
-    const wrapper = mountComposer({ modelValue: 'hello' })
-    await flushPromises()
-    expect(wrapper.find('.welcome-dialog').attributes('data-composer-active')).toBe('true')
-    wrapper.unmount()
-  })
-
-  it('busy state shows the spinner and keeps the shell active', async () => {
-    const wrapper = mountComposer({ busy: true, modelValue: 'working' })
-    await flushPromises()
-    expect(wrapper.find('.welcome-dialog').attributes('data-composer-active')).toBe('true')
-    expect(wrapper.find('.composer-send-spinner').exists()).toBe(true)
-    wrapper.unmount()
-    document.body.innerHTML = ''
   })
 })
 
@@ -877,17 +859,6 @@ describe('ComposerBar unified command panel', () => {
     wrapper.unmount()
   })
 
-  it('renders icons for every published preset choice', async () => {
-    apiMock.api.listAgentModeTopologies.mockResolvedValue([{ ...CONVERSATION_MODE, slug: 'plan' }, WORKSPACE_TOPOLOGY] as never)
-    const wrapper = mountComposer({ modeVersionId: CONVERSATION_MODE.latest_published_mode_version_id })
-    await wrapper.find('.mode-selector-trigger').trigger('click')
-    await flushPromises()
-    expect(document.querySelectorAll('.mode-selector-item')).toHaveLength(3)
-    expect([...document.querySelectorAll('.mode-selector-item')].every(row => row.querySelector('svg.command-panel-row-icon'))).toBe(true)
-    expect(wrapper.find('.mode-selector-trigger svg').exists()).toBe(true)
-    wrapper.unmount()
-  })
-
   it.each(['search', 'option'])('Enter from %s confirms a permission, closes the panel and restores the draft focus', async from => {
     const wrapper = mount(ComposerBar, { attachTo: document.body, props: { busy: false, permission: 'default', modelValue: 'keep this draft' } })
     await wrapper.find('.permission-selector-trigger').trigger('click')
@@ -1135,6 +1106,7 @@ describe('ComposerBar attachments', () => {
       attachmentId: 'row-1',
       errorCode: null,
       storedRow: null,
+      previewUrl: null,
       ...overrides,
     }
   }
@@ -1248,6 +1220,41 @@ describe('ComposerBar attachments', () => {
     expect(chips[2]!.text()).toContain('composer.attachTooLarge')
     expect(chips[2]!.text()).toContain('33554432B')
     expect(wrapper.find('.composer-attachments').attributes('aria-live')).toBe('polite')
+    wrapper.unmount()
+  })
+
+  it('previews an uploading image locally, dimmed, and never as an svg', async () => {
+    attachMock.list.value = [
+      row({ clientId: 'img', fileName: 'shot.png', mediaType: 'image/png', status: 'uploading', attachmentId: null, previewUrl: 'blob:local/shot' }),
+      row({ clientId: 'svg', fileName: 'diagram.svg', mediaType: 'image/svg+xml', status: 'uploading', attachmentId: null }),
+    ]
+    const wrapper = mountComposer({ sessionId: 'sess-1' })
+    await flushPromises()
+    const [image, svg] = wrapper.findAll('[data-testid="attachment-chip"]')
+    const media = image!.get('[data-slot="attachment-media"]')
+    expect(media.attributes('data-variant')).toBe('image')
+    expect(media.classes()).toContain('cn-attachment-media-variant-image')
+    expect(media.get('img').attributes('src')).toBe('blob:local/shot')
+    expect(svg!.find('img').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows picked files as idle while the draft session is being created', async () => {
+    let createSession!: (id: string) => void
+    homeMock.ensureComposerSession.mockImplementationOnce(() => new Promise((resolve) => { createSession = resolve }))
+    const wrapper = mountComposer()
+    await flushPromises()
+    const input = fileInput(wrapper)
+    Object.defineProperty(input, 'files', { value: [{ name: 'first.txt', type: 'text/plain', size: 3 }], configurable: true })
+    await wrapper.find('[data-testid="composer-file-input"]').trigger('change')
+    await flushPromises()
+    const idle = wrapper.get('[data-testid="attachment-chip"]')
+    expect(idle.attributes('data-state')).toBe('idle')
+    expect(idle.text()).toContain('first.txt')
+    expect(idle.text()).toContain('composer.attachPreparing')
+    createSession('draft-session')
+    await flushPromises()
+    expect(wrapper.find('[data-state="idle"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

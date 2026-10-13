@@ -1,8 +1,20 @@
 <script setup lang="ts">
 import ChatPanel from '@/components/ChatPanel.vue'
+import { computed } from 'vue'
 import { homeController } from '@/controllers/HomeController'
 
 const c = homeController
+
+// Supervision escalations are still read from the activity composable that space mode
+// keeps using; the flat feed renders them through the shared SupervisionGate.
+const conversation = computed(() => ({
+  feed: c.conversationFeed,
+  runs: c.runs.value,
+  streamingReplies: c.streamingReplies.value,
+  approvals: c.approvals.value,
+  supervisionReviews: Object.fromEntries(Object.entries(c.agentTurnActivities.value).map(([runId, turn]) => [runId, turn.supervisionReview ?? null])),
+  workspaceRoot: c.currentProject.value?.path ?? null,
+}))
 </script>
 
 <template>
@@ -21,12 +33,10 @@ const c = homeController
     :composer-settings="c.composerSettings.value"
     :settings-saving="c.settingsSaving.value"
     :settings-error="c.settingsError.value"
-    :thinking-steps="c.agentThinkingSteps.value"
-    :tool-calls="c.agentToolCalls.value"
-    :turn-activities="c.agentTurnActivities.value"
     :runs-for-composer="c.runs.value"
-    :streaming-reply="c.streamingReply.value"
     :can-stop="Boolean(c.stoppableRunId.value)"
+    :conversation="conversation"
+    :loading="c.transcriptLoading.value"
     @update:draft="c.updateDraft($event)"
     @update:permission="c.updatePermission($event)"
     @update:settings="c.updateComposerSettings($event)"
@@ -34,8 +44,6 @@ const c = homeController
     @welcome-send="c.handleWelcomeSend($event)"
     @create-project="c.openProject()"
     @select-project="c.setSelectedProject($event)"
-    @approve="c.decideApprovalById($event, 'approved')"
-    @reject="c.decideApprovalById($event, 'rejected')"
     @edit-message="c.editAndResend($event)"
     @stop="c.stopRun()"
   />

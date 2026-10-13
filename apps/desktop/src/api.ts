@@ -1757,6 +1757,8 @@ export interface OrchestrationRunDto {
   id: string;
   session_id: string;
   user_message_id?: string | null;
+  /** The user message that started this run (Core `RunRecord.TriggerMessageId`). */
+  trigger_message_id?: string | null;
   status: string;
   summary: string;
   created_at: string;
@@ -1839,7 +1841,22 @@ export interface ToolExecutionTimelineItemDto {
   updated_seq: number;
   event_types: string[];
   checkpoint_summary: string;
+  tool_success?: boolean | null;
+  /** Sentence data: Core's approval-evidence projection, never the raw parameters. */
+  task_id?: string | null;
+  agent_instance_id?: string | null;
+  error_category?: string | null;
+  arguments_summary?: string | null;
+  resource_path?: string | null;
+  command?: string | null;
+  cwd?: string | null;
+  /** The search term (`pattern`/`query`/`q`) when the call names one. */
+  query?: string | null;
 }
+
+/** Bounded result preview of one finished tool call (`GET /api/v1/tool-executions/{id}/preview`). */
+export type ToolExecutionPreviewDto = components['schemas']['ToolExecutionPreview']
+export type ToolResultPreviewDto = components['schemas']['ToolResultPreview']
 
 /** One evidence item in a context pack and the estimated tokens it cost. */
 export interface ContextBudgetShareDto {
@@ -3027,6 +3044,10 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : '';
     return request<ToolExecutionTimelineItemDto[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/tool-executions${suffix}`, { signal, cache: 'no-store' });
   },
+  getToolExecutionPreview: (executionId: string, params: { max_bytes?: number } = {}, signal?: AbortSignal) => {
+    const suffix = params.max_bytes === undefined ? '' : `?max_bytes=${params.max_bytes}`
+    return request<ToolExecutionPreviewDto>(`/api/v1/tool-executions/${encodeURIComponent(executionId)}/preview${suffix}`, { signal, cache: 'no-store' })
+  },
   listRuns: (sessionId: string, signal?: AbortSignal) => request<OrchestrationRunDto[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/runs`, { signal, cache: 'no-store' }),
   listTaskNodes: (sessionId: string) => request<TaskNodeDto[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/task-nodes`),
   listContextPacks: (sessionId: string) => request<ContextPackDto[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/context-packs`),
@@ -3498,7 +3519,12 @@ export const api = {
     onError,
   ),
 
-  connectEvents(sessionId: string | null, onEvent: (event: EventEnvelope) => void): EventSource {
+  /**
+   * `onHeartbeat` receives Core's named `heartbeat` frame. Core writes one right after the
+   * initial durable replay and then every 15s, so the first one marks "history is loaded".
+   * It is not an EventEnvelope and is deliberately not in CORE_EVENT_TYPES.
+   */
+  connectEvents(sessionId: string | null, onEvent: (event: EventEnvelope) => void, onHeartbeat?: () => void): EventSource {
     const params = sessionId ? `?session_id=${encodeURIComponent(selectionIdentity(sessionId).id)}` : '';
     const source = new ScopedEventSource(`${gatewayUrl}/api/v1/events${params}`, sessionStorageId(sessionId));
     const handle = (message: MessageEvent) => {
@@ -3516,6 +3542,7 @@ export const api = {
     for (const eventType of CORE_EVENT_TYPES) {
       source.addEventListener(eventType, handle as EventListener);
     }
+    if (onHeartbeat) source.addEventListener('heartbeat', (() => { try { onHeartbeat() } catch { /* see above */ } }) as EventListener);
     return source as unknown as EventSource;
   },
 

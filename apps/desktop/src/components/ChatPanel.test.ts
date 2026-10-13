@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref, shallowRef } from 'vue'
+import { createFeedState } from '@/lib/conversation/reducer'
 import ChatPanel from './ChatPanel.vue'
 import type { MessageDto } from '../api'
 import type { PermissionLevel } from '@/types/mode'
@@ -47,6 +48,7 @@ const baseProps = {
   busy: false,
   draft: '',
   permission: 'default' as PermissionLevel,
+  conversation: { feed: { state: shallowRef(createFeedState()), revision: ref(0), hydrated: ref(true) }, runs: [] },
 }
 
 function msg(id: string): MessageDto {
@@ -63,29 +65,13 @@ function mountPanel(messages: MessageDto[] = []) {
     global: {
       stubs: {
         ChatHeader: true,
-        MessageList: true,
+        ConversationView: true,
       },
     },
   })
 }
 
 describe('ChatPanel persistent composer', () => {
-  it('anchors each run to its own answer instead of moving old activity into the next turn', async () => {
-    const w = mount(ChatPanel, {
-      props: { ...baseProps, messages: [msg('user-1'), { ...msg('answer-1'), role: 'assistant', run_id: 'run-1' }, msg('user-2')] },
-      global: { stubs: { transition: false, ComposerBar: true, ChatHeader: true, MessageList: {
-        props: ['activityByMessage', 'liveTurns'],
-        template: '<div data-testid="activity-probe">{{ JSON.stringify({ activityByMessage, liveTurns }) }}</div>',
-      } } },
-    })
-    const old = { runId: 'run-1', thinkingSteps: [], toolCalls: [] }
-    const current = { runId: 'run-2', thinkingSteps: [], toolCalls: [] }
-    await w.setProps({ busy: true, turnActivities: { 'run-1': old, 'run-2': current } })
-    const projection = JSON.parse(w.get('[data-testid="activity-probe"]').text())
-    expect(projection.activityByMessage).toEqual({ 'answer-1': old })
-    expect(projection.liveTurns).toEqual([current])
-    w.unmount()
-  })
   it('keeps the same composer element when the first message docks the panel', async () => {
     const wrapper = mountPanel([])
     await nextTick()
@@ -121,15 +107,16 @@ describe('ChatPanel persistent composer', () => {
     wrapper.unmount()
   })
 
-  it('FLIP setup tolerates zero-size rects (no measurement available)', async () => {
-    const wrapper = mountPanel([])
+  it('stays docked while a switched-to session is still loading its transcript', async () => {
+    const wrapper = mountPanel([msg('m1')])
     await nextTick()
-    // happy-dom rects are all-zero; the watcher must bail out silently.
-    await wrapper.setProps({ messages: [msg('m1'), msg('m2')] })
-    await nextTick()
-    expect(wrapper.find('.composer-box').exists()).toBe(true)
+    // Switching sessions empties the list before the new transcript arrives.
+    await wrapper.setProps({ messages: [], loading: true })
+    expect(wrapper.find('.conversation').classes()).not.toContain('composer-hero')
+    // An existing session that turns out to be empty rises to the start page once loaded.
+    await wrapper.setProps({ loading: false })
+    expect(wrapper.find('.conversation').classes()).toContain('composer-hero')
     wrapper.unmount()
-    document.body.innerHTML = ''
   })
 })
 
@@ -147,7 +134,7 @@ describe('ChatPanel send payload', () => {
         messages: [msg('m1')],
         currentSession: { id: 's1', meeting_model_override: override } as never,
       },
-      global: { stubs: { ChatHeader: true, MessageList: true } },
+      global: { stubs: { ChatHeader: true, ConversationView: true } },
     })
     await nextTick()
 

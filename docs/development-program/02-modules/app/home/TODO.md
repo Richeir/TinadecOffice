@@ -6,6 +6,38 @@
 
 状态：待核查 / 未开始 / 待方案 / 进行中 / 阻塞 / 待验收 / 已完成 / 不做 / 已被替代。优先级是初始建议，可在逐模块分析后调整。
 
+<a id="app-home-108"></a>
+
+### APP-HOME-108 平面模式对话流重构 v2
+
+- 类型：实现
+- 状态：待验收
+- 优先级：P1
+- 主责模块：APP-HOME
+- 前置依赖：复用会话 SSE、`ApprovalEvidenceProjector` 脱敏投影、reka-ui 2.11、`MarkdownRender`、`useTerminal.openAgentTerminal`；不复用已判定失败的 PR #43 代码
+- 关联功能：APP-HOME-F002；CORE-TOOLS（工具时间线与结果预览端点）、GATEWAY（薄代理）交叉引用此任务；空间模式本轮不迁移
+- 契约与证据：[计划](../../../../../.tinadec_dev/plans/claude/2026-10-13-flat-conversation-v2.md)、[P0–P7 与补齐报告](../../../../../.tinadec_dev/reports/2026-10-13-flat-conversation-p0.zh-CN.md)
+
+**问题、目标与触及范围**
+
+平面对话流把思维链截成 160 字尾部、工具行没有可读的动作句子、所有活动压进一个默认收起的折叠、多智能体只剩一条推理步骤，并且每个工具事件都触发一次整会话重放的 REST 请求。目标是回合结构：用户消息 → 工作区（思维链、分层工具调用、子智能体、系统事件行；运行中展开、完成收成一行摘要）→ 永不折叠的回答正文 → 脚注，需要人处理的审批永远可见。阶段 P0 后端最小增量，P1 数据层，P2 UI 原语，P3 骨架接入，P4 活动组件，P5 子智能体，P6 附件状态机与旧路径性能合并，P7 收尾。
+
+**验收条件**
+
+- [x] P0：`tool.execution.requested` 在授权判断前发出并携带审批同源的脱敏句子数据；工具时间线透传 task/agent/错误类别并真正按 `run_id`/`limit` 过滤；有界结果预览端点通过安全审查清单；Gateway 薄代理、三份契约同步，`check:drift` 干净。
+- [x] P1：reducer/grouping/turns/toolSentence/format 单测；2000 条事件 hydrate 一次发布且 < 300ms（实测含构造 6ms）；`useConversationFeed` 以重放后 heartbeat 一次发布，尚未挂到 HomeController（P3 接入时挂载，避免无人读取的第二个订阅者）。
+- [x] P2：Attachment 五态、Spinner 延迟/最短显示（假时钟）、Marker 角色、Collapsible 卸载、scroller 跟随/上翻不抢/新回合锚定组件测试；scroller 每次更新只测最后一行、可见锚点与二分定位的首个可见行（200/1000 行一次滚动+追加 <50 次行测量，上游实测 1600/1997）。
+- [x] P3：`ConversationView` 骨架接入 `ChatPanel`（`ChatCard` 传入 `conversation`；Debug Studio 画廊未传时仍回退 `MessageList`，P7 迁移后删除回退）；`MessageList.test.ts` 的首轮无回答仍有审批、活动只挂所属回合、编辑重发三条、附件安全五条均在 `ConversationView.test.ts` 重建并通过；监督裁决抽成共享 `SupervisionGate`。
+- [x] P4：推理块（全文、分节标题、半截标题压住、超长渐隐）、探索组（读搜折叠、写入/命令独占）、工具行（计时、✓/✗ 原因、脱敏参数、shell 实时尾部、改动文件、惰性预览、在终端面板打开）、审批卡（批准/本次运行都批准/拒绝/改为这样做/命令前缀规则、⌘↵/⌘⌫/Esc、延迟 spinner）、待办（6 条后折叠、改写高亮）、按 run 的工作区折叠（运行中展开+状态行、落定收成摘要、手动开合后不再自动）；失败原因提到折叠外。监督样式未改（空间模式共用）。
+- [x] P5：子智能体紧凑卡（`handle · 显示名`、状态徽标、L 形任务行、进行中最新一步 shimmer、就地展开自身活动与 Markdown 摘要）、`AgentGroup`（≥2 运行中「N 个智能体工作中…」）、右栏 `SubAgentsCard`（TinadecUI 注册 `subAgents`，singleton、可移动、本轮不可分离，功能目录加入口；名册运行中在前，详情为同一组件同一 feed）；⤢ 写入 `conversationSelection` 并 `openCard subAgents`；子智能体审批仍提到回合层。
+- [x] P6：发送框附件改用 attachment 五态（会话准备中 idle、上传中带本地图片预览并变暗、done、error 写明原因；svg 不预览；文件名保扩展名截断，转录同样处理）；输入框上方 `AgentTodosStatus` 胶囊（活动 run 自身计划优先、可展开、落定即消失）；空间模式仍用的 `useAgentActivity` 工具时间线读取按 run 300ms 合并、重放期 0 次、heartbeat 后每个有工具事件的 run 读一次（40 个历史事件/2 个 run：旧路径 40 次 → 2 次）。
+- [x] P7：双语 i18n（新组件 spinner 均为装饰、列表分隔符与终端标题本地化，`components/conversation/**` 在 i18nParity）、减弱动效（跳底瞬时、按钮过渡关闭，折叠/shimmer/spinner 计算样式实测）、窄/超窄（`chat-narrow/chat-ultra` 规则，380px 实拍）、Debug Studio「对话消息流」改为 fixtures 场景选择器 + 真实 `ConversationView`、「聊天面板」用 fixture feed；删除 `MessageList/MessageItem/LiveTurnBlock` 与 `ChatPanel` 回退；无头 Chromium 截图矩阵发现并修复 shimmer 文本不可见与脚注时长不一致；文档与报告。
+- [x] 补齐（首版报告误写「全部落地」，逐条对照计划后补做）：最后一个失败/停止回合的「重试」（原文回填输入框，沿用 `editAndResend` 不自动重发）、跨天日期分隔、跳底按钮未读回合数、会话切换正文骨架（`transcriptLoading` + 200/500，加载中不回欢迎页）、`groupText`（≤150 字中间回答两行截断、最后一条不压）、`.shimmer-once`（仅 live→完成时扫一次，历史不扫）；各有组件/单元测试，Debug Studio 增 `next-day-stopped` 场景与「加载中」开关并补截图。
+
+**当前边界**
+
+计划 P0–P7 与上述补齐在 Linux 开发机完成。与计划验证方式的偏差：没有 `npm run dev` 实机与 `vue-mcp`——截图用无头 Chromium 对 Vite 渲染端，「折叠后无活动 DOM」由 DOM 测试断言。已完成的验证：Core/Gateway/Desktop 测试、类型检查、Tailwind 编译，以及无头 Chromium 对 Vite 渲染端（无 Electron/Core/Gateway）的 Debug Studio 预览截图矩阵（7 场景 × 1169/800/520/380 × 暗/亮 × 毛玻璃/不透明，证据 `.tinadec_dev/evidence/2026-10-13-flat-conversation/`）。待验收：Electron 实机窗口、真实模型的 Team 模式链路（派发子智能体 + shell 审批）、Windows/macOS 渲染；Linux 上 `ToolChainEndpointTests.WorkerWriteFile_*` 等在未改动 `main` 上即失败（工具子进程可写源目录为空），见报告。
+
 <a id="app-home-107"></a>
 
 ### APP-HOME-107 侧边栏与多文件夹工作区
@@ -220,7 +252,7 @@
 **初始证据**
 
 - [apps/desktop/src/controllers/HomeController.ts](../../../../../apps/desktop/src/controllers/HomeController.ts)
-- [apps/desktop/src/components/chat/LiveTurnBlock.vue](../../../../../apps/desktop/src/components/chat/LiveTurnBlock.vue)
+- [apps/desktop/src/components/conversation/ConversationTurn.vue](../../../../../apps/desktop/src/components/conversation/ConversationTurn.vue)（原 `chat/LiveTurnBlock.vue`，2026-10-13 随 APP-HOME-108 删除）
 
 **历史任务映射**
 

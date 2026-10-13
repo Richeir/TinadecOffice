@@ -2,7 +2,7 @@ import { ApiError } from '@/lib/apiError'
 import { useHostAccess } from '@/lib/hostAccess'
 import { readSessionRoster } from '@/lib/sessionRoster'
 import { toErrorState } from '@/composables/useErrorState'
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, effectScope, ref, watch, type Ref } from 'vue'
 import { revealWorkspace } from '@/composables/useWorkspaceList'
 import {
   api,
@@ -27,6 +27,7 @@ import { attachmentsForSend, pendingAttachments, readyAttachmentCount, settleSen
 import { followSession, subscribeToSessionEvents, suspendFollowingSession } from '@/lib/sessionEventBus'
 import { isAbortError } from '@/lib/isAbortError'
 import { useAgentActivity } from '@/composables/useAgentActivity'
+import { useConversationFeed } from '@/composables/useConversationFeed'
 import { projectRunReply } from '@/lib/runReply'
 import { setErrorRecoveryHandlers, useNotifications } from '@/composables/useNotifications'
 import type { PermissionLevel } from '@/types/mode'
@@ -89,7 +90,13 @@ const newSessionSettings = ref<Record<SessionView, ComposerSettings>>({ flat: ne
 const settingsWrites = new Map<string, Promise<boolean>>()
 const settingsPending = ref<Record<string, number>>({})
 const settingsErrors = ref<Record<string, string | null>>({})
-const runs = ref<Array<{ id: string; status: string }>>([])
+/**
+ * The session's runs. `trigger_message_id` and the timestamps are what pair a run with the
+ * user message that started it in the flat feed; rows added on admission know only id and
+ * status until the next run-list read fills the rest.
+ */
+type SessionRun = { id: string; status: string; trigger_message_id?: string | null; created_at?: string | null; updated_at?: string | null }
+const runs = ref<SessionRun[]>([])
 /**
  * Messages waiting in the session's queue. `interactionId` is set when Core holds the message
  * (queued delivery never runs beside an unfinished run); the card then leaves when Core admits,
@@ -240,6 +247,10 @@ const {
   agentStates: agentStatesMap,
   progressEvents: agentProgressEvents,
 } = useAgentActivity(sessionIdRef, orchestration)
+
+// The flat conversation feed's event-sourced model, on the window's one session stream.
+// Window lifetime, like the controller itself; a detached scope keeps its watchers owned.
+const conversationFeed = effectScope(true).run(() => useConversationFeed(sessionIdRef))!
 
 const { notify, banner, dismissByKey } = useNotifications()
 
@@ -441,7 +452,24 @@ async function retryWorkspace(key: string) {
 
 let sessionRead = 0
 let sessionLoadAbort: AbortController | null = null
+/**
+ * True from a session switch until that session's transcript has loaded, when the switch
+ * left nothing to show. The flat feed shows a skeleton instead of flashing the welcome
+ * screen (and bouncing the composer to the centre and back) for a session that has history.
+ */
+const transcriptLoading = ref(false)
+
 async function loadMessagesAndApprovals() {
+  const read = sessionRead + 1
+  try {
+    await readMessagesAndApprovals()
+  } finally {
+    // Only the newest read may end the loading state; an older one finishing late must not.
+    if (sessionRead === read) transcriptLoading.value = false
+  }
+}
+
+async function readMessagesAndApprovals() {
   const read = ++sessionRead
   sessionLoadAbort?.abort()
   const loadAbort = new AbortController()
@@ -465,7 +493,9 @@ async function loadMessagesAndApprovals() {
     api.listApprovals(session!, undefined, signal),
     api.listApprovalRules(session!, signal).catch(() => [] as ApprovalRuleDto[]),
     api.getOrchestrationSnapshot(session!, signal),
-    api.listToolExecutions(session!, { limit: 12 }, signal),
+    // No limit: the tool stats and timeline panels count the whole session. Core ignored
+    // `limit` until it gained run/limit filtering; passing 12 now would cap their totals.
+    api.listToolExecutions(session!, {}, signal),
     // An unavailable roster is not an empty roster: keep suspended stream cursors.
     api.listRuns(session!, signal),
   ]).catch((error) => {
@@ -487,7 +517,13 @@ async function loadMessagesAndApprovals() {
   approvalRules.value = ruleList
   orchestration.value = orchestrationSnapshot
   toolExecutions.value = toolTimeline
-  runs.value = (Array.isArray(runList) ? runList : []).map((r) => ({ id: String(r.id), status: String(r.status ?? '') }))
+  runs.value = (Array.isArray(runList) ? runList : []).map((r) => ({
+    id: String(r.id),
+    status: String(r.status ?? ''),
+    trigger_message_id: r.trigger_message_id ?? null,
+    created_at: r.created_at ?? null,
+    updated_at: r.updated_at ?? null,
+  }))
   // 状态源统一（问题 3 修复）：ChatHeader 的 run-pills 读 Pinia runStore.runs，而
   // runStore.fetchRuns 此前只在无入口的 WorkbenchPage 调用 → Home 页 pills 恒空。
   // 把 Home 已拉取的 run 列表（含 session_id，WorkbenchPage.control 依赖）同步进 store。
@@ -1207,6 +1243,7 @@ watch(selectedProjectId, id => {
 watch([selectedSessionId, selectedStorage], ([, storageId], [, previousStorage]) => {
   sessionLoadAbort?.abort()
   messages.value = storageId !== previousStorage ? [] : messages.value.filter((message) => message.session_id === selectedSessionId.value)
+  transcriptLoading.value = Boolean(selectedSessionId.value) && messages.value.length === 0
   orchestration.value = null
   approvals.value = []
   toolExecutions.value = []
@@ -1356,6 +1393,8 @@ export const homeController = {
   stoppableRunId,
   streamingReply,
   streamingReplies,
+  conversationFeed,
+  transcriptLoading,
   agentTurnActivities,
   recordApproval,
   loadMessagesAndApprovals,

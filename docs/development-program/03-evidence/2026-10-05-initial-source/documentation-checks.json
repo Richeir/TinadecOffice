@@ -9,11 +9,11 @@
     "expected": 82,
     "actual": 82
   },
-  "featureCount": 142,
-  "taskCount": 131,
+  "featureCount": 143,
+  "taskCount": 132,
   "markdownFiles": 240,
-  "checkedLinks": 2265,
-  "uniqueIdCount": 273,
+  "checkedLinks": 2270,
+  "uniqueIdCount": 275,
   "errors": [],
   "scope": "documentation/source checks only; no product tests rerun"
 }

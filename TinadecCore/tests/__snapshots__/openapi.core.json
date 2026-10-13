@@ -6601,6 +6601,17 @@
         },
         "type": "object"
       },
+      "WorkspaceModelSourceRequest": {
+        "properties": {
+          "follow_user": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "follow_user"
+        ],
+        "type": "object"
+      },
       "WorkspacePreviewRequest": {
         "properties": {
           "project_path": {
@@ -12434,6 +12445,38 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/storage/scopes/{storageId}/model-source": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "storageId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceModelSourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"

@@ -7,6 +7,10 @@
 **Last Verified Commit:** df0977ff（含4787970c配置投影及d40e89f6批量预览）；60项定向回归与真实配置副本 HTTP 见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md。
 **Branch:** main
 
+## 2026-10-13 WORKSPACE MODELS FOLLOW THE USER (APP-SETTINGS-105)
+
+A workspace scope may run on the user scope's `models.toml`: `IConfigurationDocumentRedirects` (registered at mount when the host registration has `follow_user_models`) makes `ScopeConfigurationDocuments` resolve that one document's path, established marker, write lock and link boundary in the user root, so the model center's edits reach the workspace projection on its next read. New workspaces initialized on this host follow; existing ones and projects arriving with their own `.tinadec` keep their copy until `POST /api/v1/storage/scopes/{id}/model-source` (close → re-register → remount, 409 while work runs, rolled back if the source does not project). The flag is host-local, never in project files; `storage.toml` keys stay strict. `AgentModelResolver.FreezeAsync` ignores a session/turn model override whose provider is missing, deleted or disabled in the scope (falls back to the default strategy). `project.toml` exists in every initialized project scope — it is not a "shared project" marker.
+
 ## 2026-10-11 AGENT DIRECTORY READ PERFORMANCE
 
 `ListAgents` calls `IAgentModelResolver.PreviewBatchAsync` once after filters; duplicate logical keys across draft/published nodes share a preview. The real resolver reads bindings/Agent versions/Mode versions/definitions in one tenant/workspace-bound context and caches frozen plans/resolutions only inside that read. Single-item preview and run admission retain their behavior. Known configuration failures become per-item unavailable previews; cancellation, database and unexpected failures propagate.

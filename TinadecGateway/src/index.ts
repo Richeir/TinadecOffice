@@ -697,7 +697,8 @@ const app = new Elysia()
     setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
     return result.data;
   }, { detail: { summary: 'Run agent lineage', tags: ['Runs'] } })
-  .get('/api/v1/runs/:runId/stream', async ({ params, query, set, request }) => {
+  .get('/api/v1/runs/:runId/stream', async ({ params, query, set, request, server }) => {
+    keepStreamOpen(server, request);
     const headers = forwardHeaders(request);
     const url = new URL(request.url);
     const cursorFromQuery = (query as Record<string,unknown>).cursor ? String((query as Record<string,unknown>).cursor) : url.searchParams.get('cursor');
@@ -901,7 +902,8 @@ const app = new Elysia()
     setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
     return result.data;
   }, { detail: { summary: 'Supervision findings', tags: ['Runs'], responses: { 200: externalJsonResponse('SupervisionFindingList', 'Supervision findings for the session.') } } })
-  .get('/api/v1/events', async ({ query, set, request }) => {
+  .get('/api/v1/events', async ({ query, set, request, server }) => {
+    keepStreamOpen(server, request);
     const headers = forwardHeaders(request);
     const params = new URLSearchParams();
     const q = query as Record<string,unknown>;
@@ -2573,10 +2575,25 @@ registerOrganizationRoutes(app, forwardHeaders);
 registerToolsSettingsRoutes(app, forwardHeaders);
 registerStorageRoutes(app, forwardHeaders);
 
+/** A long-lived stream: no idle cut-off for this request (see GATEWAY_IDLE_TIMEOUT_SECONDS). */
+function keepStreamOpen(server: { timeout(request: Request, seconds: number): void } | null | undefined, request: Request) {
+  try { server?.timeout(request, 0); } catch { /* app.handle() in tests has no server */ }
+}
+
 export { app };
 
+/**
+ * Bun closes a connection that sends or receives nothing for `idleTimeout` seconds, 10 by
+ * default — shorter than Core's 15s SSE heartbeat. Every quiet session stream was cut about
+ * every 12s (ECONNRESET, reconnect, a fresh Core subscription each time), a run stream died
+ * while the model thought, and any Core call slower than 10s failed. Streams opt out per
+ * request (Core heartbeats keep them honest and the client drops a silent one); everything
+ * else gets Bun's maximum.
+ */
+export const GATEWAY_IDLE_TIMEOUT_SECONDS = 255;
+
 if (import.meta.main) {
-  app.listen({ port: config.port, hostname: config.hostname });
+  app.listen({ port: config.port, hostname: config.hostname, idleTimeout: GATEWAY_IDLE_TIMEOUT_SECONDS });
   console.log(`TinadecGateway listening on http://${config.hostname}:${config.port} (${config.mode} mode)`);
   console.log(`  Core:         ${coreUrl()}`);
   console.log(`  Tool Runtime: ${toolRuntimeUrl() || '(not configured; Core tool provider is authoritative)'}`);

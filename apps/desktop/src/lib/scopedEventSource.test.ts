@@ -114,3 +114,26 @@ it('dispatches CRLF frames whose delimiter is split across reads', async () => {
   source.close()
   expect(received).toEqual(['{"message":"hello"}'])
 })
+it('drops a silent half-open stream after the idle timeout and resumes from its cursor', async () => {
+  vi.useFakeTimers()
+  Object.defineProperty(window, 'tinadec', { configurable: true, value: { getHostStatus: vi.fn(async () => ready) } })
+  const calls: RequestInit[] = []
+  // The first response sends one frame and then nothing, ever: no heartbeat, no close.
+  const fakeFetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+    calls.push(init ?? {})
+    const signal = init?.signal
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('id: 7\ndata: {"id":"first"}\n\n'))
+        signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')))
+      },
+    }))
+  }) as typeof fetch
+  const source = new ScopedEventSource('http://gateway.local/api/v1/events', 'scope', fakeFetch, 3000)
+  await vi.advanceTimersByTimeAsync(2900)
+  expect(calls).toHaveLength(1)
+  await vi.advanceTimersByTimeAsync(100 + 1000)
+  source.close()
+  expect(calls).toHaveLength(2)
+  expect(new Headers(calls[1]?.headers).get('last-event-id')).toBe('7')
+})

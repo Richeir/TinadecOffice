@@ -1,5 +1,12 @@
 import { assertHostAccess } from './hostAccess'
 /** Fetch-based SSE keeps the captured storage header on reconnects. */
+/**
+ * Core writes a heartbeat every 15s. A stream that stays silent for three of them is treated as
+ * dead: a half-open connection (sleep/wake, a proxy or network leg dropping it without a FIN)
+ * otherwise leaves read() waiting forever, and the window silently stops updating.
+ */
+export const STREAM_IDLE_TIMEOUT_MS = 45_000
+
 export class ScopedEventSource {
   private readonly events = new EventTarget()
   readonly url: string
@@ -10,7 +17,8 @@ export class ScopedEventSource {
   private closed = false
   private cursor = ''
   private retryTimer: ReturnType<typeof setTimeout> | null = null
-  constructor(url: string, private readonly storageId: string, private readonly fetchImpl: typeof fetch = fetch) {
+  constructor(url: string, private readonly storageId: string, private readonly fetchImpl: typeof fetch = fetch,
+    private readonly idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS) {
     this.url = url
     void this.connect()
   }
@@ -48,14 +56,22 @@ export class ScopedEventSource {
       if (!response.ok || !response.body) throw new Error(`Event stream returned ${response.status}`)
       this.readyState = 1
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
+      // Any bytes (a frame, a comment, a heartbeat) prove the connection alive; silence past
+      // the idle timeout aborts it and the retry below resumes from the last event id.
+      let idle: ReturnType<typeof setTimeout> | null = null
+      const arm = () => { if (idle) clearTimeout(idle); idle = setTimeout(() => request.abort(), this.idleTimeoutMs) }
+      request.signal.addEventListener('abort', () => { if (idle) clearTimeout(idle) }, { once: true })
+      arm()
       while (!this.closed && !request.signal.aborted) {
         const { done, value } = await reader.read()
+        arm()
         if (this.closed || request.signal.aborted) break
         buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, '\n')
         let boundary: number
         while ((boundary = buffer.indexOf('\n\n')) >= 0) { this.dispatchBlock(buffer.slice(0, boundary)); buffer = buffer.slice(boundary + 2) }
         if (done) { if (buffer.trim()) this.dispatchBlock(buffer); break }
       }
+      if (idle) clearTimeout(idle)
     } catch { if (!this.closed) this.onerror?.(new Event('error')) }
     if (!this.closed) { this.readyState = 0; this.retryTimer = setTimeout(() => void this.connect(), 1000) }
   }

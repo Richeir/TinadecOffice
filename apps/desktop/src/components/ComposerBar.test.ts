@@ -335,61 +335,56 @@ describe('ComposerBar mode selector (single source: the published modes)', () =>
     await wrapper.find('.mode-selector-trigger').trigger('click')
     await flushPromises()
     const items = [...document.querySelectorAll('.mode-selector-item')].map(b => b.textContent!.trim())
-    expect(items[0]).toBe('chat.followDefault')
-    // 已发布的去重后恰好两项；draft 与没有已发布版本的项都不出现。
+    // 没有“跟随默认”：已发布的去重后恰好两项；draft 与没有已发布版本的项都不出现。
     expect(items.filter(t => t.includes('自动 (Auto)'))).toHaveLength(1)
     expect(items.some(t => t.includes('自建评审流'))).toBe(true)
     expect(items.some(t => t.includes('草稿模式'))).toBe(false)
     expect(items.some(t => t.includes('无版本模式'))).toBe(false)
-    expect(items).toHaveLength(3)
+    expect(items).toHaveLength(2)
     wrapper.unmount()
     document.body.innerHTML = ''
     apiMock.api.listAgentModeTopologies.mockResolvedValue([])
   })
 
-  it('lists only follow-default when the workspace has no published mode', async () => {
+  it('lists nothing to pick when the workspace has no published mode', async () => {
     apiMock.api.listAgentModeTopologies.mockResolvedValue([])
     const wrapper = mountComposer({ hero: true,})
     await flushPromises()
     await wrapper.find('.mode-selector-trigger').trigger('click')
     await flushPromises()
-    const items = [...document.querySelectorAll('.mode-selector-item')].map(b => b.textContent!.trim())
-    expect(items).toEqual(['chat.followDefault'])
+    expect(document.querySelectorAll('.mode-selector-item')).toHaveLength(0)
+    expect(wrapper.emitted('update:modeVersionId')).toBeUndefined()
     // 没有可选项时不渲染分组标题。
     expect(document.querySelectorAll('.mode-selector-group')).toHaveLength(0)
     wrapper.unmount()
     document.body.innerHTML = ''
   })
 
-  it('degrades to follow-default when the gateway is offline', async () => {
+  it('picks nothing on a guess when the gateway is offline', async () => {
     apiMock.api.listAgentModeTopologies.mockRejectedValue(new Error('offline'))
     const wrapper = mountComposer({ hero: true,})
     await flushPromises()
     await wrapper.find('.mode-selector-trigger').trigger('click')
     await flushPromises()
-    const items = [...document.querySelectorAll('.mode-selector-item')].map(b => b.textContent!.trim())
-    expect(items).toEqual(['chat.followDefault'])
+    expect(document.querySelectorAll('.mode-selector-item')).toHaveLength(0)
     expect(wrapper.emitted('update:modeVersionId')).toBeUndefined()
     wrapper.unmount()
     document.body.innerHTML = ''
     apiMock.api.listAgentModeTopologies.mockResolvedValue([])
   })
 
-  it('selecting a mode emits its mode_version_id; follow-default clears it', async () => {
-    apiMock.api.listAgentModeTopologies.mockResolvedValue([WORKSPACE_TOPOLOGY, CONVERSATION_MODE] as never)
+  it('gives a conversation without a mode the first published one, and selecting another emits its id', async () => {
+    apiMock.api.listAgentModeTopologies.mockResolvedValue([CONVERSATION_MODE, WORKSPACE_TOPOLOGY] as never)
     const wrapper = mountComposer({ hero: true,})
     await flushPromises()
+    // Never "follow the default": the run would take whatever workspace-defaults names.
+    expect(wrapper.emitted('update:modeVersionId')![0]![0]).toBe('mv-conv-auto')
     await wrapper.find('.mode-selector-trigger').trigger('click')
     await flushPromises()
     const items = [...document.querySelectorAll('.mode-selector-item')]
     ;(items.find(b => b.textContent!.includes('自建评审流')) as HTMLElement).click()
     await flushPromises()
-    expect(wrapper.emitted('update:modeVersionId')![0]![0]).toBe('mv-custom-1')
-    await wrapper.find('.mode-selector-trigger').trigger('click')
-    await flushPromises()
-    ;(document.querySelector('.mode-selector-item') as HTMLElement).click()
-    await flushPromises()
-    expect(wrapper.emitted('update:modeVersionId')![1]![0]).toBeNull()
+    expect(wrapper.emitted('update:modeVersionId')!.at(-1)![0]).toBe('mv-custom-1')
     wrapper.unmount()
     document.body.innerHTML = ''
     apiMock.api.listAgentModeTopologies.mockResolvedValue([])

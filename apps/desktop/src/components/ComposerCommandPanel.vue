@@ -105,8 +105,14 @@ const availableModes = computed(() => {
 })
 const selectedMode = computed(() => availableModes.value.find(mode => mode.latest_published_mode_version_id === props.modeVersionId))
 watch([selectedMode, () => props.modeVersionId, loading], () => {
-  emit('mode-label', selectedMode.value?.display_name ?? t('chat.followDefault'), !!props.modeVersionId && !selectedMode.value && !loading.value, selectedMode.value ? modeIcon(selectedMode.value.slug) : Layers)
+  emit('mode-label', selectedMode.value?.display_name ?? t('commandPanel.mode'), !!props.modeVersionId && !selectedMode.value && !loading.value, selectedMode.value ? modeIcon(selectedMode.value.slug) : Layers)
 }, { immediate: true })
+// A conversation without a mode gets the first published one (Solo when the pack has it) as
+// soon as the catalog is known, so its runs never fall back to workspace-defaults' choice.
+watch([availableModes, () => props.modeVersionId, loading], ([modes, current, busy]) => {
+  if (props.spatial || busy || current || props.settingsSaving || !modes.length) return
+  emit('update:modeVersionId', modes[0]!.latest_published_mode_version_id!)
+})
 const workflowName = computed(() => availableModes.value.find(mode => mode.latest_published_mode_version_id === space.value.workflow_mode_version_id)?.display_name)
 const currentPermission = computed(() => permissionChoices.find(choice => choice.value === props.permission)!)
 const permissionName = computed(() => t(currentPermission.value.label))
@@ -149,14 +155,13 @@ function back() {
 }
 function modeRows(workflow: boolean): Row[] {
   const selected = workflow ? space.value.workflow_mode_version_id : props.modeVersionId
-  return [{
-    id: 'default', label: workflow ? t('commandPanel.workflowOff') : t('chat.followDefault'),
-    icon: workflow ? Workflow : Layers, checked: !selected, disabled: props.settingsSaving,
-    run: () => {
-      if (workflow) emit('update:spaceOptions', { ...space.value, workflow_mode_version_id: null })
-      else if (!workflow) emit('update:modeVersionId', null)
-    },
-  }, ...availableModes.value.filter(mode => !workflow || mode.edges.length > 0).map(mode => ({
+  // Only a workflow can be "off". A conversation always has a real mode: "follow the default"
+  // resolved to whatever workspace-defaults named, often nothing anyone would choose.
+  const off: Row[] = workflow ? [{
+    id: 'default', label: t('commandPanel.workflowOff'), icon: Workflow, checked: !selected, disabled: props.settingsSaving,
+    run: () => emit('update:spaceOptions', { ...space.value, workflow_mode_version_id: null }),
+  }] : []
+  return [...off, ...availableModes.value.filter(mode => !workflow || mode.edges.length > 0).map(mode => ({
     id: mode.latest_published_mode_version_id!, label: mode.display_name, hint: mode.description ?? '',
     icon: modeIcon(mode.slug),
     keywords: mode.slug ?? '', checked: selected === mode.latest_published_mode_version_id,
@@ -193,7 +198,7 @@ const allRows = computed<Row[]>(() => {
     if ('surface' in setting && (setting.surface === 'space') !== Boolean(props.spatial)) continue
     const toggle = 'toggle' in setting ? setting.toggle : null
     const submenu = 'page' in setting ? setting.page : null
-    const currentValue = setting.id === 'model' ? props.defaultModelLabel : setting.id === 'mode' ? selectedMode.value?.display_name ?? t('chat.followDefault') : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
+    const currentValue = setting.id === 'model' ? props.defaultModelLabel : setting.id === 'mode' ? selectedMode.value?.display_name ?? t('commandPanel.mode') : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
     rows.push({
       id: setting.id, label: t(setting.label), hint: t(setting.hint),
       keywords: setting.keywords,

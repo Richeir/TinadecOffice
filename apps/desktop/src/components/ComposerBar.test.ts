@@ -586,7 +586,6 @@ describe('ComposerBar unified command panel', () => {
       const wrapper = mountComposer({ meetingModelOverride: null })
       await flushPromises()
       expect(wrapper.find('[data-testid="composer-pinned-model"]').exists()).toBe(false)
-      expect(apiMock.api.listModelProviders).not.toHaveBeenCalled()
       wrapper.unmount()
     })
   })

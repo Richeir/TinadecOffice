@@ -5,6 +5,7 @@ import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick, use
 import { useRouter } from 'vue-router'
 import { UiButton, UiSelectField } from '@/components/ui'
 import ComposerCommandPanel from './ComposerCommandPanel.vue'
+import ComposerModelSwitch from './ComposerModelSwitch.vue'
 import type { PermissionLevel } from '@/types/mode'
 import type { MeetingModelOverrideDto, ModelProviderInstanceDto, ProjectDto, SpaceOptionsDto } from '@/api'
 import { homeController } from '@/controllers/HomeController'
@@ -793,6 +794,7 @@ function confirmSteer(id: string, interrupt = false) {
           ><component :is="modeGlyph" :size="14" /><span class="mode-selector-label">{{ modeLabel }}</span><span v-if="modeUnavailable" class="mode-selector-stale" :title="t('chat.modeUnavailable')">⚠</span><ChevronDown :size="12" class="mode-selector-chevron" :class="{ 'is-expanded': modePanelExpanded }" aria-hidden="true" /></button>
           <slot v-if="spatial" name="capabilities" />
           <button class="permission-selector-trigger" type="button" :title="t('permission.nextRunHint')" aria-haspopup="dialog" :aria-expanded="permissionPanelExpanded" @click="openCommandPanel('permission')"><component :is="permissionChoice.icon" :size="14" class="composer-permission-icon" :data-risk="permissionChoice.risk" aria-hidden="true" /><span class="permission-selector-label">{{ permissionLabel }}</span><ChevronDown :size="12" class="permission-selector-chevron" :class="{ 'is-expanded': permissionPanelExpanded }" aria-hidden="true" /></button>
+          <ComposerModelSwitch />
           <button
             ref="projectTriggerRef"
             class="project-dropdown-trigger"

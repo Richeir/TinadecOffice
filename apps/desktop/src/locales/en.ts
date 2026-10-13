@@ -1996,6 +1996,7 @@ retry: 'Retry',
     nextTask: 'Settings apply to the next task in this conversation. Submitted tasks keep their original settings.',
   },
   composer: {
+    modelSwitch: { hint: 'Default model: used by every conversation, same as “Set as default” in the model center', none: 'No default model', empty: 'No models yet — add one in the model center', manage: 'Manage in the model center…', failed: 'Could not switch the default model' },
     pinnedModel: 'Pinned: {model} · use default', pinnedModelUnavailable: '{model} unavailable · use default', pinnedModelUnknown: 'unknown model',
     pinnedModelHint: 'This conversation is pinned to this model and does not follow the model center. Click to use the model center default.',
     pinnedModelUnavailableHint: 'This model’s provider was deleted, disabled, or is not in this workspace’s model configuration; the conversation now uses the model center default. Click to clear the pin.',

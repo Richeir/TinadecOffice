@@ -1994,6 +1994,7 @@ retry: '重试',
     nextTask: '设置用于当前会话的下一次任务，已发送的任务保留原有设置。',
   },
   composer: {
+    modelSwitch: { hint: '默认模型：所有对话使用，与模型中心「设为默认模型」相同', none: '未设置默认模型', empty: '还没有可用的模型，去模型中心添加', manage: '在模型中心管理…', failed: '没能切换默认模型' },
     pinnedModel: '固定模型 {model} · 改用默认', pinnedModelUnavailable: '{model} 已不可用 · 改用默认', pinnedModelUnknown: '未知模型',
     pinnedModelHint: '这条对话固定使用这个模型，不跟随模型中心。点击改回模型中心的默认模型。',
     pinnedModelUnavailableHint: '这个模型的供应商已删除、停用，或不在当前工作区的模型配置里；对话现在使用模型中心的默认模型。点击清除这条固定设置。',

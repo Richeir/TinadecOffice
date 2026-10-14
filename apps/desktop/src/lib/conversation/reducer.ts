@@ -65,6 +65,12 @@ export interface ReasoningEntry {
   handle: string | null
   agentName: string | null
   text: string
+  /**
+   * The call's public text while it works — a task worker's draft or narration (Solo's master
+   * answering its task). Core journals it for task-bound calls only; the conversation's own
+   * answer streams on the run stream instead.
+   */
+  output: string
   status: 'running' | 'completed' | 'failed' | 'interrupted'
   startedAt: string
   endedAt: string | null
@@ -404,8 +410,13 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       const id = `reasoning:${responseId}`
       let entry = find(record, id, 'reasoning')
       if (!entry) {
-        // An answer-only call never streams reasoning; open its entry on the first thought.
-        if (event.type !== 'model.output.delta' || payload.channel !== 'reasoning') return false
+        // A task worker's call opens at once: it may think silently or only write, and a turn
+        // with no entry shows no work at all while it waits. Other calls (the conversation's
+        // answer, which streams elsewhere) open on their first thought.
+        const taskBound = Boolean(str(payload, 'task_id'))
+        const opens = event.type === 'model.output.started' ? taskBound
+          : event.type === 'model.output.delta' && (payload.channel === 'reasoning' || taskBound)
+        if (!opens) return false
         entry = add(record, {
           kind: 'reasoning',
           id,
@@ -414,6 +425,7 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
           handle: str(payload, 'handle'),
           agentName: str(payload, 'agent_name'),
           text: '',
+          output: '',
           status: 'running',
           startedAt: event.ts,
           endedAt: null,
@@ -421,6 +433,7 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       }
       if (event.type === 'model.output.delta') {
         if (payload.channel === 'reasoning') entry.text += str(payload, 'delta') ?? ''
+        else if (payload.channel === 'text') entry.output += str(payload, 'delta') ?? ''
       } else if (event.type !== 'model.output.started') {
         entry.status = event.type === 'model.output.completed' ? 'completed'
           : event.type === 'model.output.interrupted' ? 'interrupted' : 'failed'

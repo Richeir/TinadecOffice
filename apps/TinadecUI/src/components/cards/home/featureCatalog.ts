@@ -1,7 +1,6 @@
 import {
   Activity,
   Bot,
-  BotMessageSquare,
   GitBranch,
   Globe,
   Layers3,
@@ -46,7 +45,6 @@ export const FEATURE_CATALOG: FeatureCatalogEntry[] = [
   { descriptorId: 'orchestration', titleKey: 'context.homeOrchestration', descKey: 'context.homeOrchestrationDesc', icon: Layers3, color: '#a371f7' },
   { descriptorId: 'organization', titleKey: 'context.homeOrganization', descKey: 'context.homeOrganizationDesc', icon: Users, color: '#db61a2' },
   { descriptorId: 'browser', titleKey: 'context.homePreview', descKey: 'context.homePreviewDesc', icon: Globe, color: '#58a6ff' },
-  { descriptorId: 'subAgents', titleKey: 'context.homeSubAgents', descKey: 'context.homeSubAgentsDesc', icon: BotMessageSquare, color: '#39c5cf' },
   { descriptorId: 'events', titleKey: 'context.homeEvents', descKey: 'context.homeEventsDesc', icon: Activity, color: '#7d8590' },
   { descriptorId: 'doctor', titleKey: 'context.homeDoctor', descKey: 'context.homeDoctorDesc', icon: Stethoscope, color: '#3fb950' },
 ]

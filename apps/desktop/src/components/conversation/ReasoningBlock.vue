@@ -31,10 +31,11 @@ const lang = computed(() => feedLocale(locale.value))
 const sections = computed(() => reasoningSections(props.entry.text))
 const title = computed(() => latestReasoningTitle(props.entry.text))
 const showAll = ref(false)
-const long = computed(() => props.entry.text.length > 1200)
+const long = computed(() => props.entry.text.length + props.entry.output.length > 1200)
 
 const label = computed(() => {
-  if (thinking.value) return title.value ?? t('conversation.reasoning.thinking')
+  // A worker that writes without thinking aloud is drafting, not "thinking".
+  if (thinking.value) return title.value ?? t(props.entry.output && !props.entry.text ? 'conversation.reasoning.drafting' : 'conversation.reasoning.thinking')
   return t('conversation.reasoning.thoughtFor', { duration: formatDuration(elapsed.value ?? 0, lang.value) })
 })
 </script>
@@ -54,6 +55,8 @@ const label = computed(() => {
           <h4 v-if="section.title" class="conversation-reasoning-title">{{ section.title }}</h4>
           <p v-if="section.body" class="conversation-reasoning-text">{{ section.body }}</p>
         </section>
+        <!-- What the worker writes as it goes (its draft), after what it thought. -->
+        <p v-if="entry.output" class="conversation-reasoning-text conversation-reasoning-output" data-testid="reasoning-output">{{ entry.output }}</p>
       </div>
       <button v-if="long && !showAll" type="button" class="conversation-link-button" @click="showAll = true">{{ t('conversation.reasoning.showAll') }}</button>
     </CollapsibleContent>
@@ -65,4 +68,5 @@ const label = computed(() => {
 .conversation-reasoning-body.is-clamped { max-height: 18rem; overflow: hidden; mask-image: linear-gradient(to bottom, black 70%, transparent); }
 .conversation-reasoning-title { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .conversation-reasoning-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-reasoning-output { color: var(--text-primary); }
 </style>

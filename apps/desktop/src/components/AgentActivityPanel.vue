@@ -27,11 +27,15 @@ import {
   Hourglass,
   ListChecks,
   AlertTriangle,
+  Users,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import type { AgentActivity, AgentState, ThinkingStep, ProgressEvent } from '@/composables/useAgentActivity'
 import type { AgentAssignmentDto, OrchestrationSnapshotDto, TaskNodeDto } from '../api'
 import AgentStatusIndicator from './chat/AgentStatusIndicator.vue'
+import SubAgentsPanel from './conversation/SubAgentsPanel.vue'
+import type { ConversationFeed } from '@/composables/useConversationFeed'
+import type { TurnRunInput } from '@/lib/conversation/turns'
 
 const { t } = useI18n()
 
@@ -41,12 +45,21 @@ const props = defineProps<{
   thinkingSteps: ThinkingStep[]
   progressEvents: ProgressEvent[]
   orchestration: OrchestrationSnapshotDto | null
+  /**
+   * The flat feed, for the session's sub-agents. They used to have a card of their own
+   * beside this one, listing the same agents a second time; now they are a section here.
+   */
+  feed?: ConversationFeed
+  runs?: readonly TurnRunInput[]
+  workspaceRoot?: string | null
 }>()
 
 // ---- Section collapse state ----
 const statusExpanded = ref(true)
 const taskGraphCollapsed = ref(false)
 const thinkingExpanded = ref(false)
+const subAgentsCollapsed = ref(false)
+const subAgentCount = ref(0)
 
 // ---- Status config ----
 const statusConfig = computed(() => {
@@ -334,6 +347,22 @@ const visibleProgressEvents = computed(() => [...props.progressEvents].slice(-15
             </ol>
           </div>
         </Transition>
+      </article>
+
+      <!-- ===== Sub-agents section (the roster and the selected one's work) ===== -->
+      <!-- v-show, not v-if: the panel stays mounted to report how many sub-agents there are. -->
+      <article v-if="feed && runs" v-show="subAgentCount > 0" class="agent-panel-section" data-testid="agent-panel-sub-agents">
+        <button class="agent-panel-section-head" @click="subAgentsCollapsed = !subAgentsCollapsed">
+          <div class="agent-panel-section-title">
+            <component :is="subAgentsCollapsed ? ChevronRight : ChevronDown" :size="12" />
+            <Users :size="12" />
+            <span>{{ t('conversation.agents.panelTitle') }}</span>
+            <span class="agent-panel-count-badge">{{ subAgentCount }}</span>
+          </div>
+        </button>
+        <div v-show="!subAgentsCollapsed" class="agent-panel-section-body">
+          <SubAgentsPanel :feed="feed" :runs="runs" :workspace-root="workspaceRoot" @roster-size="subAgentCount = $event" />
+        </div>
       </article>
 
       <!-- ===== Thinking steps section ===== -->

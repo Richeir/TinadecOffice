@@ -3270,7 +3270,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                     return;
                 // These are provider-produced output projections, never prompts or tool
                 // arguments. Lifecycle events and tool dispatch share this journal clock.
-                if (frame.Kind != "delta" || frame.Channel == "reasoning")
+                // A task worker's text is journaled too: Solo's master answers its task before
+                // the meeting writes the reply, and without its words the turn showed nothing
+                // until then. The conversation's own answer streams on the run stream instead.
+                if (frame.Kind != "delta" || frame.Channel == "reasoning" || task is not null)
                     await AppendEventAsync(checkpoint.RunId, $"model.output.{frame.Kind}",
                         "Model output update.", new
                         {

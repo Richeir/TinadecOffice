@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Bot } from '@lucide/vue'
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
@@ -19,6 +19,7 @@ const props = defineProps<{
   runs: readonly TurnRunInput[]
   workspaceRoot?: string | null
 }>()
+const emit = defineEmits<{ 'roster-size': [count: number] }>()
 const { t } = useI18n()
 const { displayName } = useAgentDirectory()
 
@@ -37,6 +38,7 @@ const roster = computed<RosterItem[]>(() => {
   const working = (item: RosterItem) => item.node.status === 'running' || item.node.status === 'awaiting_approval'
   return items.sort((a, b) => Number(working(b)) - Number(working(a)) || a.order - b.order)
 })
+watch(() => roster.value.length, count => emit('roster-size', count), { immediate: true })
 
 const selected = computed(() => {
   const choice = conversationSelection.value

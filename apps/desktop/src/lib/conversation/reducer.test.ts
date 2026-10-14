@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyEvent, applyEvents, createFeedState, OUTPUT_LINE_LIMIT, type ReasoningEntry, type ToolEntry } from './reducer'
 import { EventScript } from './fixtures/builder'
+import { groupRun } from './grouping'
 import { exploreEditShell, interruptedRun, parallelSubAgents, pendingApproval } from './fixtures'
 
 function hydrate(events: Parameters<typeof applyEvents>[1]) {
@@ -18,6 +19,31 @@ describe('reasoning', () => {
     expect(entry.text).toBe(long)
     expect(entry.status).toBe('completed')
     expect(entry.endedAt).not.toBeNull()
+  })
+
+  /**
+   * Solo's master answers its task before the meeting writes the reply. Its call used to leave
+   * no entry unless it streamed reasoning, so the turn showed no work at all meanwhile. A task
+   * worker's call opens when it starts and keeps the words it writes; one that ends with neither
+   * a thought nor a word is dropped from the work area rather than shown empty.
+   */
+  it('shows a task worker at work from its first moment, with the words it writes', () => {
+    const s = new EventScript()
+    s.emit('run-1', 'model.output.started', { response_id: 'w', task_id: 'task-1', channel: null })
+    const opened = hydrate(s.events).runs.get('run-1')!.entries[0] as ReasoningEntry
+    expect(opened).toMatchObject({ kind: 'reasoning', status: 'running', text: '', output: '' })
+    s.emit('run-1', 'model.output.delta', { response_id: 'w', task_id: 'task-1', channel: 'text', delta: '先读一下 ' })
+    s.emit('run-1', 'model.output.delta', { response_id: 'w', task_id: 'task-1', channel: 'text', delta: 'README。' })
+    s.emit('run-1', 'model.output.completed', { response_id: 'w', task_id: 'task-1', channel: null })
+    const done = hydrate(s.events).runs.get('run-1')!.entries[0] as ReasoningEntry
+    expect(done).toMatchObject({ status: 'completed', text: '', output: '先读一下 README。' })
+
+    const silent = new EventScript()
+    silent.emit('run-1', 'model.output.started', { response_id: 'q', task_id: 'task-1', channel: null })
+    silent.emit('run-1', 'model.output.completed', { response_id: 'q', task_id: 'task-1', channel: null })
+    const activity = hydrate(silent.events).runs.get('run-1')!
+    expect(activity.entries).toHaveLength(1)
+    expect(groupRun(activity, false).nodes).toHaveLength(0)
   })
 
   it('ignores answer-only model calls and an interrupted call ends rather than fails', () => {

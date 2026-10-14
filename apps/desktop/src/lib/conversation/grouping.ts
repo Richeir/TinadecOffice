@@ -159,6 +159,8 @@ function build(context: Context, scope: string | null, requester: SubAgent | nul
       continue
     }
     if (entry.kind === 'supervision' && (entry.decision === 'pass' || entry.decision === 'skipped')) continue
+    // A call that finished without a thought or a word leaves nothing to read: no empty row.
+    if (entry.kind === 'reasoning' && entry.status !== 'running' && !entry.text.trim() && !entry.output.trim()) continue
     if (isQuiet(entry)) {
       quiet.push(entry as QuietEntry)
       continue

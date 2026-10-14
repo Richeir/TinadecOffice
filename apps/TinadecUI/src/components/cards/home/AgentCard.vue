@@ -12,5 +12,8 @@ const c = homeController
     :thinking-steps="c.agentThinkingSteps.value"
     :progress-events="c.agentProgressEvents.value"
     :orchestration="c.orchestration.value"
+    :feed="c.conversationFeed"
+    :runs="c.runs.value"
+    :workspace-root="c.currentProject.value?.path ?? null"
   />
 </template>

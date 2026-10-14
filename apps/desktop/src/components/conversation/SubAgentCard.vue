@@ -52,7 +52,8 @@ function openInPanel() {
     return
   }
   uie.bus.dispatch({
-    command: { type: 'openCard', scope: uie.scope.value, descriptorId: 'subAgents', slotId: 'right', title: t('conversation.agents.panelTitle') },
+    // Sub-agents are a section of the agent activity card (the one place that lists agents).
+    command: { type: 'openCard', scope: uie.scope.value, descriptorId: 'agent', slotId: 'right', title: t('context.homeAgent') },
     source: 'user',
     expectedRevision: uie.snapshot.value.revision,
   })

@@ -36,6 +36,8 @@
 
 **当前边界**
 
+2026-10-14 调整：独立的「子智能体」右栏卡并入「智能体活动」卡（同一名册以「子智能体 N」一节出现，无子智能体时不显示；对话流里的「⤢ 在面板打开」改为打开「智能体活动」），两处列出同一批智能体是重复。Solo 主控执行任务期间，思维与所写草稿即时出现在工作区。
+
 计划 P0–P7 与上述补齐在 Linux 开发机完成。与计划验证方式的偏差：没有 `npm run dev` 实机与 `vue-mcp`——截图用无头 Chromium 对 Vite 渲染端，「折叠后无活动 DOM」由 DOM 测试断言。已完成的验证：Core/Gateway/Desktop 测试、类型检查、Tailwind 编译，以及无头 Chromium 对 Vite 渲染端（无 Electron/Core/Gateway）的 Debug Studio 预览截图矩阵（7 场景 × 1169/800/520/380 × 暗/亮 × 毛玻璃/不透明，证据 `.tinadec_dev/evidence/2026-10-13-flat-conversation/`）。待验收：Electron 实机窗口、真实模型的 Team 模式链路（派发子智能体 + shell 审批）、Windows/macOS 渲染；Linux 上 `ToolChainEndpointTests.WorkerWriteFile_*` 等在未改动 `main` 上即失败（工具子进程可写源目录为空），见报告。
 
 <a id="app-home-107"></a>

@@ -250,7 +250,7 @@ function viewDetails() {
 .tool-invocation-id {
   font-size: 10px;
   color: var(--text-muted);
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -421,7 +421,7 @@ function viewDetails() {
   color: var(--text-secondary);
   background: var(--bg-tertiary);
   border-radius: 4px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -441,7 +441,7 @@ function viewDetails() {
 }
 
 .tool-invocation-approval small {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   opacity: 0.8;
 }

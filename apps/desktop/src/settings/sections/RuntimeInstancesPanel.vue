@@ -206,7 +206,7 @@ defineExpose({ loadRuntimeInstances })
 .ac-instance-ids {
   color: var(--text-muted);
   font-size: 11px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 .ac-instance-evidence {
   display: flex;

@@ -168,7 +168,7 @@ public static class DmaeaEndpoints
                             waits = Array.Empty<object>()
                         }
                     });
-            var nodes = events.Where(e => e.EventType is "task.assigned" or "step.result.created" or "worker.completed" or "worker.blocked" or "worker.failed")
+            var nodes = CheckpointTaskNodes(checkpoint, run.Id.ToString(), sessionId, LaneOfTaskSession, null, run.CreatedAt) ?? events.Where(e => e.EventType is "task.assigned" or "step.result.created" or "worker.completed" or "worker.blocked" or "worker.failed")
                 .Select(e =>
                 {
                     var nodeId = PayloadString(e.Payload, "task_id") ?? PayloadString(e.Payload, "task_node_id") ?? "";
@@ -197,7 +197,7 @@ public static class DmaeaEndpoints
                         updated_at = e.Timestamp
                     };
                 })
-                .ToList();
+                .Cast<object>().ToList();
             var stepResults = events.Where(e => e.EventType == "step.result.created")
                 .Select(e => new
                 {
@@ -392,7 +392,7 @@ public static class DmaeaEndpoints
             var nodeAgentNames = agentInstanceRows.Where(a => a.TaskId is not null)
                 .GroupBy(a => a.TaskId!.Value)
                 .ToDictionary(g => g.Key, g => DisplayNameFor(g.First()));
-            var nodes = events.Where(e => e.EventType is "task.dispatched" or "task.assigned" or "worker.completed" or "worker.blocked" or "worker.failed" or "step.result.created").Select(e =>
+            var nodes = CheckpointTaskNodes(checkpoint, runGuid.ToString(), run.SessionId.ToString(), LaneOfTask, nodeAgentNames, run.CreatedAt) ?? events.Where(e => e.EventType is "task.dispatched" or "task.assigned" or "worker.completed" or "worker.blocked" or "worker.failed" or "step.result.created").Select(e =>
             {
                 var nodeId = PayloadString(e.Payload, "task_id") ?? PayloadString(e.Payload, "task_node_id") ?? "";
                 var nodeAgentName = Guid.TryParse(nodeId, out var nodeGuid) && nodeAgentNames.TryGetValue(nodeGuid, out var dn) ? dn : null;
@@ -421,7 +421,7 @@ public static class DmaeaEndpoints
                     created_at = e.Timestamp,
                     updated_at = e.Timestamp
                 };
-            }).ToList();
+            }).Cast<object>().ToList();
             var lanes = checkpoint is null
                 ? new List<object>()
                 : (checkpoint.Lanes.Count > 0
@@ -697,6 +697,39 @@ public static class DmaeaEndpoints
     {
         if (payload.TryGetValue("payload", out var inner) && inner is JsonElement { ValueKind: JsonValueKind.Object } obj) return obj;
         return default;
+    }
+
+    /// <summary>
+    /// The run's task plan as its checkpoint records it: one node per task with its title,
+    /// description, status and priority. The event projection this replaces read a "title" from
+    /// task.assigned (no longer emitted) and worker/step events (which never carry one), so the
+    /// plan showed numbered blank rows, every priority 1, and a task once per event about it.
+    /// Null without a checkpoint or tasks; callers then fall back to the event projection.
+    /// </summary>
+    private static List<object>? CheckpointTaskNodes(FullDuplexCheckpointV1? checkpoint, string runId, string sessionId,
+        Func<DurableTaskNode, string> laneOf, IReadOnlyDictionary<Guid, string>? agentNames, DateTimeOffset createdAt)
+    {
+        if (checkpoint is null || checkpoint.Tasks.Count == 0) return null;
+        return checkpoint.Tasks.Select((task, index) => (object)new
+        {
+            id = task.TaskId.ToString(),
+            graph_id = "",
+            run_id = runId,
+            session_id = sessionId,
+            title = string.IsNullOrWhiteSpace(task.Title) ? task.TaskKey : task.Title,
+            description = task.Description ?? "",
+            status = task.Status,
+            lane_key = laneOf(task),
+            agent_display_name = agentNames is not null && agentNames.TryGetValue(task.TaskId, out var name) ? name : null,
+            // Plan order when the planner gave no priority, so rows keep the order they were planned in.
+            priority = task.Priority > 0 ? task.Priority : index + 1,
+            risk = task.Risk,
+            success_criteria = task.SuccessCriteria,
+            dependencies = task.Dependencies,
+            required_capabilities = task.RequiredCapabilities,
+            created_at = createdAt,
+            updated_at = createdAt
+        }).ToList();
     }
 
     private static string? PayloadString(IReadOnlyDictionary<string, object?> payload, string key)

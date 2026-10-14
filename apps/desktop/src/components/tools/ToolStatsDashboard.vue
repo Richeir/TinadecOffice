@@ -496,7 +496,7 @@ function sourceBarWidth(count: number, total: number): string {
   text-align: right;
   color: var(--text-primary);
   font-weight: 600;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-stats-top-row {
@@ -529,14 +529,14 @@ function sourceBarWidth(count: number, total: number): string {
   text-align: right;
   color: var(--text-primary);
   font-weight: 600;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-stats-top-duration {
   text-align: right;
   color: var(--text-muted);
   font-size: 10px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-stats-source-row {
@@ -622,14 +622,14 @@ function sourceBarWidth(count: number, total: number): string {
   text-align: right;
   color: var(--text-primary);
   font-weight: 600;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-stats-source-pct {
   text-align: right;
   color: var(--text-muted);
   font-size: 10px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-stats-empty {

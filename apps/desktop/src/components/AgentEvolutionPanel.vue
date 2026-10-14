@@ -544,7 +544,7 @@ defineExpose({ loadProposals })
   border: 1px solid color-mix(in srgb, var(--accent-brand) 20%, transparent);
   border-radius: 4px;
   font-size: 11px;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 .evolution-tag.removable {
   background: var(--surface-raised);

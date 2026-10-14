@@ -428,6 +428,15 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         var orchestration = await client.GetFromJsonAsync<JsonElement>($"/api/v1/runs/{runId}/orchestration");
         Assert.Equal("completed", orchestration.GetProperty("run").GetProperty("status").GetString());
         Assert.True(orchestration.GetProperty("supervision_findings").GetArrayLength() >= 2);
+        // The task plan names its tasks once each. It used to read titles from events that never
+        // carry one, so the agent activity plan showed numbered blank rows (and a row per event).
+        var session = await client.GetFromJsonAsync<JsonElement>($"/api/v1/sessions/{sessionId}/orchestration");
+        foreach (var plan in new[] { orchestration, session })
+        {
+            var titles = plan.GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("title").GetString()).ToArray();
+            Assert.Equal(new[] { "任务A", "任务B" }, titles.Order().ToArray());
+            Assert.All(plan.GetProperty("nodes").EnumerateArray(), node => Assert.Equal("completed", node.GetProperty("status").GetString()));
+        }
     }
 
     [Fact]

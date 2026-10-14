@@ -9,7 +9,7 @@
  * panel (replay + follow), where the user has a full-size view and can type to
  * help the agent finish.
  */
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -17,6 +17,7 @@ import { Pause, Play, Square, ExternalLink, Loader2 } from '@lucide/vue'
 import { api, type EventEnvelope } from '@/api'
 import { homeController } from '@/controllers/HomeController'
 import { useTerminal } from '@/composables/useTerminal'
+import { codeFont, codeFontStack } from '@/lib/codeFont'
 import { createAgentTerminalSource } from '@/composables/useTerminalSource'
 import { useUie } from '@tinadec/ui'
 import { useNotifications } from '@/composables/useNotifications'
@@ -242,11 +243,13 @@ async function stop() {
 
 const isRunning = computed(() => props.status === 'running' && !exited.value)
 
+watch(codeFont, (id) => { if (term) term.options.fontFamily = codeFontStack(id) })
+
 onMounted(() => {
   if (!containerRef.value) return
   term = new Terminal({
     cursorBlink: false,
-    fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
+    fontFamily: codeFontStack(codeFont.value),
     fontSize: 12,
     lineHeight: 1.25,
     convertEol: true,

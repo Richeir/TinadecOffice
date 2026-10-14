@@ -623,6 +623,7 @@ retry: 'Retry',
     gitConvBodyTooLong: 'Some body lines exceed 72 character recommendation',
   },
   settings: {
+    codeFont: 'Code font', codeFontHint: 'The monospace font for code blocks, commands, paths, diffs and terminals. The first four ship with the app; a system font falls back to JetBrains Mono where it is missing.', codeFontSystem: 'System monospace', codeFontSystemBadge: 'system',
     modelScope: {
       follows: 'The workspace “{name}” uses this model configuration: models added, changed or deleted here apply to its conversations at once.',
       ownCopy: 'The workspace “{name}” uses its own model configuration, which edits here do not change.',

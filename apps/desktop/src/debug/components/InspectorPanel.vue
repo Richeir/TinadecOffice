@@ -190,7 +190,7 @@ function formatDuration(ms: number): string {
 .id-value {
   font-size: 11px;
   color: var(--text-muted, #6e7681);
-  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 </style>

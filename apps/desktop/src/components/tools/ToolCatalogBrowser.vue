@@ -521,7 +521,7 @@ function onExecute(tool: ToolDescriptorDto) {
 .tool-catalog-card-main small {
   font-size: 10px;
   color: var(--text-muted);
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -640,7 +640,7 @@ function onExecute(tool: ToolDescriptorDto) {
 }
 
 .tool-catalog-detail-mono {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-secondary);
   background: var(--bg-tertiary);
@@ -669,7 +669,7 @@ function onExecute(tool: ToolDescriptorDto) {
   color: var(--text-secondary);
   background: var(--bg-tertiary);
   border-radius: 3px;
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .tool-catalog-execute {

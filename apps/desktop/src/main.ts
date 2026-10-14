@@ -13,6 +13,8 @@ import { installPreviewShimIfNeeded } from './lib/previewShim'
 import { homeController } from './controllers/HomeController'
 import { installRendererErrorFallback } from './lib/rendererErrorFallback'
 import './styles.css'
+import { installCodeFont } from '@/lib/codeFont'
+installCodeFont()
 
 // Install a minimal `window.tinadec` when running without the Electron preload
 // (bare-vite preview / MCP pane) so pages render instead of crashing.

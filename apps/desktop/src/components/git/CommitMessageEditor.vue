@@ -460,7 +460,7 @@ emitChange()
   background: var(--surface-button);
   border: 1px solid var(--border-card);
   border-radius: 8px;
-  font-family: ui-monospace, 'Geist Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -493,7 +493,7 @@ emitChange()
 .commit-editor-history-item code {
   display: block;
   color: var(--text-secondary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;

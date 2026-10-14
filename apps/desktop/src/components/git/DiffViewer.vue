@@ -391,7 +391,7 @@ watch(sideBySide, () => {
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .diff-stat-add {

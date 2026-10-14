@@ -329,7 +329,7 @@ const failureRecovery = computed(() => recoveryActions(failure.error.value, {
 .storage-paths { margin: 0; display: grid; gap: 8px; }
 .storage-paths > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; }
 .storage-paths dd { margin: 0; overflow-wrap: anywhere; }
-.storage-settings code, .storage-editor { font-family: var(--font-mono, 'Geist Mono', monospace); font-size: 12px; }
+.storage-settings code, .storage-editor { font-family: var(--font-mono); font-size: 12px; }
 .storage-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
 .storage-table th, .storage-table td { padding: 12px 8px; border-bottom: 1px solid var(--border-muted); }
 .storage-table td code { display: block; overflow-wrap: anywhere; color: var(--text-muted); margin-top: 4px; }

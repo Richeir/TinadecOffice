@@ -386,7 +386,7 @@ watch(open, (value) => { if (!value) detachDocumentListeners() })
 
 .selection-menu__shortcut {
   flex: none;
-  font-family: 'Geist Mono Variable', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
 }

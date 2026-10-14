@@ -361,7 +361,7 @@ function statusLine() {
 }
 
 .market-proposal-grid .mono {
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .market-proposal-grid .strike {
@@ -398,7 +398,7 @@ function statusLine() {
 }
 
 .mono {
-  font-family: monospace;
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 </style>

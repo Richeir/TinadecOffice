@@ -182,7 +182,7 @@ async function control(action: 'cancel'|'pause'|'resume') {
 .finding-row p { font-size: 12px; color: var(--text-secondary); margin: 0; }
 .finding-row small { font-size: 11px; color: var(--text-muted); }
 .version-row { font-size: 12px; display: flex; gap: 8px; align-items: center; }
-.mono { font-family: ui-monospace, monospace; }
+.mono { font-family: var(--font-mono); }
 .workbench-error { color: #c00; font-size: 12px; }
 
 /* Frozen configuration strip */
@@ -200,6 +200,6 @@ async function control(action: 'cancel'|'pause'|'resume') {
 /* Instance drawer */
 .drawer-head { display: flex; align-items: center; justify-content: space-between; }
 .instance-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 12px; }
-.instance-facts dt { color: var(--text-secondary); font-family: ui-monospace, monospace; font-size: 11px; padding-top: 2px; }
+.instance-facts dt { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; padding-top: 2px; }
 .instance-facts dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
 </style>

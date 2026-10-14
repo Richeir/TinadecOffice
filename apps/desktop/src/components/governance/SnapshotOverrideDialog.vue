@@ -114,7 +114,7 @@ function confirm(): void {
 <style scoped>
 .snapshot-override__meta {
   margin: 10px 0;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
 }

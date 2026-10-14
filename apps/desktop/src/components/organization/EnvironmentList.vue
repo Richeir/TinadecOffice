@@ -141,7 +141,7 @@ watch(() => props.sessionId, load)
 }
 .environment-capacity { display:flex; align-items:center; gap:6px; }
 .environment-capacity input { width:64px; }
-.environment-connection { grid-column:1 / -1; resize:vertical; font-family:var(--font-mono, monospace); font-size:12px; }
+.environment-connection { grid-column:1 / -1; resize:vertical; font-family: var(--font-mono); font-size:12px; }
 .environment-actions { grid-column:1 / -1; display:flex; gap:6px; }
 .environment-items { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
 .environment-item { padding:8px; border-radius:6px; background:var(--surface-section); }

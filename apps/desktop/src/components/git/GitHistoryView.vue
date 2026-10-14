@@ -415,7 +415,7 @@ defineExpose({
 
 .git-history-item-hash {
   color: var(--accent-primary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
 }
 
@@ -474,7 +474,7 @@ defineExpose({
 
 .git-detail-meta-item code {
   color: var(--accent-primary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .git-detail-body {
@@ -488,7 +488,7 @@ defineExpose({
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.5;
@@ -539,7 +539,7 @@ defineExpose({
 .git-detail-file-stats {
   display: flex;
   gap: 6px;
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
 }
 

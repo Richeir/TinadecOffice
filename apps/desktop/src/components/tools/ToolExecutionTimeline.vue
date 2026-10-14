@@ -570,7 +570,7 @@ function onViewDetails(exec: ToolExecutionTimelineItemDto) {
 }
 
 .tool-timeline-duration {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
 }
 

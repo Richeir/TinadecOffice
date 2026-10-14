@@ -60,9 +60,13 @@ const loading = ref(false)
 const modeError = ref(false)
 const space = computed(() => props.spaceOptions ?? defaultSpaceOptions())
 let loadSequence = 0
-/** The slider moves at once; the saved value catches up when the write lands (or snaps back if it fails). */
+/**
+ * The slider moves at once; whenever no write is running it shows the saved value again, so a
+ * failed or dropped choice snaps back even when the saved value itself did not change.
+ */
 const reasoningDraft = ref<ReasoningEffortChoice>('')
-watch(() => props.defaultModel?.reasoningEffort.value ?? '', value => { reasoningDraft.value = value }, { immediate: true })
+watch(() => [props.defaultModel?.reasoningEffort.value ?? '', props.defaultModel?.busy.value ?? false] as const,
+  ([value, busy]) => { if (!busy) reasoningDraft.value = value }, { immediate: true })
 const showReasoning = computed(() => page.value === 'model' && Boolean(props.defaultModel?.reasoningSupported.value))
 function stopSliderKeys(event: KeyboardEvent) { if (event.key !== 'Escape') event.stopPropagation() }
 let anchorObserver: ResizeObserver | null = null

@@ -14,8 +14,10 @@ import { supportsReasoningEffort, withReasoningEffort, type ReasoningEffortChoic
  * either way. The list is the model center's own projection (provider models plus models named
  * only on routes), so nothing configured there is missing here.
  *
- * Its reasoning effort is that model's saved parameter, the one the model center's parameter
- * editor writes: changing it here changes it there, for every conversation's next task.
+ * Its reasoning effort is that model's saved parameter (`model_parameters[model]`), in the same
+ * scope: on the user's models it is the value the model center's parameter editor shows; a
+ * workspace on its own copy changes that copy, which its conversations use, and the model center
+ * says so (ModelScopeNotice).
  */
 export function useDefaultModel() {
   const { t } = useI18n()
@@ -33,7 +35,8 @@ export function useDefaultModel() {
     .filter(model => model.enabled))
   const currentProvider = computed(() => providers.value.find(row => row.id === current.value?.provider_instance_id) ?? null)
   /** Whether the default model takes a reasoning effort at all (its provider's protocol decides). */
-  const reasoningSupported = computed(() => Boolean(current.value?.model && currentProvider.value && supportsReasoningEffort(currentProvider.value.protocol)))
+  const reasoningSupported = computed(() => Boolean(loaded.value && current.value?.model && currentProvider.value
+    && currentProvider.value.revision != null && supportsReasoningEffort(currentProvider.value.protocol)))
   const reasoningEffort = computed<ReasoningEffortChoice>(() => {
     const model = current.value?.model
     return (model && currentProvider.value?.model_parameters?.[model]?.reasoning_effort) || ''
@@ -61,44 +64,39 @@ export function useDefaultModel() {
     return current.value?.provider_instance_id === providerId && current.value.model === model
   }
 
-  async function choose(providerId: string, model: string) {
-    if (busy.value || isCurrent(providerId, model)) return
+  /**
+   * One write at a time, held busy until the reload lands so the next write carries the new
+   * revision. A reasoning choice made meanwhile is kept with the scope and model it was made for,
+   * and written afterwards only if those are still the default; otherwise it is dropped.
+   */
+  let pending: { effort: ReasoningEffortChoice; storage: string; providerId: string; model: string } | null = null
+  async function write(run: () => Promise<unknown>, failure: string) {
     busy.value = true
-    try {
-      await api.saveModelRoute('chat', { candidates: [{ provider_instance_id: providerId, model }] }, undefined,
-        chatRoute.value?.revision != null ? { expected_revision: chatRoute.value.revision } : undefined)
-    } catch (error) {
-      notify.error(error, { title: t('composer.modelSwitch.failed') })
-    } finally {
-      busy.value = false
-      await load()
-    }
+    try { await run() } catch (error) { notify.error(error, { title: t(failure) }) }
+    finally { await load(); busy.value = false }
+    const next = pending
+    pending = null
+    if (next && next.storage === selectedStorage.value && next.providerId === currentProvider.value?.id && next.model === current.value?.model)
+      await setReasoningEffort(next.effort)
   }
 
-  let pendingEffort: ReasoningEffortChoice | null = null
+  async function choose(providerId: string, model: string) {
+    // Never on a list read from another scope: the storage watcher clears `loaded` until it reloads.
+    if (busy.value || !loaded.value || isCurrent(providerId, model)) return
+    await write(() => api.saveModelRoute('chat', { candidates: [{ provider_instance_id: providerId, model }] }, undefined,
+      chatRoute.value?.revision != null ? { expected_revision: chatRoute.value.revision } : undefined), 'composer.modelSwitch.failed')
+  }
+
   async function setReasoningEffort(effort: ReasoningEffortChoice) {
-    // One write at a time against the provider's revision; a choice made meanwhile is the next write.
-    if (busy.value) { pendingEffort = effort; return }
     const provider = currentProvider.value
     const model = current.value?.model
-    if (!provider || !model || provider.revision == null || effort === reasoningEffort.value) return
-    busy.value = true
-    try {
-      await api.saveModelProvider(provider.id, {
-        driver: provider.driver, display_name: provider.display_name, connection_kind: provider.connection_kind,
-        enabled: provider.enabled, model_parameters: withReasoningEffort(provider, model, effort),
-      }, { expected_revision: provider.revision })
-    } catch (error) {
-      notify.error(error, { title: t('composer.reasoning.failed') })
-    } finally {
-      busy.value = false
-      await load()
-    }
-    if (pendingEffort !== null) {
-      const next = pendingEffort
-      pendingEffort = null
-      await setReasoningEffort(next)
-    }
+    if (!reasoningSupported.value || !provider || !model) return
+    if (busy.value) { pending = { effort, storage: selectedStorage.value, providerId: provider.id, model }; return }
+    if (effort === reasoningEffort.value) return
+    await write(() => api.saveModelProvider(provider.id, {
+      driver: provider.driver, display_name: provider.display_name, connection_kind: provider.connection_kind,
+      enabled: provider.enabled, model_parameters: withReasoningEffort(provider, model, effort),
+    }, { expected_revision: provider.revision! }), 'composer.reasoning.failed')
   }
 
   watch(selectedStorage, () => { loaded.value = false; void load() })

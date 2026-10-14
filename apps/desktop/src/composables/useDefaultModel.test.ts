@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
@@ -30,6 +30,7 @@ const Host = defineComponent({
   setup() { const model = useDefaultModel(); void model.load(); return { model } },
   template: `<ReasoningEffortSlider v-if="model.reasoningSupported.value" :model-value="model.reasoningEffort.value" @commit="model.setReasoningEffort($event)" />`,
 })
+afterEach(() => vi.resetAllMocks())
 const mountHost = () => mount(Host, { global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] } })
 
 describe('default model reasoning effort', () => {
@@ -47,6 +48,30 @@ describe('default model reasoning effort', () => {
     expect(h.save).toHaveBeenCalledWith('p1', expect.objectContaining({
       model_parameters: { 'gpt-5': { reasoning_effort: 'high', max_output_tokens: 4096 }, other: { temperature: 0.3 } },
     }), { expected_revision: 9 })
+    wrapper.unmount()
+  })
+
+  it('writes a choice made during a save afterwards, on the revision that save produced', async () => {
+    h.providers = [provider('openai-chat')]
+    let release!: () => void
+    h.save.mockImplementationOnce(() => new Promise(resolve => { release = () => {
+      h.providers = [{ ...provider('openai-chat'), revision: 10, model_parameters: { 'gpt-5': { reasoning_effort: 'medium', max_output_tokens: 4096 }, other: { temperature: 0.3 } } }]
+      resolve(h.providers[0])
+    } }))
+    h.save.mockResolvedValue(undefined)
+    const wrapper = mountHost()
+    await flushPromises()
+    const slider = wrapper.get('[data-testid="reasoning-slider"]').element as HTMLInputElement
+    slider.value = '3'; slider.dispatchEvent(new Event('change'))
+    slider.value = '5'; slider.dispatchEvent(new Event('change'))
+    await flushPromises()
+    expect(h.save).toHaveBeenCalledTimes(1)
+    release()
+    await flushPromises()
+    expect(h.save).toHaveBeenCalledTimes(2)
+    expect(h.save).toHaveBeenLastCalledWith('p1', expect.objectContaining({
+      model_parameters: { 'gpt-5': { reasoning_effort: 'xhigh', max_output_tokens: 4096 }, other: { temperature: 0.3 } },
+    }), { expected_revision: 10 })
     wrapper.unmount()
   })
 

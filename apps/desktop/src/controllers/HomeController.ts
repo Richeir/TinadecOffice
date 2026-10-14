@@ -1230,8 +1230,52 @@ async function handleSessionEvent(event: EventEnvelope) {
     event.type.startsWith('context.') ||
     event.type.startsWith('step.')
   ) {
-    await loadMessagesAndApprovals()
+    scheduleSessionRefresh()
   }
+}
+
+/*
+ * Session events refresh the transcript, approvals and runs — six REST reads, two of them the
+ * whole session (messages and the tool timeline). They used to run once per event, each one
+ * aborting the read before it: opening a session replays its whole history, so a long one sent
+ * hundreds of full reloads that Core still executed after the client gave up on them, the
+ * transcript loaded last of all, and the stream itself stalled behind the load. Now the replay
+ * is skipped (the session switch already reads the state it describes) with one read after it
+ * if anything arrived; live events coalesce into one trailing read, one in flight at a time,
+ * and a burst during a read earns exactly one more.
+ */
+const SESSION_REFRESH_DELAY_MS = 250
+let sessionReplaying = false
+let eventsDuringReplay = false
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+let refreshing = false
+let refreshAgain = false
+
+function scheduleSessionRefresh() {
+  if (sessionReplaying) { eventsDuringReplay = true; return }
+  if (refreshing) { refreshAgain = true; return }
+  if (refreshTimer) return
+  refreshTimer = setTimeout(() => { refreshTimer = null; void runSessionRefresh() }, SESSION_REFRESH_DELAY_MS)
+}
+
+async function runSessionRefresh() {
+  refreshing = true
+  try { await loadMessagesAndApprovals() } catch { /* the next event or session switch reads again */ }
+  finally {
+    refreshing = false
+    if (refreshAgain) { refreshAgain = false; scheduleSessionRefresh() }
+  }
+}
+
+function sessionStreamOpened() {
+  sessionReplaying = true
+  eventsDuringReplay = false
+}
+
+function sessionReplayFinished() {
+  if (!sessionReplaying) return
+  sessionReplaying = false
+  if (eventsDuringReplay) { eventsDuringReplay = false; scheduleSessionRefresh() }
 }
 
 watch(selectedProjectId, id => {
@@ -1299,7 +1343,7 @@ function start() {
   if (started) return
   started = true
   if (canAccessBackend.value) void loadInitial()
-  subscribeToSessionEvents(handleSessionEvent)
+  subscribeToSessionEvents(handleSessionEvent, { onOpen: sessionStreamOpened, onHeartbeat: sessionReplayFinished })
   followSession(currentSession.value ? selectionKey(currentSession.value) : selectedSessionId.value)
 }
 

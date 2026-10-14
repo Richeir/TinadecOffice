@@ -27,6 +27,8 @@ interface Subscription {
   handler: Handler
   scope?: Ref<string | null>
   onHeartbeat?: () => void
+  /** A new connection opened: Core replays the session's durable history before its first heartbeat. */
+  onOpen?: () => void
 }
 
 const subscriptions = new Set<Subscription>()
@@ -77,6 +79,9 @@ function open() {
   try {
     sourceStorageId = followed.value ? sessionStorageId(followed.value) : selectedStorageId()
     source = api.connectEvents(followed.value, deliver, heartbeat)
+    for (const subscription of [...subscriptions]) {
+      try { subscription.onOpen?.() } catch { /* Same isolation as deliver(). */ }
+    }
   } catch {
     // A stream that cannot start is a degraded live view, not a dead panel: the
     // REST reads that seeded it stay valid.
@@ -119,9 +124,9 @@ export function suspendFollowingStorage(storageId: string): () => void {
  */
 export function subscribeToSessionEvents(
   handler: Handler,
-  options: { scope?: Ref<string | null>; onHeartbeat?: () => void } = {},
+  options: { scope?: Ref<string | null>; onHeartbeat?: () => void; onOpen?: () => void } = {},
 ): () => void {
-  const subscription: Subscription = { handler, scope: options.scope, onHeartbeat: options.onHeartbeat }
+  const subscription: Subscription = { handler, scope: options.scope, onHeartbeat: options.onHeartbeat, onOpen: options.onOpen }
   subscriptions.add(subscription)
   if (!source) open()
   return () => {

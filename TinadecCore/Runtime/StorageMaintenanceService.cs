@@ -90,7 +90,7 @@ public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
                 await using var source = new Microsoft.Data.Sqlite.SqliteConnection(connection.ConnectionString);
                 await using var target = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = databaseSnapshot, Pooling = false }.ToString());
                 await source.OpenAsync(ct).ConfigureAwait(false); await target.OpenAsync(ct).ConfigureAwait(false);
-                source.BackupDatabase(target);
+                await BackupAsync(source, target, ct).ConfigureAwait(false);
             }
             else
             {
@@ -136,7 +136,7 @@ public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
                                     { DataSource = snapshot, Pooling = false }.ToString()))
                                 {
                                     await sourceVector.OpenAsync(ct).ConfigureAwait(false); await targetVector.OpenAsync(ct).ConfigureAwait(false);
-                                    sourceVector.BackupDatabase(targetVector);
+                                    await BackupAsync(sourceVector, targetVector, ct).ConfigureAwait(false);
                                 }
                                 archive.CreateEntryFromFile(snapshot, Path.GetRelativePath(scope.Root, file.FullName).Replace('\\', '/'));
                             }
@@ -153,6 +153,25 @@ public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
         }
         catch { if (File.Exists(destination)) File.Delete(destination); throw; }
         finally { if (File.Exists(databaseSnapshot)) File.Delete(databaseSnapshot); }
+    }
+
+    /// <summary>
+    /// SQLite's online backup, retried while the source is briefly busy. Microsoft.Data.Sqlite runs
+    /// one <c>sqlite3_backup_step</c> and throws on BUSY, unlike its commands, which wait out the
+    /// busy timeout. Scope connections are unpooled, so the next one to open after the last closed
+    /// runs WAL recovery, and for those milliseconds every other reader gets SQLITE_BUSY_RECOVERY
+    /// (261). CI hit exactly that as a 500 from the deletion preview right after a scope opened.
+    /// </summary>
+    internal static async Task BackupAsync(Microsoft.Data.Sqlite.SqliteConnection source, Microsoft.Data.Sqlite.SqliteConnection target, CancellationToken ct)
+    {
+        var elapsed = Stopwatch.StartNew();
+        for (var delay = 10; ; delay = Math.Min(delay * 2, 200))
+        {
+            try { source.BackupDatabase(target); return; }
+            // Primary code in the low byte: SQLITE_BUSY (5) and SQLITE_LOCKED (6) with any extension.
+            catch (Microsoft.Data.Sqlite.SqliteException ex) when ((ex.SqliteErrorCode & 0xFF) is 5 or 6 && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+            { await Task.Delay(delay, ct).ConfigureAwait(false); }
+        }
     }
 
     public static async Task RequireIdleAsync(IServiceProvider services, CancellationToken ct)
@@ -300,7 +319,7 @@ public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
                     { DataSource = snapshot, Pooling = false }.ToString()))
                 {
                     await source.OpenAsync(ct).ConfigureAwait(false); await target.OpenAsync(ct).ConfigureAwait(false);
-                    source.BackupDatabase(target);
+                    await BackupAsync(source, target, ct).ConfigureAwait(false);
                 }
                 await using var stream = File.OpenRead(snapshot);
                 hash.AppendData(Encoding.UTF8.GetBytes(file.FullName + "\0"));

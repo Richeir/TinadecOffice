@@ -193,13 +193,13 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
         var id = scope.GetProperty("storage_id").GetString()!;
         var code = Path.Combine(scope.GetProperty("project_root").GetString()!, "main.txt"); await File.WriteAllTextAsync(code, "project code");
         var previewResponse = await client.PostAsJsonAsync($"/api/v1/storage/scopes/{id}/storage-delete-preview", new { });
-        Assert.True(previewResponse.IsSuccessStatusCode, await previewResponse.Content.ReadAsStringAsync());
+        Assert.True(previewResponse.IsSuccessStatusCode, await ExplainAsync(previewResponse));
         var preview = await previewResponse.Content.ReadFromJsonAsync<JsonElement>();
         client.DefaultRequestHeaders.Remove("X-Tinadec-Host-Control");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/v1/storage/scopes/{id}/storage-delete", new { preview_id = preview.GetProperty("preview_id").GetString() })).StatusCode);
         client.DefaultRequestHeaders.Add("X-Tinadec-Host-Control", _token);
         var deleted = await client.PostAsJsonAsync($"/api/v1/storage/scopes/{id}/storage-delete", new { preview_id = preview.GetProperty("preview_id").GetString() });
-        Assert.True(deleted.IsSuccessStatusCode, await deleted.Content.ReadAsStringAsync()); Assert.True(File.Exists(code));
+        Assert.True(deleted.IsSuccessStatusCode, await ExplainAsync(deleted)); Assert.True(File.Exists(code));
         Assert.False(Directory.Exists(scope.GetProperty("storage_root").GetString()));
         var registrations = await client.GetFromJsonAsync<JsonElement>("/api/v1/storage/scopes");
         Assert.DoesNotContain(registrations.EnumerateArray(), row => row.GetProperty("storage_id").GetString() == id);
@@ -246,7 +246,7 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
         Assert.Contains(archived.StatusCode, new[] { HttpStatusCode.Conflict, HttpStatusCode.NotFound });
 
         var removed = await restarted.DeleteAsync($"/api/v1/storage/scopes/{id}");
-        Assert.True(removed.IsSuccessStatusCode, await removed.Content.ReadAsStringAsync());
+        Assert.True(removed.IsSuccessStatusCode, await ExplainAsync(removed));
 
         var projects = await restarted.GetFromJsonAsync<JsonElement[]>("/api/v1/projects");
         Assert.DoesNotContain(projects!, row => row.GetProperty("storage_id").GetString() == id);
@@ -463,6 +463,14 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    /// <summary>
+    /// The problem document plus the cause Core kept for it: a 500 body only says "internal_error", and
+    /// the storage-delete-preview 500 that has shown up on CI (Windows and Linux, never locally) came
+    /// back with nothing else to go on.
+    /// </summary>
+    private async Task<string> ExplainAsync(HttpResponseMessage response)
+        => $"{await response.Content.ReadAsStringAsync()} | server cause: {_factory!.LastFailure()}";
+
     private async Task<JsonElement> OpenAsync(HttpClient client, string name)
     {
         var path = Path.Combine(_root, name); Directory.CreateDirectory(path);
@@ -476,11 +484,11 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
         using var client = _factory!.CreateClient(); var scope = await OpenAsync(client, "changed-facts");
         var id = scope.GetProperty("storage_id").GetString()!;
         var previewResponse = await client.PostAsJsonAsync($"/api/v1/storage/scopes/{id}/storage-delete-preview", new { });
-        Assert.True(previewResponse.IsSuccessStatusCode, await previewResponse.Content.ReadAsStringAsync());
+        Assert.True(previewResponse.IsSuccessStatusCode, await ExplainAsync(previewResponse));
         var preview = await previewResponse.Content.ReadFromJsonAsync<JsonElement>();
         client.DefaultRequestHeaders.Add("X-Tinadec-Storage-Id", id);
         var created = await client.PostAsJsonAsync("/api/v1/sessions", new { project_id = scope.GetProperty("project_id").GetString(), title = "new fact after preview" });
-        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        Assert.True(created.IsSuccessStatusCode, await ExplainAsync(created));
         var deleted = await client.PostAsJsonAsync($"/api/v1/storage/scopes/{id}/storage-delete", new { preview_id = preview.GetProperty("preview_id").GetString() });
         var deletionDetail = await deleted.Content.ReadAsStringAsync();
         Assert.True(deleted.StatusCode == HttpStatusCode.Conflict, deletionDetail);

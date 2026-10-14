@@ -13,7 +13,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { hostRuntimeTarget } from "./runtimeTargets.mjs";
-import { smokeChecks, smokePorts } from "./smokeAssertions.mjs";
+import { smokeChecks, smokeHostControlToken, smokePorts, smokeProbeHeaders } from "./smokeAssertions.mjs";
+
+// One credential per smoke run: handed to the packaged app at launch and sent with every probe.
+const hostControlToken = smokeHostControlToken();
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptsDir, "..");
@@ -122,7 +125,7 @@ async function probeJson(url, timeoutMs = 1_000) {
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 	try {
 		const response = await fetch(url, {
-			headers: { accept: "application/json", "cache-control": "no-store" },
+			headers: smokeProbeHeaders(hostControlToken),
 			signal: controller.signal,
 		});
 		let value = null;
@@ -335,7 +338,7 @@ export async function runPackagedPosixSmoke(options = {}) {
 	try {
 		child = spawn(executable, electronSmokeArgs(userData, target), {
 			cwd: dirname(executable),
-			env: sanitizedPosixEnvironment({ profile, temporary, inheritedPath: process.env.PATH, display: process.env.DISPLAY, xauthority: process.env.XAUTHORITY }),
+			env: { ...sanitizedPosixEnvironment({ profile, temporary, inheritedPath: process.env.PATH, display: process.env.DISPLAY, xauthority: process.env.XAUTHORITY }), TINADEC_HOST_CONTROL_TOKEN: hostControlToken },
 			stdio: ["ignore", "pipe", "pipe"],
 			detached: true,
 		});

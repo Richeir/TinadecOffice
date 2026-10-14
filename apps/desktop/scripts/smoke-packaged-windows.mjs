@@ -22,6 +22,8 @@ import {
 	toolsReadinessUrl,
 	harnessManifestUrl,
 	smokePorts,
+	smokeHostControlToken,
+	smokeProbeHeaders,
 	validateCoreHealth,
 	validateGatewayHealth,
 	validateCoreReadiness,
@@ -29,6 +31,9 @@ import {
 	validateToolsReadiness,
 	validateHarnessManifest,
 } from "./smokeAssertions.mjs";
+
+// One credential per smoke run: handed to the packaged app at launch and sent with every probe.
+const hostControlToken = smokeHostControlToken();
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(scriptsDir, "..");
@@ -80,7 +85,7 @@ async function probeJson(url, timeoutMs = 1_000) {
 	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 	try {
 		const response = await fetch(url, {
-			headers: { accept: "application/json", "cache-control": "no-store" },
+			headers: smokeProbeHeaders(hostControlToken),
 			signal: controller.signal,
 		});
 		let value = null;
@@ -303,7 +308,7 @@ export async function runPackagedWindowsSmoke(options = {}) {
 			],
 			{
 				cwd: dirname(executable),
-				env: sanitizedEnvironment(profile, temporary),
+				env: { ...sanitizedEnvironment(profile, temporary), TINADEC_HOST_CONTROL_TOKEN: hostControlToken },
 				stdio: ["ignore", "pipe", "pipe"],
 				windowsHide: true,
 			},

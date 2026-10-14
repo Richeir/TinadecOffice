@@ -2167,7 +2167,7 @@ retry: 'Retry',
       files: '{count} file | {count} files', searches: '{count} search | {count} searches',
       lists: '{count} folder | {count} folders', thoughts: '{count} thought | {count} thoughts',
     },
-    reasoning: { thinking: 'Thinking', thoughtFor: 'Thought for {duration}', showAll: 'Show all' },
+    reasoning: { drafting: 'Drafting…', thinking: 'Thinking', thoughtFor: 'Thought for {duration}', showAll: 'Show all' },
     agents: {
       openInPanel: 'Open in panel', openedInPanel: 'Selected in the Sub-agents panel', panelTitle: 'Sub-agents', none: 'No sub-agents in this conversation yet',
       working: '{count} agent working… | {count} agents working…',

@@ -51,7 +51,8 @@ const status = computed(() => {
     const sentence = entrySentence(current, props.workspaceRoot)
     return t(verbKey(sentence.verb, 'active'), { subject: sentence.subject ?? current.toolId })
   }
-  if (current?.kind === 'reasoning') return latestReasoningTitle(current.text) ?? t('conversation.reasoning.thinking')
+  if (current?.kind === 'reasoning') return latestReasoningTitle(current.text)
+    ?? t(current.output && !current.text ? 'conversation.reasoning.drafting' : 'conversation.reasoning.thinking')
   return t('conversation.reasoning.thinking')
 })
 

@@ -132,7 +132,7 @@ describe('turn work fold', () => {
 describe('ReasoningBlock', () => {
   const entry = (over: Partial<ReasoningEntry> = {}): ReasoningEntry => ({
     kind: 'reasoning', id: 'r', seq: 1, taskId: null, handle: null, agentName: 'meeting',
-    text: '**Checking callers**\nLook in graph.ts', status: 'running', startedAt: '2026-10-13T09:00:00Z', endedAt: null, ...over,
+    text: '**Checking callers**\nLook in graph.ts', output: '', status: 'running', startedAt: '2026-10-13T09:00:00Z', endedAt: null, ...over,
   })
 
   it('is open while thinking with the newest title, and folds to "Thought for" when done', async () => {

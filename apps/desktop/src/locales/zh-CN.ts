@@ -2164,7 +2164,7 @@ retry: '重试',
       files: '{count} 个文件', searches: '{count} 次搜索',
       lists: '{count} 个目录', thoughts: '{count} 段思考',
     },
-    reasoning: { thinking: '正在思考', thoughtFor: '思考了 {duration}', showAll: '展开全部' },
+    reasoning: { drafting: '正在起草…', thinking: '正在思考', thoughtFor: '思考了 {duration}', showAll: '展开全部' },
     agents: {
       openInPanel: '在面板打开', openedInPanel: '已在子智能体面板中选中', panelTitle: '子智能体', none: '本会话还没有子智能体',
       working: '{count} 个智能体工作中…',

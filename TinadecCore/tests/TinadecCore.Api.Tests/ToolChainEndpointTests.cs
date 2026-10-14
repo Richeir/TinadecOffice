@@ -2915,6 +2915,41 @@ public sealed partial class ToolChainEndpointTests : IAsyncLifetime
 
     private sealed record ActiveInvoke(Task<JsonElement> Acknowledgement, Task<List<JsonElement>> Completion);
 
+    /// <summary>
+    /// Solo's master answers its task before the meeting writes the reply. Only its reasoning
+    /// used to reach the journal, so a provider that thinks silently left the turn blank until
+    /// the reply streamed. A task worker's words are journaled (with the task they belong to);
+    /// the conversation's own answer still streams on the run stream, not twice.
+    /// </summary>
+    [Fact]
+    public async Task SoloMaster_JournalsTheWordsItWritesForItsTask()
+    {
+        var workspace = Path.Combine(_root, "solo-progress"); Directory.CreateDirectory(workspace);
+        var script = new ToolScriptedClient()
+            .WhenWorkerTurns([new TextContent("先读一下 README，再回答。")])
+            .WhenMeeting("你好，这是最终回答。");
+        _factory = new ToolChainFactory(_root, script, new FakeToolProvider());
+        var client = _factory.CreateClient();
+        await InstallGraphSeedPackAsync(client);
+        var project = await (await client.PostAsJsonAsync("/api/v1/projects", new { name = "solo", path = workspace })).Content.ReadFromJsonAsync<JsonElement>();
+        var solo = await LatestPublishedModeVersionIdAsync("solo");
+        var session = await (await client.PostAsJsonAsync("/api/v1/sessions", new { project_id = project.GetProperty("id").GetGuid(), title = "solo", mode_version_id = solo })).Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetGuid();
+        await StartStreamingInvoke(client, sessionId, new { content = "你好", client_message_id = "solo-1", mode_version_id = solo, dispatch_mode = "parallel" })
+            .Completion.WaitAsync(TimeSpan.FromSeconds(60));
+
+        var events = await _factory.Services.GetRequiredService<ILifecycleManager>().ReplayEventsAsync(sessionId, 0);
+        // The journal row wraps what the engine appended under "payload".
+        static JsonElement Inner(TinadecCore.Contracts.Events.EventEnvelope e) => JsonSerializer.SerializeToElement(e.Payload["payload"]);
+        static string? Field(JsonElement payload, string key) =>
+            payload.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : null;
+        var text = events.Where(e => e.EventType == "model.output.delta").Select(Inner).Where(p => Field(p, "channel") == "text").ToArray();
+        Assert.NotEmpty(text);
+        Assert.All(text, p => Assert.False(string.IsNullOrEmpty(Field(p, "task_id"))));
+        Assert.Contains(text, p => Field(p, "delta")?.Contains("README", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(text, p => Field(p, "delta")?.Contains("这是最终回答", StringComparison.Ordinal) == true);
+    }
+
     private ActiveInvoke StartStreamingInvoke(HttpClient client, Guid sessionId, object body)
     {
         var acknowledgement = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);

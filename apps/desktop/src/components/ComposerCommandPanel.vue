@@ -10,6 +10,8 @@ import { composerSettings, permissionChoices, type ComposerPage, type Permission
 import { defaultSpaceOptions } from '@/lib/composerSettings'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
 import type { DefaultModel } from '@/composables/useDefaultModel'
+import type { ReasoningEffortChoice } from '@/lib/reasoningEffort'
+import ReasoningEffortSlider from './ReasoningEffortSlider.vue'
 
 const props = defineProps<{
   open: boolean
@@ -58,6 +60,15 @@ const loading = ref(false)
 const modeError = ref(false)
 const space = computed(() => props.spaceOptions ?? defaultSpaceOptions())
 let loadSequence = 0
+/**
+ * The slider moves at once; whenever no write is running it shows the saved value again, so a
+ * failed or dropped choice snaps back even when the saved value itself did not change.
+ */
+const reasoningDraft = ref<ReasoningEffortChoice>('')
+watch(() => [props.defaultModel?.reasoningEffort.value ?? '', props.defaultModel?.busy.value ?? false] as const,
+  ([value, busy]) => { if (!busy) reasoningDraft.value = value }, { immediate: true })
+const showReasoning = computed(() => page.value === 'model' && Boolean(props.defaultModel?.reasoningSupported.value))
+function stopSliderKeys(event: KeyboardEvent) { if (event.key !== 'Escape') event.stopPropagation() }
 let anchorObserver: ResizeObserver | null = null
 let navigationDeleteKey: string | null = null
 let pageAnimations: Animation[] = []
@@ -407,6 +418,11 @@ defineExpose({ keydown, activate, page, selectPage })
         <button v-if="page === 'root' && slashQuery && !rows.length" class="command-panel-row" data-testid="command-panel-send-as-text" @click="emit('send-as-text')"><FileText :size="16" class="command-panel-row-icon" aria-hidden="true" />{{ t('commandPanel.sendAsText') }}</button>
         <p v-if="page === 'workflow'" class="command-panel-note">{{ t('commandPanel.workflowRequirement') }}</p>
       </div>
+      <!-- The slider's own keys (arrows, Home/End) stay with it instead of moving the row highlight. -->
+      <div v-if="showReasoning" class="command-panel-reasoning" data-testid="command-panel-reasoning" @keydown="stopSliderKeys">
+        <label for="command-panel-reasoning-slider" :title="t('composer.reasoning.hint', { model: defaultModel?.current.value?.model ?? '' })">{{ t('composer.reasoning.label') }}</label>
+        <ReasoningEffortSlider id="command-panel-reasoning-slider" v-model="reasoningDraft" @commit="defaultModel?.setReasoningEffort($event)" />
+      </div>
       </div>
       <footer class="command-panel-footer" :class="{ 'has-error': settingsError }" :role="settingsError ? 'alert' : 'status'">{{ settingsError || (settingsSaving ? t('commandPanel.saving') : t(page === 'model' ? 'commandPanel.modelFooter' : 'commandPanel.nextTask')) }}</footer>
     </section>
@@ -425,6 +441,8 @@ defineExpose({ keydown, activate, page, selectPage })
 .command-panel-search { display: flex; gap: 8px; align-items: center; color: var(--text-muted); margin: 4px 12px 8px; padding: 8px; border-radius: 8px; background: var(--surface-input); flex-shrink: 0; font-weight: 400; }
 .command-panel-search input { min-width: 0; width: 100%; height: auto; min-height: 0; padding: 0; border-radius: 0; line-height: 1.5; color: var(--text-primary); background: transparent; border: 0; box-shadow: none; outline: none; font: inherit; }
 .command-panel-search:focus-within { outline: 1px solid var(--border-strong, var(--text-muted)); }
+.command-panel-reasoning { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; margin: 0 12px 8px; padding: 10px 10px 4px; border-radius: 9px; background: var(--surface-input); }
+.command-panel-reasoning label { color: var(--text-secondary); font-weight: 500; }
 .command-panel-list { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 0 6px 6px; }
 .command-panel-row { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; min-height: 36px; background: transparent; border: 0; border-radius: 9px; color: inherit; font: inherit; cursor: pointer; }
 .command-panel-row.is-highlighted:not(:disabled), .command-panel-row:hover:not(:disabled) { background: var(--surface-hover); }

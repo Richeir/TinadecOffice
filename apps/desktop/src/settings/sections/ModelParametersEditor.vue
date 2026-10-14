@@ -4,6 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { UiButton, UiInput } from '@/components/ui'
 import { api as baseApi, type ModelParametersDto, type ModelProviderInstanceDto } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
+import { supportsReasoningEffort, type ReasoningEffortChoice } from '@/lib/reasoningEffort'
+import ReasoningEffortSlider from '@/components/ReasoningEffortSlider.vue'
 const api = scopedApi(baseApi, () => 'user')
 
 const props = defineProps<{ provider: ModelProviderInstanceDto; model: string }>()
@@ -12,8 +14,8 @@ const { t } = useI18n()
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
-const form = reactive({ effort: '', temperature: '', topP: '', maxTokens: '' })
-const supportsReasoning = computed(() => ['openai-chat', 'openai-responses'].includes(props.provider.protocol ?? 'openai-chat'))
+const form = reactive({ effort: '' as ReasoningEffortChoice, temperature: '', topP: '', maxTokens: '' })
+const supportsReasoning = computed(() => supportsReasoningEffort(props.provider.protocol))
 const temperatureMax = computed(() => props.provider.protocol === 'anthropic-messages' ? 1 : 2)
 const omitsSampling = computed(() => Boolean(form.effort && form.effort !== 'none' && /^(gpt-[56]|o[134])/i.test(props.model)))
 const numberFields = computed(() => [
@@ -27,8 +29,6 @@ const invalidFields = computed(() => new Set(numberFields.value.filter(field => 
   return !Number.isFinite(value) || value < field.min || (field.max !== undefined && value > field.max)
     || (field.key === 'maxTokens' && !Number.isSafeInteger(value))
 }).map(field => field.key)))
-const effortOptions = ['none', 'low', 'medium', 'high', 'xhigh'] as const
-const effortLabels = { none: 'settings.reasoningNone', low: 'settings.reasoningLow', medium: 'settings.reasoningMedium', high: 'settings.reasoningHigh', xhigh: 'settings.reasoningXhigh' }
 
 watch(() => [props.provider.id, props.provider.revision, props.model], () => {
   const settings = props.provider.model_parameters?.[props.model] ?? {}
@@ -42,7 +42,7 @@ async function save() {
   busy.value = true
   error.value = ''
   const settings: ModelParametersDto = {}
-  if (supportsReasoning.value && form.effort) settings.reasoning_effort = form.effort as ModelParametersDto['reasoning_effort']
+  if (supportsReasoning.value && form.effort) settings.reasoning_effort = form.effort
   if (!omitsSampling.value && form.temperature.trim()) settings.temperature = Number(form.temperature)
   if (!omitsSampling.value && form.topP.trim()) settings.top_p = Number(form.topP)
   if (form.maxTokens.trim()) settings.max_output_tokens = Number(form.maxTokens)
@@ -68,12 +68,9 @@ async function save() {
       <legend>{{ t('settings.modelParametersFor', { model }) }}</legend>
       <p class="quiet" id="model-parameters-help">{{ t('settings.modelParametersHint') }}</p>
       <div class="model-parameters-fields">
-        <div v-if="supportsReasoning" class="settings-field">
+        <div v-if="supportsReasoning" class="settings-field model-reasoning-field">
           <label for="model-reasoning">{{ t('settings.modelReasoningEffort') }}</label>
-          <select id="model-reasoning" v-model="form.effort" class="settings-select" aria-describedby="model-parameters-help">
-            <option value="">{{ t('settings.modelDefaultParameter') }}</option>
-            <option v-for="effort in effortOptions" :key="effort" :value="effort">{{ t(effortLabels[effort]) }}</option>
-          </select>
+          <ReasoningEffortSlider id="model-reasoning" v-model="form.effort" />
         </div>
         <div v-for="field in numberFields" :key="field.key" class="settings-field" :data-invalid="invalidFields.has(field.key) || undefined" :data-disabled="field.disabled || undefined">
           <label :for="`model-parameter-${field.key}`">{{ t(field.label) }}</label>
@@ -100,5 +97,6 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 legend { font-weight: 600; margin-bottom: var(--spacing-2, 8px); overflow-wrap: anywhere; }
 .model-parameters-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--spacing-3, 12px); margin-top: var(--spacing-3, 12px); }
 .model-parameters-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-2, 8px); margin-top: var(--spacing-4, 16px); }
+.model-reasoning-field { grid-column: 1 / -1; }
 .model-parameter-error { color: var(--accent-danger); font-size: var(--font-size-sm, 12px); }
 </style>

@@ -387,8 +387,6 @@ export default {
     homePreviewDesc: 'Preview web pages and local services in an embedded browser',
     homeEvents: 'Event Stream',
     homeEventsDesc: 'View runtime events and system messages in real time',
-    homeSubAgents: 'Sub-agents',
-    homeSubAgentsDesc: 'Agents this conversation dispatched, and what each is doing',
     homeDoctor: 'Runtime Diagnostics',
     homeDoctorDesc: 'Check dependency status and runtime readiness',
     homeAgent: 'Agent Activity',

@@ -385,8 +385,6 @@ export default {
     homePreviewDesc: '在内嵌浏览器中预览网页和本地服务',
     homeEvents: '事件流',
     homeEventsDesc: '实时查看运行时事件和系统消息',
-    homeSubAgents: '子智能体',
-    homeSubAgentsDesc: '本会话派发的智能体及各自在做什么',
     homeDoctor: '运行时诊断',
     homeDoctorDesc: '检查依赖状态和运行时就绪情况',
     homeAgent: '智能体活动',

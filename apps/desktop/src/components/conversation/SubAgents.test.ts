@@ -37,6 +37,7 @@ vi.mock('@/api', () => ({ api: apiMock }))
 
 const { default: ConversationView } = await import('./ConversationView.vue')
 const { default: SubAgentsPanel } = await import('./SubAgentsPanel.vue')
+const { default: AgentActivityPanel } = await import('../AgentActivityPanel.vue')
 
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
 const global = { plugins: [i18n] }
@@ -106,7 +107,7 @@ describe('sub-agent cards in the feed', () => {
     await wrapper.findAll('[data-testid="sub-agent-open-panel"]')[1]!.trigger('click')
     expect(conversationSelection.value).toEqual({ runId: 'run-1', taskId: 'task-b' })
     expect(uie.bus.dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      command: expect.objectContaining({ type: 'openCard', descriptorId: 'subAgents', slotId: 'right' }),
+      command: expect.objectContaining({ type: 'openCard', descriptorId: 'agent', slotId: 'right' }),
       expectedRevision: 7,
     }))
   })
@@ -142,5 +143,28 @@ describe('Sub-agents panel', () => {
   it('says so when the session has no sub-agents', () => {
     const panel = track(mount(SubAgentsPanel, { props: { feed: feedOf([]), runs: [] }, global }))
     expect(panel.text()).toContain('No sub-agents in this conversation yet')
+  })
+})
+
+describe('sub-agents in the agent activity card', () => {
+  const activity = { status: 'running', runId: 'run-1', runStartedAt: null, runSummary: null, activeAgentName: null, activeAgentRole: null, completedNodes: 0, totalNodes: 0, lastUpdated: null }
+  const mountPanel = (fixture: FeedFixture) => track(mount(AgentActivityPanel, {
+    props: { activity, agentStates: {}, thinkingSteps: [], progressEvents: [], orchestration: null, feed: feedOf(fixture.events), runs: fixture.runs } as never,
+    global,
+    attachTo: document.body,
+  }))
+
+  // They used to have a card of their own listing the same agents a second time.
+  it('lists the session\'s sub-agents as a section with their count, and hides it when there are none', async () => {
+    const wrapper = mountPanel(parallelSubAgents())
+    await flush()
+    const section = wrapper.get('[data-testid="agent-panel-sub-agents"]')
+    expect(section.isVisible()).toBe(true)
+    expect(section.get('.agent-panel-count-badge').text()).toBe('2')
+    expect(section.findAll('[data-testid="sub-agents-roster-item"]')).toHaveLength(2)
+
+    const empty = mountPanel({ name: 'none', messages: [], runs: [], events: [] })
+    await flush()
+    expect(empty.get('[data-testid="agent-panel-sub-agents"]').isVisible()).toBe(false)
   })
 })

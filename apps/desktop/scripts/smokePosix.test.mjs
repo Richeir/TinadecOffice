@@ -13,7 +13,7 @@ import {
 	posixDataRoot,
 	sanitizedPosixEnvironment,
 } from "./smoke-packaged-posix.mjs";
-import { smokeChecks, smokePorts, validateGatewayHealth, validateHarnessManifest, validateToolsManifest } from "./smokeAssertions.mjs";
+import { smokeChecks, smokePorts, validateGatewayHealth, validateHarnessManifest, validateToolsManifest, smokeHostControlToken, smokeProbeHeaders } from "./smokeAssertions.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const posixScript = readFileSync(join(desktopDir, "scripts", "smoke-packaged-posix.mjs"), "utf8");
@@ -171,4 +171,15 @@ test("The Linux leg installs its own .deb and smoke tests the installed file", (
 	assert.match(step, /--\s*\n?\s*--executable=\/opt\/TinadecOffice\/TinadecOffice/, "without the override it re-runs the unpacked app");
 	assert.match(step, /--label="linux-x64 installed"/, "the log line must say which binary ran");
 	assert.match(step, /xvfb-run[^\n]*-ac/, "the installed run needs the same X server treatment");
+});
+
+test("probes carry a startup host credential the packaged app accepts", () => {
+	// Core answers readiness only to the trusted host; the smoke timed out on 403 without this.
+	const token = smokeHostControlToken();
+	// main.cjs throws at launch on a credential outside this shape (electron/hostControl.cjs).
+	assert.match(token, /^[A-Za-z0-9_-]{43,256}$/);
+	assert.notEqual(smokeHostControlToken(), token);
+	const headers = smokeProbeHeaders(token);
+	assert.equal(headers["x-tinadec-host-control"], token);
+	assert.equal(headers["x-tinadec-storage-id"], "user");
 });

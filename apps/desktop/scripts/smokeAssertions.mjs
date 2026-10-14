@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 /// The facts a packaged build has to prove, shared by the Windows and POSIX smokes.
 ///
 /// These predicates are the smoke's contract with Core and Gateway. Two copies of them would drift
@@ -59,6 +61,24 @@ export function validateHarnessManifest(value) {
 		typeof value.tool_registry === "object" &&
 		Array.isArray(value?.modules)
 	);
+}
+
+/// Core answers /api/v1 (all but /health and /host-challenge) only to the trusted host: requests
+/// must carry the host-control credential the Desktop main process hands Core and Gateway. The
+/// smoke used to probe readiness without it and timed out on HTTP 403 on every platform. It now
+/// launches the packaged app with a startup credential of its own (main.cjs accepts one through
+/// TINADEC_HOST_CONTROL_TOKEN, the same channel the dev orchestrator uses) and sends it back.
+export function smokeHostControlToken() {
+	return randomBytes(32).toString("base64url");
+}
+
+export function smokeProbeHeaders(token) {
+	return {
+		accept: "application/json",
+		"cache-control": "no-store",
+		"x-tinadec-host-control": token,
+		"x-tinadec-storage-id": "user",
+	};
 }
 
 /// The ordered checks, so a new leg cannot skip one by forgetting to copy a call. Each entry names

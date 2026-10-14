@@ -41,15 +41,25 @@ public static class StorageScopePaths
         if (!string.Equals(fullRoot, Path.TrimEndingDirectorySeparator(target), comparison)
             && !target.StartsWith(fullRoot + Path.DirectorySeparatorChar, comparison))
             throw new InvalidOperationException("The path escaped its storage scope.");
-        var current = Path.GetPathRoot(target)!;
-        foreach (var segment in Path.GetRelativePath(current, target).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        // The scope's own root and everything under it — not the directories above it. Those are
+        // where the host chose to put the scope, and a link there redirects nothing inside it;
+        // checking them refused every scope under macOS's /var -> /private/var (the temporary
+        // directory) and /tmp -> /private/tmp.
+        var current = fullRoot;
+        CheckNotLink(current);
+        foreach (var segment in Path.GetRelativePath(fullRoot, target).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
         {
-            if (segment == ".") continue;
+            if (segment is "." or "") continue;
             current = Path.Combine(current, segment);
+            CheckNotLink(current);
+        }
+
+        static void CheckNotLink(string path)
+        {
             try
             {
-                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidOperationException("Owned storage must not contain symbolic links or junctions: " + current);
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidOperationException("Owned storage must not contain symbolic links or junctions: " + path);
             }
             catch (FileNotFoundException) { }
             catch (DirectoryNotFoundException) { }

@@ -60,9 +60,9 @@ describe('settings model configuration through the shipping page', () => {
   it('opens persisted reasoning settings and saves with the provider revision', async () => {
     const wrapper = await openModels()
     await wrapper.findAll('.model-group-model button').find(button => button.text().includes(en.settings.modelParameters))!.trigger('click')
-    expect((wrapper.get('#model-reasoning').element as HTMLSelectElement).value).toBe('high')
+    expect(wrapper.get('#model-reasoning').attributes('aria-valuetext')).toBe(en.settings.reasoningTick.high)
     expect((wrapper.get('#model-parameter-maxTokens').element as HTMLInputElement).value).toBe('8192')
-    await wrapper.get('#model-reasoning').setValue('low')
+    await wrapper.get('#model-reasoning').setValue('2') // the slider: default, none, low, …
     await wrapper.get('.model-parameters-editor').trigger('submit')
     await flushPromises()
     expect(mocks.save).toHaveBeenCalledWith('p1', expect.objectContaining({ model_parameters: { 'model-one': { reasoning_effort: 'low', max_output_tokens: 8192 } } }), { expected_revision: 7 })

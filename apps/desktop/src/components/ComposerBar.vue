@@ -170,8 +170,14 @@ const permissionPanelExpanded = computed(() => commandPanelOpen.value && command
 const modelPanelExpanded = computed(() => commandPanelOpen.value && commandPanelRef.value?.page === 'model')
 const defaultModel = useDefaultModel()
 // Unknown reads as the neutral row name, never as "no default model".
-const defaultModelLabel = computed(() => defaultModel.name.value === undefined ? t('commandPanel.model')
-  : defaultModel.name.value ?? t('composer.modelSwitch.none'))
+// A chosen reasoning effort rides along ("gpt-5 · High"); the model default adds nothing.
+const defaultModelLabel = computed(() => {
+  const name = defaultModel.name.value
+  if (name === undefined) return t('commandPanel.model')
+  if (name === null) return t('composer.modelSwitch.none')
+  const effort = defaultModel.reasoningSupported.value ? defaultModel.reasoningEffort.value : ''
+  return effort ? `${name} · ${t(`settings.reasoningTick.${effort}`)}` : name
+})
 function manageModels() {
   requestSettingsSection('model')
   if (router.currentRoute.value.name !== 'settings') void router.push({ name: 'settings' })

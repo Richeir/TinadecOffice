@@ -4,6 +4,7 @@ import { useNotifications } from '@/composables/useNotifications'
 import { api, type ModelProviderInstanceDto, type ModelRouteDto } from '@/api'
 import { aggregateModelCenterOverview } from '@/runtimeCenterView'
 import { selectedStorage } from '@/lib/storageScope'
+import { supportsReasoningEffort, withReasoningEffort, type ReasoningEffortChoice } from '@/lib/reasoningEffort'
 
 /**
  * The default model — the model center's chat route — as the composer shows and switches it. One
@@ -12,6 +13,9 @@ import { selectedStorage } from '@/lib/storageScope'
  * user file, one on its own copy writes that copy, which is the model its conversations use
  * either way. The list is the model center's own projection (provider models plus models named
  * only on routes), so nothing configured there is missing here.
+ *
+ * Its reasoning effort is that model's saved parameter, the one the model center's parameter
+ * editor writes: changing it here changes it there, for every conversation's next task.
  */
 export function useDefaultModel() {
   const { t } = useI18n()
@@ -27,6 +31,13 @@ export function useDefaultModel() {
   const current = computed(() => chatRoute.value?.candidates[0] ?? null)
   const models = computed(() => aggregateModelCenterOverview({ providers: providers.value, routes: routes.value, templates: [] }).models
     .filter(model => model.enabled))
+  const currentProvider = computed(() => providers.value.find(row => row.id === current.value?.provider_instance_id) ?? null)
+  /** Whether the default model takes a reasoning effort at all (its provider's protocol decides). */
+  const reasoningSupported = computed(() => Boolean(current.value?.model && currentProvider.value && supportsReasoningEffort(currentProvider.value.protocol)))
+  const reasoningEffort = computed<ReasoningEffortChoice>(() => {
+    const model = current.value?.model
+    return (model && currentProvider.value?.model_parameters?.[model]?.reasoning_effort) || ''
+  })
   /** The model's name, null for "no default model", undefined while unknown. */
   const name = computed<string | null | undefined>(() => {
     if (!loaded.value) return undefined
@@ -64,8 +75,34 @@ export function useDefaultModel() {
     }
   }
 
+  let pendingEffort: ReasoningEffortChoice | null = null
+  async function setReasoningEffort(effort: ReasoningEffortChoice) {
+    // One write at a time against the provider's revision; a choice made meanwhile is the next write.
+    if (busy.value) { pendingEffort = effort; return }
+    const provider = currentProvider.value
+    const model = current.value?.model
+    if (!provider || !model || provider.revision == null || effort === reasoningEffort.value) return
+    busy.value = true
+    try {
+      await api.saveModelProvider(provider.id, {
+        driver: provider.driver, display_name: provider.display_name, connection_kind: provider.connection_kind,
+        enabled: provider.enabled, model_parameters: withReasoningEffort(provider, model, effort),
+      }, { expected_revision: provider.revision })
+    } catch (error) {
+      notify.error(error, { title: t('composer.reasoning.failed') })
+    } finally {
+      busy.value = false
+      await load()
+    }
+    if (pendingEffort !== null) {
+      const next = pendingEffort
+      pendingEffort = null
+      await setReasoningEffort(next)
+    }
+  }
+
   watch(selectedStorage, () => { loaded.value = false; void load() })
-  return { models, current, name, loaded, busy, load, choose, isCurrent }
+  return { models, current, name, loaded, busy, load, choose, isCurrent, reasoningSupported, reasoningEffort, setReasoningEffort }
 }
 
 export type DefaultModel = ReturnType<typeof useDefaultModel>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useStatusLabels } from '@/lib/statusLabels'
 import {
   ChevronDown,
   ChevronRight,
@@ -18,6 +19,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const { runStatusLabel } = useStatusLabels()
 const collapsed = ref(false)
 
 const assignmentsByNode = computed(() => {
@@ -124,22 +126,22 @@ function toggleCollapse() {
       </div>
       <span v-if="snapshot?.run" class="task-graph-run">
         <GitBranch :size="10" />
-        {{ snapshot.run.status }}
+        {{ runStatusLabel(snapshot.run.status) }}
       </span>
     </button>
 
     <div v-if="!collapsed" class="task-graph-body">
       <p v-if="!snapshot?.graph" class="task-graph-empty">
-        Send a task to create the orchestration plan.
+        {{ t('taskGraph.empty') }}
       </p>
       <div v-else class="task-lanes">
         <div v-for="group in laneGroups" :key="group.lane_key" class="task-lane">
           <div v-if="!singleLane" class="task-lane-head">
             <span class="task-lane-name">{{ group.lane_key }}</span>
             <span v-if="laneOf(group.lane_key)" class="task-lane-state" :class="laneOf(group.lane_key)!.status">
-              {{ laneOf(group.lane_key)!.status }}
+              {{ runStatusLabel(laneOf(group.lane_key)!.status) }}
             </span>
-            <span v-if="laneOf(group.lane_key)?.escalated" class="task-lane-escalated">escalated</span>
+            <span v-if="laneOf(group.lane_key)?.escalated" class="task-lane-escalated">{{ t('taskGraph.escalated') }}</span>
           </div>
           <ol class="task-step-list">
             <li
@@ -164,7 +166,7 @@ function toggleCollapse() {
                 v-if="isLaneGateState(node.status)"
                 class="task-step-gate"
                 :class="node.status.toLowerCase()"
-              >{{ node.status }}</span>
+              >{{ runStatusLabel(node.status.toLowerCase()) }}</span>
             </li>
           </ol>
         </div>

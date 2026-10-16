@@ -14,7 +14,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { notify } = useNotifications()
 
 const selectedHash = ref<string | null>(null)
@@ -72,7 +72,7 @@ const groupedCommits = computed(() => {
   for (const commit of props.commits ?? []) {
     if (!commit || typeof commit.hash !== 'string' || !commit.hash) continue
     const rawDate = typeof commit.date === 'string' ? commit.date : ''
-    const dateKey = rawDate.split(' ')[0] || 'unknown'
+    const dateKey = rawDate.split(' ')[0] ?? ''
     if (!groups[dateKey]) groups[dateKey] = []
     groups[dateKey].push(commit)
   }
@@ -88,11 +88,11 @@ watch(() => props.commits, () => {
 })
 
 function formatDate(dateStr: string): string {
-  if (!dateStr) return ''
+  if (!dateStr) return t('context.gitHistoryNoDate')
   try {
     const d = new Date(dateStr)
     if (Number.isNaN(d.getTime())) return dateStr.split(' ')[0] ?? dateStr
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return d.toLocaleDateString(locale.value, { month: 'short', day: 'numeric' })
   } catch {
     return dateStr.split(' ')[0] ?? dateStr
   }
@@ -103,7 +103,7 @@ function formatTime(dateStr: string): string {
   try {
     const d = new Date(dateStr)
     if (Number.isNaN(d.getTime())) return ''
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }

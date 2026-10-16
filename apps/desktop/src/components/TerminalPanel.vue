@@ -29,7 +29,8 @@ import TerminalView from './TerminalView.vue'
 import { useTerminal, type TerminalInstance } from '@/composables/useTerminal'
 import { useNotifications } from '@/composables/useNotifications'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+const shellLabel = (shell: { id: string; label: string }) => (te(`terminal.shellName.${shell.id}`) ? t(`terminal.shellName.${shell.id}`) : shell.label)
 const { notify } = useNotifications()
 
 const props = defineProps<{
@@ -99,14 +100,15 @@ async function handleNewTerminal(shellId?: string): Promise<void> {
   showShellMenu.value = false
   
   try {
+    const shell = availableShells.value.find((s) => s.id === shellId)
     const result = await createTerminal({
       shellId: shellId || (availableShells.value[0]?.id ?? 'default'),
       cwd: props.cwd,
-      title: availableShells.value.find((s) => s.id === shellId)?.label ?? 'Terminal',
+      title: shell ? shellLabel(shell) : t('terminal.defaultTitle'),
     })
     
     if (!result) {
-      notify.error(t('terminal.createFailed', 'Failed to create terminal'))
+      notify.error(t('terminal.createFailed'))
       return
     }
     
@@ -117,7 +119,7 @@ async function handleNewTerminal(shellId?: string): Promise<void> {
       setTimeout(() => focusTerminal(activeTerminalId.value!), 100)
     }
   } catch (err) {
-    notify.error(err, { title: t('terminal.createFailed', 'Failed to create terminal') })
+    notify.error(err, { title: t('terminal.createFailed') })
   }
 }
 
@@ -139,10 +141,10 @@ async function handleRestart(id: string): Promise<void> {
     const result = await createTerminal({
       shellId: shellId || 'default',
       cwd,
-      title: oldInstance?.title ?? 'Terminal',
+      title: oldInstance?.title ?? t('terminal.defaultTitle'),
     })
     if (!result) {
-      notify.error(t('terminal.createFailed', 'Failed to create terminal'))
+      notify.error(t('terminal.createFailed'))
       return
     }
     await nextTick()
@@ -150,7 +152,7 @@ async function handleRestart(id: string): Promise<void> {
       fitTerminal(activeTerminalId.value)
     }
   } catch (err) {
-    notify.error(err, { title: t('terminal.createFailed', 'Failed to create terminal') })
+    notify.error(err, { title: t('terminal.createFailed') })
   }
 }
 
@@ -383,7 +385,7 @@ function setTerminalViewRef(id: string, el: InstanceType<typeof TerminalView> | 
               @click="handleNewTerminal(shell.id)"
             >
               <TerminalSquare :size="14" />
-              <span>{{ shell.label }}</span>
+              <span>{{ shellLabel(shell) }}</span>
             </button>
           </div>
         </div>
@@ -392,7 +394,7 @@ function setTerminalViewRef(id: string, el: InstanceType<typeof TerminalView> | 
       <!-- Persistent reason the panel has no shell (a failed create is not a no-op) -->
       <div v-if="!spaceRuns && creationError" class="terminal-error" role="alert">
         <span class="terminal-error-text">
-          {{ t('terminal.createFailed') }}：{{ creationError.message }}
+          {{ t('terminal.createFailedWith', { error: creationError.message }) }}
         </span>
         <button
           v-if="creationError.retryable"

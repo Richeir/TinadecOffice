@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { CheckCircle2, FileWarning, RefreshCw } from '@lucide/vue'
 import { useUserActionStore } from '@/stores/userAction'
-import { userToolActionStatusMessage } from '@/userToolAction'
+import { userToolActionDetail, userToolActionReason, userToolActionStatusMessage } from '@/userToolAction'
 
 /**
  * Read-only inspection surface for `outcome_unknown` actions.
@@ -16,7 +16,7 @@ import { userToolActionStatusMessage } from '@/userToolAction'
 const route = useRoute()
 const router = useRouter()
 const store = useUserActionStore()
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const working = ref(false)
 const loadError = ref<string | null>(null)
@@ -26,7 +26,7 @@ const action = computed(() => store.get(actionId.value))
 const isUnknown = computed(() => action.value?.status === 'outcome_unknown')
 
 const statusText = computed(() =>
-  action.value ? userToolActionStatusMessage(action.value, action.value.tool_id) : '',
+  action.value ? userToolActionStatusMessage(action.value, action.value.tool_id, { t, te }) : '',
 )
 
 async function load(): Promise<void> {
@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
 
     <div v-if="!action && !loadError" class="recovery-page__state">
       <RefreshCw class="size-4 animate-spin" />
-      {{ t('common.loading', 'Loading…') }}
+      {{ t('common.loading') }}
     </div>
 
     <div v-else-if="loadError" class="recovery-page__state recovery-page__state--error" data-testid="recovery-error">
@@ -91,21 +91,16 @@ onBeforeUnmount(() => {
 
     <template v-else-if="action">
       <section v-if="!isUnknown" class="recovery-page__notice" data-testid="recovery-not-unknown">
-        {{
-          t(
-            'governance.recoveryNotNeeded',
-            'This action is no longer awaiting a recovery decision. Current status is shown below.',
-          )
-        }}
+        {{ t('governance.recoveryNotNeeded') }}
       </section>
 
       <dl class="recovery-page__grid">
-        <div><dt>tool</dt><dd>{{ action.tool_id }}</dd></div>
-        <div><dt>status</dt><dd data-testid="recovery-status">{{ statusText }}</dd></div>
-        <div><dt>audit_reference</dt><dd class="font-mono text-xs">{{ action.audit_reference }}</dd></div>
-        <div v-if="action.snapshot_id"><dt>snapshot_id</dt><dd class="font-mono text-xs">{{ action.snapshot_id }}</dd></div>
-        <div v-if="action.recovery_reason"><dt>last_recovery_reason</dt><dd>{{ action.recovery_reason }}</dd></div>
-        <div v-if="action.message"><dt>message</dt><dd>{{ action.message }}</dd></div>
+        <div><dt>{{ t('governance.recoveryFacts.tool') }}</dt><dd>{{ action.tool_id }}</dd></div>
+        <div><dt>{{ t('governance.recoveryFacts.status') }}</dt><dd data-testid="recovery-status">{{ statusText }}</dd></div>
+        <div><dt>{{ t('governance.recoveryFacts.auditReference') }}</dt><dd class="font-mono text-xs">{{ action.audit_reference }}</dd></div>
+        <div v-if="action.snapshot_id"><dt>{{ t('governance.recoveryFacts.snapshot') }}</dt><dd class="font-mono text-xs">{{ action.snapshot_id }}</dd></div>
+        <div v-if="action.recovery_reason"><dt>{{ t('governance.recoveryFacts.lastReason') }}</dt><dd>{{ action.recovery_reason }}</dd></div>
+        <div v-if="action.message"><dt>{{ t('governance.recoveryFacts.message') }}</dt><dd :title="userToolActionDetail(action, { t, te })">{{ userToolActionReason(action, { t, te }) }}</dd></div>
       </dl>
 
       <footer v-if="isUnknown" class="recovery-page__actions">

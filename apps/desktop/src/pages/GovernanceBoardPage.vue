@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { approvalSummary } from '@/userToolAction'
 import { ShieldCheck, Gavel, Eye } from '@lucide/vue'
 import { api, type ApprovalDto, type PermissionRequestDto, type SupervisionFindingDto } from '@/api'
 import { useUserActionStore } from '@/stores/userAction'
 import UserActionStatusBadge from '@/components/governance/UserActionStatusBadge.vue'
 import PreAuthorizationDialog from '@/components/governance/PreAuthorizationDialog.vue'
 import CommandPaletteButton from '@/components/CommandPaletteButton.vue'
+import { useStatusLabels } from '@/lib/statusLabels'
 
 /**
  * Three independent state machines, three columns (docs/app-core-ui.md §6):
@@ -16,7 +18,9 @@ import CommandPaletteButton from '@/components/CommandPaletteButton.vue'
  *
  * Desktop never merges these facts; the board only renders Core projections.
  */
-const { t } = useI18n()
+const { t, te } = useI18n()
+const { riskLabel, severityLabel } = useStatusLabels()
+const kindLabel = (kind: string) => (te(`approval.kind.${kind}`) ? t(`approval.kind.${kind}`) : kind)
 const userActionStore = useUserActionStore()
 
 const approvals = ref<ApprovalDto[]>([])
@@ -133,7 +137,7 @@ onUnmounted(() => {
           {{ t('governance.preAuthorize') }}
         </button>
         <button type="button" class="detail-dialog__btn" :disabled="loading" @click="void loadAll()">
-          {{ loading ? t('common.loading', 'Loading…') : t('common.refresh', 'Refresh') }}
+          {{ loading ? t('common.loading') : t('common.refresh') }}
         </button>
       </div>
     </header>
@@ -147,7 +151,7 @@ onUnmounted(() => {
         <p v-if="!openPermissions.length" class="approval-board__empty">{{ t('common.empty') }}</p>
         <article v-for="p in openPermissions" :key="p.id" class="approval-card">
           <div class="approval-card__title">{{ p.capability }} / {{ p.action }}</div>
-          <div class="approval-card__meta">risk: {{ p.risk }} · {{ p.resource }}</div>
+          <div class="approval-card__meta">{{ t('governance.riskMeta', { risk: riskLabel(p.risk) }) }} · {{ p.resource }}</div>
           <div class="approval-card__actions">
             <button type="button" class="detail-dialog__btn" :disabled="deciding === p.id" @click="decidePermission(p.id, true)">
               {{ t('common.approve') }}
@@ -164,8 +168,8 @@ onUnmounted(() => {
         <h2><Gavel class="size-4" /> {{ t('governance.actionApprovals') }} ({{ openApprovals.length }})</h2>
         <p v-if="!openApprovals.length" class="approval-board__empty">{{ t('common.empty') }}</p>
         <article v-for="a in openApprovals" :key="a.id" class="approval-card">
-          <div class="approval-card__title">{{ a.summary }}</div>
-          <div class="approval-card__meta font-mono text-xs">{{ a.command ?? a.kind }}</div>
+          <div class="approval-card__title">{{ approvalSummary(a, { t, te }) }}</div>
+          <div class="approval-card__meta font-mono text-xs">{{ a.command ?? kindLabel(a.kind) }}</div>
           <UserActionStatusBadge v-if="a.governance_status" :status="a.governance_status" />
           <div class="approval-card__actions">
             <button type="button" class="detail-dialog__btn" :disabled="deciding === a.id" @click="decideApproval(a.id, 'approved')">
@@ -186,7 +190,7 @@ onUnmounted(() => {
         </p>
         <article v-for="f in findings" :key="f.id" class="approval-card">
           <div class="approval-card__title">{{ f.summary }}</div>
-          <div class="approval-card__meta">{{ f.severity }} · {{ f.category }}</div>
+          <div class="approval-card__meta">{{ severityLabel(f.severity) }} · {{ f.category }}</div>
           <div class="approval-card__meta">{{ f.recommendation }}</div>
         </article>
       </section>

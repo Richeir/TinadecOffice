@@ -1,4 +1,5 @@
 import type { ApprovalDto, UserToolActionDto } from './api'
+import { errorCategoryMessage, errorCodeMessage, type ErrorWords } from './lib/apiError'
 
 const TERMINAL_STATUSES = new Set(['completed', 'blocked', 'failed', 'outcome_unknown'])
 const DECISION_STATUSES = new Set(['awaiting_delegate', 'awaiting_user', 'awaiting_approval'])
@@ -39,33 +40,58 @@ export function userToolActionNeedsDecision(status: string): boolean {
   return DECISION_STATUSES.has(status)
 }
 
+/** One line on where `operation` stands, in the caller's language. */
 export function userToolActionStatusMessage(
   action: UserToolActionDto,
   operation: string,
+  words: ErrorWords,
 ): string {
-  const detail = action.message?.trim()
+  const { t } = words
+  const detail = userToolActionReason(action, words)
   switch (action.status) {
     case 'snapshot_required':
-      return `${operation} is waiting for a workspace snapshot.`
+      return t('userAction.status.snapshotRequired', { operation })
     case 'awaiting_delegate':
-      return `${operation} is waiting for delegated approval.`
+      return t('userAction.status.awaitingDelegate', { operation })
     case 'awaiting_user':
-      return `${operation} is waiting for your permission.`
+      return t('userAction.status.awaitingUser', { operation })
     case 'awaiting_approval':
-      return `${operation} is waiting for action approval.`
+      return t('userAction.status.awaitingApproval', { operation })
     case 'running':
-      return `${operation} is running.`
+      return t('userAction.status.running', { operation })
     case 'completed':
-      return `${operation} completed.`
+      return t('userAction.status.completed', { operation })
     case 'outcome_unknown':
-      return `${operation} outcome is unknown; inspect the workspace before retrying.`
+      return t('userAction.status.outcomeUnknown', { operation })
     case 'blocked':
-      return detail ? `${operation} blocked: ${detail}` : `${operation} was blocked.`
+      return detail ? t('userAction.status.blockedDetail', { operation, detail }) : t('userAction.status.blocked', { operation })
     case 'failed':
-      return detail ? `${operation} failed: ${detail}` : `${operation} failed.`
+      return detail ? t('userAction.status.failedDetail', { operation, detail }) : t('userAction.status.failed', { operation })
     default:
-      return detail ? `${operation}: ${detail}` : `${operation}: ${action.status}.`
+      return detail ? t('userAction.status.otherDetail', { operation, detail }) : t('userAction.status.other', { operation, status: action.status })
   }
+}
+
+/**
+ * Why an action stopped, in the interface language when this build has words for its
+ * `error_category`; Core's message (diagnostic text, such as a tool's own output) otherwise.
+ */
+export function userToolActionReason(action: Pick<UserToolActionDto, 'error_category' | 'message'>, words: ErrorWords): string | undefined {
+  return errorCodeMessage(action.error_category, undefined, words)
+    ?? errorCategoryMessage(action.error_category, words)
+    ?? (action.message?.trim() || undefined)
+}
+
+/** An approval's summary in the interface language when it is one of Core's fixed sentences; the projected fact otherwise. */
+export function approvalSummary(approval: Pick<ApprovalDto, 'summary' | 'summary_code' | 'tool_id'>, words: ErrorWords): string {
+  const key = `approval.summaryCode.${approval.summary_code}`
+  return approval.summary_code && words.te(key) ? words.t(key, { tool: approval.tool_id ?? '' }) : approval.summary
+}
+
+/** Core's own message, for a details line or tooltip, when the reason shown is a translation of it. */
+export function userToolActionDetail(action: Pick<UserToolActionDto, 'error_category' | 'message'>, words: ErrorWords): string | undefined {
+  const message = action.message?.trim() || undefined
+  return message && message !== userToolActionReason(action, words) ? message : undefined
 }
 
 /**

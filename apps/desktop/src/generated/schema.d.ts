@@ -1470,6 +1470,10 @@ export interface components {
       extension_id: string;
       homepage?: string;
       install_blocker?: string;
+      install_blocker_code?: string;
+      install_blocker_data?: {
+        [key: string]: string;
+      };
       installable: boolean;
       kind: string;
       manifest_hash: string;
@@ -2647,6 +2651,10 @@ export interface components {
       path: string;
       project_id?: string | null;
       reason?: string | null;
+      reason_code?: string | null;
+      reason_data?: {
+        [key: string]: string;
+      } | null;
       resource_id: string;
       revision: number;
       scope: string;

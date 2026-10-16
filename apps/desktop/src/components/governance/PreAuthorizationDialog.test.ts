@@ -6,8 +6,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import PreAuthorizationDialog from './PreAuthorizationDialog.vue'
 import { api, type PreAuthorizationDto } from '@/api'
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key, locale: { value: 'en' } }),
+vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
+  useI18n: () => ({ t: (key: string) => key, te: () => false, locale: { value: 'en' } }),
 }))
 
 vi.mock('@/api', () => ({

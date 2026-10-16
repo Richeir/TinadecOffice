@@ -1,18 +1,27 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useStatusLabels } from '@/lib/statusLabels'
 import { Braces, FileText, GitBranch, Globe, Package, Search, Server, Terminal, Wrench } from '@lucide/vue'
 import { UiBadge, UiButton, UiSelectField } from '@/components/ui'
 import { api as baseApi, type AgentDefinitionDto, type ProjectDto, type ToolDescriptorDto, type ToolSettingsDocument, type ToolSettingsSchema, type ToolSettingsEffective, type ToolCapabilities } from '@/api'
 import { scopedApi, projectStorageId, selectionKey } from '@/lib/storageScope'
 import { useNotifications } from '@/composables/useNotifications'
 import { consumeRequest, pendingToolId, pendingToolAgentId, requestAgent } from '@/lib/pageRequests'
-import { effectiveSettings, formatSettings, settingsDiff, validateSettings, type ToolJsonSchema } from '@/settings/toolSettings'
+import { capabilityReason, effectiveSettings, formatSettings, settingsDiff, validateSettings, type ToolJsonSchema } from '@/settings/toolSettings'
 const ToolsOverviewPanel = defineAsyncComponent(() => import('./ToolsOverviewPanel.vue'))
 const ToolJsonEditor = defineAsyncComponent(() => import('./ToolJsonEditor.vue'))
 const ToolResourcesPanel = defineAsyncComponent(() => import('./ToolResourcesPanel.vue'))
 const ToolDraftDialog = defineAsyncComponent(() => import('./ToolDraftDialog.vue'))
-const { t } = useI18n()
+const { t, te } = useI18n()
+const { riskLabel } = useStatusLabels()
+/** A resource diagnostic in the interface language; the server's reason stays available as a tooltip. */
+function diagnosticText(item: { kind: string; status: string; reason?: string | null }): string {
+  if (item.kind === 'mcp_program') return t('toolsSettings.diagnostic.mcp_program', { status: te(`toolsSettings.programStatus.${item.status}`) ? t(`toolsSettings.programStatus.${item.status}`) : item.status })
+  const key = `toolsSettings.diagnostic.${item.kind}_${item.status}`
+  return te(key) ? t(key) : item.reason || `${item.kind} · ${item.status}`
+}
+const yesNo = (value: boolean | undefined) => t(value ? 'common.yes' : 'common.no')
 const { notify } = useNotifications()
 const tabs = [
   { id: 'overview', icon: Wrench }, { id: 'shell', icon: Terminal }, { id: 'files', icon: FileText },
@@ -48,7 +57,7 @@ function sparseSchema(rule: ToolJsonSchema): ToolJsonSchema {
   return { ...rule, required: [], ...(rule.properties ? { properties: Object.fromEntries(Object.entries(rule.properties).map(([key, child]) => [key, sparseSchema(child)])) } : {}) }
 }
 const editorSchema = computed(() => schema.value ? (agentId.value ? sparseSchema(schema.value.schema) : schema.value.schema) : null)
-const validation = computed(() => validateSettings(draft.value, editorSchema.value))
+const validation = computed(() => validateSettings(draft.value, editorSchema.value, t))
 const configDirty = computed(() => draft.value !== baseline.value)
 const dirty = computed(() => configDirty.value || resourceDirty.value)
 const diff = computed(() => validation.value.value && document.value ? settingsDiff(document.value.settings, validation.value.value) : [])
@@ -202,10 +211,10 @@ onBeforeUnmount(() => { ++generation; chooseLeave?.('cancel'); window.removeEven
     <p class="quiet">{{ t('toolsSettings.nextRun') }}</p><p v-if="error" class="tools-field-error" role="alert">{{ error }}</p>
     <div class="tools-tabs" role="tablist" :aria-label="t('toolsSettings.title')"><button v-for="(item, index) in tabs" :id="`tools-tab-${item.id}`" :key="item.id" role="tab" :aria-selected="tab === item.id" :aria-controls="`tools-panel-${item.id}`" :tabindex="tab === item.id ? 0 : -1" :class="{ active: tab === item.id }" @click="selectTab(item.id)" @keydown.right.prevent="selectTab(tabs[(index + 1) % tabs.length]!.id, true)" @keydown.left.prevent="selectTab(tabs[(index + tabs.length - 1) % tabs.length]!.id, true)" @keydown.home.prevent="selectTab('overview', true)" @keydown.end.prevent="selectTab('advanced', true)"><component :is="item.icon" :size="15" />{{ t(`toolsSettings.tabs.${item.id}`) }}</button></div>
     <div :id="`tools-panel-${tab}`" role="tabpanel" :aria-labelledby="`tools-tab-${tab}`" class="tools-stage">
-      <div v-if="effective?.resource_diagnostics?.length" class="tools-validation" role="status"><strong>{{ t('toolsSettings.resourceDiagnostics') }}</strong><p v-for="item in effective.resource_diagnostics" :key="`${item.kind}:${item.resource_id}:${item.status}`">{{ item.kind }} · {{ item.resource_id || '—' }} · {{ item.status }} · {{ item.reason }}</p></div>
+      <div v-if="effective?.resource_diagnostics?.length" class="tools-validation" role="status"><strong>{{ t('toolsSettings.resourceDiagnostics') }}</strong><p v-for="item in effective.resource_diagnostics" :key="`${item.kind}:${item.resource_id}:${item.status}`" :title="diagnosticText(item) === item.reason ? undefined : item.reason">{{ item.resource_id || '—' }} · {{ diagnosticText(item) }}</p></div>
       <template v-if="tab === 'overview'"><div v-if="selectedAgent" class="tools-effective-card"><strong>{{ selectedAgent.display_name }}</strong><p>{{ t('toolsSettings.authorizationHint') }}</p><div class="model-capability-row"><span v-for="toolId in (effectiveToolIds ?? [])" :key="toolId">{{ toolId }}</span></div></div><ToolsOverviewPanel ref="overview" :key="`${projectId}:${agentId}`" :agents="agents" :agent-id="agentId" :project-id="projectId" :effective-tool-ids="effectiveToolIds" :capabilities="capabilities" :host-settings="schema?.host_settings" :effective="effective" /></template>
       <template v-else-if="tab === 'advanced'">
-        <div class="tools-command-bar"><div><h3>{{ t('toolsSettings.advanced') }}</h3><p class="quiet">{{ t(agentId ? 'toolsSettings.overrideHint' : 'toolsSettings.advancedHint') }}</p><p v-if="focusPath" class="quiet">{{ t('toolsSettings.categoryFocus', { category: focusPath }) }}</p></div><UiBadge variant="outline">Schema {{ schema?.schema_version ?? '—' }} · {{ t('toolsSettings.revision') }} {{ document?.revision ?? '—' }}</UiBadge></div>
+        <div class="tools-command-bar"><div><h3>{{ t('toolsSettings.advanced') }}</h3><p class="quiet">{{ t(agentId ? 'toolsSettings.overrideHint' : 'toolsSettings.advancedHint') }}</p><p v-if="focusPath" class="quiet">{{ t('toolsSettings.categoryFocus', { category: focusPath }) }}</p></div><UiBadge variant="outline">{{ t('toolsSettings.schemaVersion', { version: schema?.schema_version ?? '—' }) }} · {{ t('toolsSettings.revision') }} {{ document?.revision ?? '—' }}</UiBadge></div>
         <ToolJsonEditor v-if="document" v-model="draft" :schema="editorSchema" :label="t('toolsSettings.advanced')" :readonly="saving || loading" :focus-path="focusPath" @save="save" />
         <ul v-if="document && validation.issues.length" class="tools-validation" role="alert"><li v-for="issue in validation.issues" :key="issue.path + issue.message"><code>{{ issue.path }}</code> {{ issue.message }}</li></ul>
         <details v-if="diff.length" class="tools-diff" open><summary>{{ t('toolsSettings.diff', { count: diff.length }) }}</summary><div v-for="change in diff" :key="change.path"><code>{{ change.path }}</code><del>{{ valueText(change.before) }}</del><ins>{{ valueText(change.after) }}</ins></div></details>
@@ -214,10 +223,10 @@ onBeforeUnmount(() => { ++generation; chooseLeave?.('cancel'); window.removeEven
       </template>
       <template v-else>
         <div class="tools-command-bar"><div><h3>{{ t(`toolsSettings.tabs.${tab}`) }}</h3><p class="quiet">{{ t('toolsSettings.readonlyHint') }}</p></div><UiButton variant="outline" size="sm" @click="selectTab('advanced')">{{ t('toolsSettings.editAdvanced') }}</UiButton></div>
-        <div v-if="tab === 'shell' || tab === 'search' || tab === 'web'" class="tools-effective-card"><h4>{{ t('toolsSettings.runtimeCapability') }}</h4><p v-if="!capabilities?.capabilities" class="quiet">{{ capabilities?.reason || t('toolsSettings.executionUnknown') }}</p><template v-else><template v-if="tab === 'shell'"><div v-for="shell in capabilities.capabilities.shells" :key="shell.id" class="tools-command-bar"><code>{{ shell.id }}</code><span>{{ t(shell.available ? 'toolsSettings.detected' : 'toolsSettings.unavailable') }} · {{ shell.path || shell.reason }}</span></div><p>{{ t('toolsSettings.sandboxCapability', { supported: capabilities.capabilities.sandbox?.supported, initialized: capabilities.capabilities.sandbox?.initialized }) }}</p></template><template v-else-if="tab === 'search'"><p>{{ t(capabilities.capabilities.ripgrep?.available ? 'toolsSettings.detected' : 'toolsSettings.unavailable') }} · {{ capabilities.capabilities.ripgrep?.path }}</p><p>{{ capabilities.capabilities.ripgrep?.reason }}</p></template><template v-else><p>{{ t('toolsSettings.webCapability', { supported: capabilities.capabilities.web?.supported, guard: capabilities.capabilities.web?.address_guard }) }}</p><p class="quiet">{{ t('toolsSettings.webConnectivity') }}</p></template></template></div>
+        <div v-if="tab === 'shell' || tab === 'search' || tab === 'web'" class="tools-effective-card"><h4>{{ t('toolsSettings.runtimeCapability') }}</h4><p v-if="!capabilities?.capabilities" class="quiet" :title="capabilities?.reason ?? undefined">{{ t(capabilities?.reason ? 'toolsSettings.diagnostic.host_unavailable' : 'toolsSettings.executionUnknown') }}</p><template v-else><template v-if="tab === 'shell'"><div v-for="shell in capabilities.capabilities.shells" :key="shell.id" class="tools-command-bar"><code>{{ shell.id }}</code><span>{{ t(shell.available ? 'toolsSettings.detected' : 'toolsSettings.unavailable') }} · {{ shell.path || capabilityReason(shell, { t, te }) }}</span></div><p>{{ t('toolsSettings.sandboxCapability', { supported: yesNo(capabilities.capabilities.sandbox?.supported), initialized: yesNo(capabilities.capabilities.sandbox?.initialized) }) }}</p></template><template v-else-if="tab === 'search'"><p>{{ t(capabilities.capabilities.ripgrep?.available ? 'toolsSettings.detected' : 'toolsSettings.unavailable') }} · {{ capabilities.capabilities.ripgrep?.path }}</p><p>{{ capabilityReason(capabilities.capabilities.ripgrep, { t, te }) }}</p></template><template v-else><p>{{ t('toolsSettings.webCapability', { supported: yesNo(capabilities.capabilities.web?.supported), guard: yesNo(capabilities.capabilities.web?.address_guard) }) }}</p><p class="quiet">{{ t('toolsSettings.webConnectivity') }}</p></template></template></div>
         <dl class="tools-value-list"><div v-for="row in sectionRows" :key="row.path"><dt><code>{{ row.path }}</code><span>{{ row.description }}</span></dt><dd><code>{{ valueText(row.value) }}</code><small>{{ sourceFor(row.path) }}</small></dd></div></dl>
         <p v-if="!sectionRows.length" class="quiet">{{ t(loading ? 'common.loading' : 'toolsSettings.noSettings') }}</p>
-        <section v-if="familyTools.length" class="tools-effective-card"><h4>{{ t('toolsSettings.toolSurface') }}</h4><p class="quiet">{{ t('toolsSettings.executionUnknown') }}</p><div class="tools-resource-list"><div v-for="tool in familyTools" :key="tool.id" class="tools-resource-row"><span><strong>{{ tool.display_name }}</strong><code>{{ tool.id }}</code><small>{{ tool.source }} · {{ tool.risk }}</small></span><UiBadge variant="outline">{{ t(agentId && !effectiveToolIds?.includes(tool.id) ? 'toolsSettings.notGranted' : 'toolsSettings.advertised') }}</UiBadge><small v-if="tool.requires_approval">{{ t('settings.approvalRequired') }}</small></div></div></section>
+        <section v-if="familyTools.length" class="tools-effective-card"><h4>{{ t('toolsSettings.toolSurface') }}</h4><p class="quiet">{{ t('toolsSettings.executionUnknown') }}</p><div class="tools-resource-list"><div v-for="tool in familyTools" :key="tool.id" class="tools-resource-row"><span><strong>{{ tool.display_name }}</strong><code>{{ tool.id }}</code><small>{{ tool.source }} · {{ riskLabel(tool.risk) }}</small></span><UiBadge variant="outline">{{ t(agentId && !effectiveToolIds?.includes(tool.id) ? 'toolsSettings.notGranted' : 'toolsSettings.advertised') }}</UiBadge><small v-if="tool.requires_approval">{{ t('settings.approvalRequired') }}</small></div></div></section>
         <ToolResourcesPanel v-if="tab === 'mcp' || tab === 'skills'" ref="resources" :key="`${tab}:${projectId}`" :kind="tab" :project-id="projectId" :selection="bindingIds(tab)" :inherited="Boolean(agentId) && !hasBinding(tab)" :agent-scope="Boolean(agentId)" :effective-selection="inheritedBindingIds(tab)" :can-bind="Boolean(validation.value)" @binding="(ids, inherit) => stageBinding(tab === 'mcp' ? 'mcp' : 'skills', ids, inherit)" @dirty="resourceDirty = $event" @changed="resourceChanged" />
       </template>
     </div>

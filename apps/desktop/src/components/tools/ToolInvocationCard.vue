@@ -21,7 +21,7 @@ const props = defineProps<{
   toolExecution: ToolExecutionTimelineItemDto
   defaultExpanded?: boolean
 }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { statusLabel, riskLabel } = useStatusLabels()
 
 const emit = defineEmits<{
@@ -68,18 +68,16 @@ const formattedTime = computed(() => {
   if (!ts) return ''
   try {
     const date = new Date(ts)
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return date.toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   } catch {
     return ts
   }
 })
 
-const paramHints = computed(() => {
-  const summary = props.toolExecution.summary
-  if (!summary) return []
-  const parts = summary.split(/[;,]/).map((s) => s.trim()).filter(Boolean).slice(0, 4)
-  return parts
-})
+/** The call's own facts (command, target, search term), not Core's English narration of its last event. */
+const paramHints = computed(() =>
+  [props.toolExecution.command, props.toolExecution.resource_path ?? props.toolExecution.arguments_summary, props.toolExecution.query]
+    .filter((value): value is string => Boolean(value)))
 
 function toggle() {
   expanded.value = !expanded.value

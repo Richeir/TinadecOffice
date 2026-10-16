@@ -4,12 +4,17 @@ import {
   userToolActionIdempotencyKey,
   userToolActionApprovalStatus,
   userToolActionNeedsDecision,
+  approvalSummary,
+  userToolActionDetail,
+  userToolActionReason,
   userToolActionStatusMessage,
   userToolActionToApproval,
   userToolApprovalId,
   withGitToolConfirmation,
 } from './userToolAction'
 import type { UserToolActionDto } from './api'
+import { createI18n } from 'vue-i18n'
+import en from './locales/en'
 
 const action = (overrides: Partial<Omit<UserToolActionDto, 'audit_reference'>> = {}): UserToolActionDto => ({
   id: 'action-1',
@@ -126,6 +131,25 @@ describe('user tool action projection', () => {
     expect(userToolActionNeedsDecision('awaiting_user')).toBe(true)
     expect(userToolActionNeedsDecision('awaiting_approval')).toBe(true)
     expect(userToolActionNeedsDecision('snapshot_required')).toBe(false)
-    expect(userToolActionStatusMessage(action({ status: 'outcome_unknown' }), 'Save file')).toContain('unknown')
+    const words = createI18n({ legacy: false, locale: 'en', messages: { en } }).global
+    expect(userToolActionStatusMessage(action({ status: 'outcome_unknown' }), 'Save file', words)).toContain('unknown')
+  })
+
+  it('words an approval summary only when Core marked it as one of its fixed sentences', () => {
+    const words = createI18n({ legacy: false, locale: 'en', messages: { en } }).global
+    expect(approvalSummary({ summary: "User requested 'write_file'.", summary_code: 'user_requested', tool_id: 'write_file' }, words)).toBe('You asked to run write_file.')
+    expect(approvalSummary({ summary: 'write_file → notes.md', tool_id: 'write_file' }, words)).toBe('write_file → notes.md')
+  })
+
+  it('words a stopped action from its category and keeps Core\'s message as the detail', () => {
+    const words = createI18n({ legacy: false, locale: 'en', messages: { en } }).global
+    const changed = action({ status: 'blocked', error_category: 'snapshot_changed', message: 'The pre-write workspace snapshot no longer matches the current workspace.' })
+    expect(userToolActionReason(changed, words)).toBe(en.errors.code.snapshot_changed)
+    expect(userToolActionDetail(changed, words)).toBe(changed.message)
+    expect(userToolActionStatusMessage(changed, 'Save file', words)).toContain(en.errors.code.snapshot_changed)
+    // A category this build has no words for: Core's message is the reason, with no separate detail.
+    const unknown = action({ status: 'failed', error_category: 'from_a_newer_core', message: 'fatal: not a git repository' })
+    expect(userToolActionReason(unknown, words)).toBe('fatal: not a git repository')
+    expect(userToolActionDetail(unknown, words)).toBeUndefined()
   })
 })

@@ -46,6 +46,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { useStatusLabels } from '@/lib/statusLabels'
 import { useRouter } from 'vue-router'
 import AboutSection from '@/settings/sections/AboutSection.vue'
 import ArchiveTrashSection from '@/settings/sections/ArchiveTrashSection.vue'
@@ -80,6 +81,7 @@ import {
   type ModelProviderInstanceDto,
   type ModelProviderTemplateDto,
   type ModelReadinessReceiptDto,
+  type RuntimeReadinessReceiptDto,
   type ModelReferenceDto,
   type ModelRouteDto,
   type ModelCenterApiConnectionDto,
@@ -141,6 +143,7 @@ import AgentPacksPanel from '@/settings/sections/AgentPacksPanel.vue'
 import ModelParametersEditor from '@/settings/sections/ModelParametersEditor.vue'
 import { consumeRequest, pendingAgentId, pendingModeId, pendingPromptId, pendingToolId, pendingToolAgentId, requestToolAgent, pendingModelProviderId, pendingSettingsSection } from '@/lib/pageRequests'
 import { routesAfterModelRemoval } from '@/lib/modelRouteEdits'
+import { readinessReason } from '@/lib/readinessText'
 import PanelStyleControl from '@/components/ui/panel-style-control.vue'
 import { usePanelStyles } from '@/composables/usePanelStyles'
 import { createSettingsLeaveGuard } from './settingsNavigation'
@@ -193,7 +196,9 @@ interface ProviderForm {
   enabled: boolean
 }
 
-const { t } = useI18n()
+const { t, te, locale } = useI18n()
+const { riskLabel } = useStatusLabels()
+const definitionStatusLabel = (status: string) => (te(`agentCenter.filter.${status}`) ? t(`agentCenter.filter.${status}`) : status)
 const { canAccessBackend, reason: hostReason } = useHostAccess()
 const router = useRouter()
 const { items: notificationItems, notify, banner, confirm, dismiss: dismissNotification, status, dismissByKey } = useNotifications()
@@ -288,6 +293,7 @@ const agentCenterOverview = ref<AgentCenterOverviewDto | null>(null)
 const providers = ref<ModelProviderInstanceDto[]>([])
 const modelReadiness = ref<ModelReadinessReceiptDto | null>(null)
 const modelCatalogReadiness = ref<ModelCatalogReadinessReceiptDto | null>(null)
+const readinessReceipt = ref<RuntimeReadinessReceiptDto | null>(null)
 const routes = ref<ModelRouteDto[]>([])
 const agentModes = ref<AgentModeDto[]>([])
 const agentDirectory = ref<AgentDirectoryItemDto[]>([])
@@ -354,7 +360,7 @@ const forceProviderWrite = ref(false)
 
 const providerForm = reactive<ProviderForm>({  id: '',
   driver: 'openai-compatible',
-  display_name: 'OpenAI Compatible',
+  display_name: t('settings.providerDefaultName'),
   connection_kind: 'api-key',
   protocol: 'openai-chat',
   base_url: 'https://api.openai.com/v1',
@@ -430,6 +436,13 @@ const blockedModelRoutes = computed(() =>
 const warningCatalogTemplates = computed(() =>
   (modelCatalogReadiness.value?.templates ?? []).filter((template) => template.status !== 'ready')
 )
+/** Why the model layer is not ready, worded from the unified receipt's reason codes. The deprecated
+ *  receipt's notes are Core's English diagnostics, shown only when the unified receipt could not be read. */
+const modelReadinessNotes = computed(() => readinessReceipt.value
+  ? [...new Set((readinessReceipt.value.items ?? [])
+      .filter((item) => item.id.startsWith('model_') && item.status !== 'ready')
+      .flatMap((item) => readinessReason(item, { t, te }) ?? []))]
+  : modelReadiness.value?.design_notes ?? [])
 
 const formFields = computed(() => {
   const fields = currentTemplate.value?.fields ?? {
@@ -871,13 +884,14 @@ function loadModelCenter(): Promise<void> {
 }
 async function loadModelCenterData({ signal, isCurrent }: ReadContext) {
     // model-center/overview BFF was deleted; derive the same projection from versioned APIs.
-    const [providerRows, providerTemplates, routeRows, acpAdapters, modelReadinessReceipt, catalogReadinessReceipt] = await Promise.all([
+    const [providerRows, providerTemplates, routeRows, acpAdapters, modelReadinessReceipt, catalogReadinessReceipt, unifiedReceipt] = await Promise.all([
       api.listModelProviders({ signal }),
       api.listModelProviderTemplates({ signal }).catch(() => [] as ModelProviderTemplateDto[]),
       api.listModelRoutes({ signal }),
       api.listAcpAdapters({ signal }).catch(() => [] as AcpAdapterDto[]),
       api.getModelReadiness({ signal }).catch(() => modelReadiness.value),
-      api.getModelCatalogReadiness({ signal }).catch(() => modelCatalogReadiness.value)
+      api.getModelCatalogReadiness({ signal }).catch(() => modelCatalogReadiness.value),
+      api.readiness({ signal }).catch(() => readinessReceipt.value)
     ])
     if (!isCurrent()) return
     const overview = aggregateModelCenterOverview({
@@ -897,6 +911,7 @@ async function loadModelCenterData({ signal, isCurrent }: ReadContext) {
     providers.value = instances
     modelReadiness.value = overview.readiness.model ?? null
     modelCatalogReadiness.value = overview.readiness.catalog ?? null
+    readinessReceipt.value = unifiedReceipt
 
     const selected = instances.find((provider) => provider.id === selectedProviderId.value) ?? instances[0]
     if (selected) {
@@ -1129,7 +1144,7 @@ async function connectDiscoveredCli(candidate: CliDiscoveryCandidateDto, channel
     await loadModelCenter()
     notify.success(created.display_name)
   } catch (error) {
-    notify.error(error, { title: `${candidate.display_name} · ${channel.channel}` })
+    notify.error(error, { title: `${candidate.display_name} · ${channelLabel(channel)}` })
   } finally {
     cliDiscoveryLoading.value = false
   }
@@ -1146,6 +1161,18 @@ function blockedChannels(candidate: CliDiscoveryCandidateDto): HarnessChannelDto
 
 function channelLabel(fact: HarnessChannelDto): string {
   return t(discoveryAffordanceLabelKey(fact))
+}
+
+/** Why this build cannot drive a channel, from its code; Core's text, then a general sentence, otherwise. */
+function channelReason(channel: HarnessChannelDto, candidate: CliDiscoveryCandidateDto): string {
+  const key = `settings.channelReason.${channel.reason_code}`
+  return channel.reason_code && te(key) ? t(key, { harness: candidate.display_name }) : channel.reason ?? t('settings.channelNotDrivableDefault')
+}
+
+/** Why a probe could not confirm the binary, from its code and facts; Core's text when there are no words for it. */
+function probeNote(candidate: CliDiscoveryCandidateDto): string | null {
+  const key = `settings.probeNote.${candidate.probe_note_code}`
+  return candidate.probe_note_code && te(key) ? t(key, candidate.probe_note_data ?? {}) : candidate.probe_note ?? null
 }
 
 const agentCenterRead = useRecoverableRead(loadAgentCenterData, {
@@ -1294,16 +1321,30 @@ async function loadToolDiscovery(context?: ReadContext) {
 }
 
 
+// A classified failure is recognized by its status; the text checks remain for unclassified errors.
+/**
+ * The server's status note for a provider, when it says more than the status badge: a configured or
+ * disabled provider carries only a fixed diagnostic line there, not something to show a person.
+ */
+function providerNote(provider: { status?: string | null; status_message?: string | null }): string | null {
+  return provider.status_message && !['configured', 'disabled'].includes(provider.status ?? '') ? provider.status_message : null
+}
+
+function errorStatus(error: unknown): unknown {
+  return error && typeof error === 'object' ? (error as { status?: unknown }).status : undefined
+}
+
 function agentSaveErrorMessage(error: unknown): string {
   const msg = error instanceof Error ? error.message : String(error)
-  if (msg.includes('412') || msg.toLowerCase().includes('revision') || msg.includes('Precondition')) return t('settings.agentConflict')
-  if (msg.includes('409') || msg.toLowerCase().includes('built-in')) return t('settings.agentBuiltInConflict')
+  if (isRevisionConflict(error)) return t('settings.agentConflict')
+  if (errorStatus(error) === 409 || msg.includes('409') || msg.toLowerCase().includes('built-in')) return t('settings.agentBuiltInConflict')
   return msg
 }
 
 function isRevisionConflict(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error)
-  return msg.includes('412') || msg.toLowerCase().includes('revision') || msg.includes('Precondition')
+  return errorStatus(error) === 412 || errorStatus(error) === 428
+    || msg.includes('412') || msg.toLowerCase().includes('revision') || msg.includes('Precondition')
 }
 
 /** One versioned write attempt: update draft (If-Match revision) then publish a new immutable version. */
@@ -1371,7 +1412,7 @@ async function cloneAgent() {
   if (!agent) return
   agentCloneBusy.value = true
   try {
-    const newName = `${agent.name} (copy)`
+    const newName = t('common.copyName', { name: agent.name })
     await api.createAgentDraft({
       slug: `${agent.id}-copy-${Date.now()}`,
       display_name: newName,
@@ -1729,10 +1770,19 @@ function referenceKindLabel(kind: string): string {
     route: t('settings.centerRoutes'),
     agent_default: t('settings.referenceAgentDefault'),
     mode_override: t('settings.referenceModeOverride'),
-    meeting_override: t('settings.referenceMeetingOverride'),
+    session_override: t('settings.referenceMeetingOverride'),
     recent_invocation: t('settings.referenceRecentInvocation'),
   }
   return map[kind] ?? kind
+}
+
+/** A reference's detail in words: a route's candidate position, or the referencing record's status (a recent invocation's detail is an id). */
+function referenceDetailLabel(reference: ModelReferenceDto): string | null {
+  const detail = reference.detail
+  if (!detail || reference.reference_kind === 'recent_invocation') return detail ?? null
+  const candidate = /^candidate:(\d+)$/.exec(detail)
+  if (candidate) return t('settings.referenceCandidate', { position: candidate[1] })
+  return te(`agentCenter.filter.${detail}`) ? t(`agentCenter.filter.${detail}`) : detail
 }
 
 async function saveProvider() {
@@ -1897,6 +1947,11 @@ function statusLabel(status: string) {
   if (status === 'disabled') return t('settings.statusDisabled')
   if (status === 'cooldown') return t('settings.statusCooldown')
   if (status === 'not_configured' || !status) return t('settings.statusNotConfigured')
+  if (status === 'configured') return t('settings.statusConfigured')
+  if (status === 'found') return t('settings.statusFound')
+  if (status === 'missing') return t('settings.statusMissing')
+  if (status === 'missing_provider') return t('settings.statusMissingProvider')
+  if (status === 'unknown') return t('settings.statusUnknown')
   return status
 }
 
@@ -2213,8 +2268,8 @@ import '../settings/settings.css'
                   </div>
                   <span v-else class="quiet">{{ t('settings.noBlockedRoutes') }}</span>
                 </div>
-                <ul v-if="modelReadiness.design_notes.length > 0" class="model-diagnostic-notes">
-                  <li v-for="note in modelReadiness.design_notes" :key="note">{{ note }}</li>
+                <ul v-if="modelReadinessNotes.length > 0" class="model-diagnostic-notes">
+                  <li v-for="note in modelReadinessNotes" :key="note">{{ note }}</li>
                 </ul>
               </section>
               <section v-if="modelCatalogReadiness" class="model-diagnostic-section">
@@ -2239,8 +2294,10 @@ import '../settings/settings.css'
                   </div>
                   <span v-else class="quiet">{{ t('settings.noCatalogWarnings') }}</span>
                 </div>
-                <ul v-if="modelCatalogReadiness.design_notes.length > 0" class="model-diagnostic-notes">
-                  <li v-for="note in modelCatalogReadiness.design_notes" :key="note">{{ note }}</li>
+                <!-- The deprecated receipt's design_notes are developer sentences pointing at the unified
+                     receipt; say what they mean instead, from the receipt itself. -->
+                <ul v-if="readinessReceipt?.status === 'blocked'" class="model-diagnostic-notes">
+                  <li>{{ t('settings.readinessBlockedHint') }}</li>
                 </ul>
               </section>
             </div>
@@ -2285,7 +2342,7 @@ import '../settings/settings.css'
                   <span class="provider-detail-value">{{ connectionKindLabel(selectedProviderDetail.connection_kind) }}</span>
                 </div>
               </div>
-              <div v-if="selectedProviderDetail.status_message" class="provider-status-note compact">
+              <div v-if="providerNote(selectedProviderDetail)" class="provider-status-note compact">
                 <Terminal :size="14" />
                 <span>{{ selectedProviderDetail.status_message }}</span>
               </div>
@@ -2377,7 +2434,7 @@ import '../settings/settings.css'
                       </div>
                       <div v-if="modelReferenceRows[`${provider.id}:${model.model_id}`]" class="model-reference-rows">
                         <span v-for="(reference, index) in modelReferenceRows[`${provider.id}:${model.model_id}`]" :key="index">
-                          {{ referenceKindLabel(reference.reference_kind) }}<template v-if="reference.detail"> · {{ reference.detail }}</template>
+                          {{ referenceKindLabel(reference.reference_kind) }}<template v-if="reference.detail"> · {{ referenceDetailLabel(reference) }}</template>
                         </span>
                         <span v-if="modelReferenceRows[`${provider.id}:${model.model_id}`].length === 0" class="quiet">{{ t('settings.noModelReferences') }}</span>
                       </div>
@@ -2570,8 +2627,8 @@ import '../settings/settings.css'
                     <code v-if="candidate.binary_path" class="cli-discovery-path" :title="candidate.binary_path">
                       {{ candidate.binary_path }}
                     </code>
-                    <span v-else-if="candidate.status === 'missing'" class="cli-discovery-status-text muted">
-                      {{ candidate.probe_note || t('settings.notDetected') }}
+                    <span v-else-if="candidate.status === 'missing'" class="cli-discovery-status-text muted" :title="probeNote(candidate) === candidate.probe_note ? undefined : candidate.probe_note ?? undefined">
+                      {{ probeNote(candidate) || t('settings.notDetected') }}
                     </span>
                   </div>
                   <div class="cli-discovery-action">
@@ -2599,7 +2656,7 @@ import '../settings/settings.css'
                         :key="`blocked-${channel.channel ?? channel.protocol}`"
                         variant="outline"
                         class="muted-badge"
-                        :title="channel.reason ?? t('settings.channelNotDrivableDefault')"
+                        :title="channelReason(channel, candidate)"
                       >
                         {{ t('settings.channelNotDrivable', { channel: channelLabel(channel) }) }}
                       </UiBadge>
@@ -3195,7 +3252,7 @@ import '../settings/settings.css'
                   </div>
                   <div>
                     <span>{{ t('settings.agentStatus') }}</span>
-                    <strong>{{ configuringDirectoryItem.status }}</strong>
+                    <strong>{{ definitionStatusLabel(configuringDirectoryItem.status) }}</strong>
                   </div>
                 </div>
                 <div v-if="(configuringDirectoryItem.mode_usages ?? []).length > 0" class="agent-mode-usage-list">
@@ -3375,12 +3432,12 @@ import '../settings/settings.css'
                         risky: tool.requires_approval
                       }"
                       :disabled="configuringAgent.is_built_in"
-                      :title="tool.display_name + ' · ' + tool.risk + (tool.requires_approval ? ' · ' + t('settings.approvalRequired') : '')"
+                      :title="tool.display_name + ' · ' + riskLabel(tool.risk) + (tool.requires_approval ? ' · ' + t('settings.approvalRequired') : '')"
                       @click="toggleAgentTool(tool.id)"
                     >
                       <span class="agent-tool-name">{{ tool.display_name }}</span>
                       <span class="agent-tool-meta">
-                        <span class="agent-tool-risk" :class="tool.risk">{{ tool.risk }}</span>
+                        <span class="agent-tool-risk" :class="tool.risk">{{ riskLabel(tool.risk) }}</span>
                         <span v-if="tool.requires_approval" class="agent-tool-approval">⚑ {{ t('settings.approvalRequired') }}</span>
                       </span>
                       <span class="agent-tool-id">{{ tool.id }}</span>
@@ -3455,7 +3512,7 @@ import '../settings/settings.css'
                   <div v-for="version in [...agentVersionHistory].reverse()" :key="version.id" class="center-list-row agent-version-row" :class="{ latest: version.version === configuringAgent.version }">
                     <strong>v{{ version.version }}</strong>
                     <span class="agent-version-hash">{{ (version as AgentVersionDto & { content_hash?: string }).content_hash?.slice(0, 8) ?? '—' }}</span>
-                    <time>{{ new Date(version.created_at).toLocaleString() }}</time>
+                    <time>{{ new Date(version.created_at).toLocaleString(locale) }}</time>
                     <UiBadge v-if="version.version === configuringAgent.version" variant="default">{{ t('settings.agentVersionCurrent') }}</UiBadge>
                   </div>
                 </div>
@@ -3472,7 +3529,7 @@ import '../settings/settings.css'
                   <Save :size="14" />
                   <span>{{ t('settings.saveAgent') }}</span>
                 </UiButton>
-                <span v-if="!configuringAgent.is_built_in && agentEditRevision !== null" class="agent-revision-hint">rev {{ agentEditRevision }}</span>
+                <span v-if="!configuringAgent.is_built_in && agentEditRevision !== null" class="agent-revision-hint">{{ t('settings.agentRevision', { revision: agentEditRevision }) }}</span>
                 <span v-if="configuringAgent.is_built_in" class="agent-builtin-save-hint">{{ t('settings.builtInCloneHint') }}</span>
               </div>
             </div>
@@ -3812,7 +3869,7 @@ import '../settings/settings.css'
             </div>
           </div>
 
-          <div v-if="selectedProvider?.status_message" class="model-provider-note">
+          <div v-if="selectedProvider && providerNote(selectedProvider)" class="model-provider-note">
             <Terminal :size="14" />
             <span>{{ selectedProvider.status_message }}</span>
           </div>

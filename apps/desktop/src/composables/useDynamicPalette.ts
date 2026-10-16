@@ -17,6 +17,7 @@
 
 import { StorageSerializers, useStorage } from '@vueuse/core'
 import { ref, watch, type Ref } from 'vue'
+import i18n from '@/i18n'
 import type { DynamicPalette } from '@/lib/monetExtract'
 import { buildDynamicVars, extractSourceColor } from '@/lib/monetExtract'
 import { useBackground } from './useBackground'
@@ -104,7 +105,7 @@ async function extract(source: string): Promise<void> {
     const argbPixels = await loadImagePixels(source)
     const sourceColor = extractSourceColor(argbPixels)
     if (sourceColor === null) {
-      throw new Error('no usable colors')
+      throw new Error(i18n.global.t('settings.paletteNoColors'))
     }
     palette.value = {
       source,
@@ -120,7 +121,7 @@ async function extract(source: string): Promise<void> {
       lastNotifiedFor = source
       console.warn('[dynamicPalette] extraction failed:', error)
       useNotifications().notify.error(error, {
-        title: 'Background color extraction failed',
+        title: i18n.global.t('settings.paletteExtractionFailed'),
         source: 'settings',
       })
     }
@@ -137,7 +138,7 @@ async function loadImagePixels(source: string): Promise<number[]> {
   if (/^https?:/i.test(url)) img.crossOrigin = 'anonymous'
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve()
-    img.onerror = () => reject(new Error(`image decode failed: ${source}`))
+    img.onerror = () => reject(new Error(i18n.global.t('settings.paletteDecodeFailed', { source })))
     img.src = url
   })
   // onload alone races the decoder: drawImage can paint a fully transparent
@@ -159,7 +160,7 @@ async function loadImagePixels(source: string): Promise<number[]> {
   canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) throw new Error('canvas 2d unavailable')
+  if (!ctx) throw new Error(i18n.global.t('settings.paletteCanvasUnavailable'))
   ctx.drawImage(img, 0, 0, w, h)
   const { data } = ctx.getImageData(0, 0, w, h)
 
@@ -186,6 +187,6 @@ async function resolveLoadUrl(source: string): Promise<string> {
   const tinadec = (globalThis as { tinadec?: { readImageAsDataUrl?: (s: string) => Promise<string | null> } }).tinadec
   if (!tinadec?.readImageAsDataUrl) throw new Error('readImageAsDataUrl bridge unavailable')
   const dataUrl = await tinadec.readImageAsDataUrl(source)
-  if (!dataUrl) throw new Error(`unreadable background file: ${source}`)
+  if (!dataUrl) throw new Error(i18n.global.t('settings.paletteFileUnreadable', { source }))
   return dataUrl
 }

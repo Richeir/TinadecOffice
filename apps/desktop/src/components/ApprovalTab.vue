@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { Check, ChevronDown, FileText, Infinity as InfinityIcon, ShieldAlert, ShieldX, Terminal } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { approvalSummary } from '@/userToolAction'
 import { useStatusLabels } from '@/lib/statusLabels'
 import type { ApprovalDto, ApprovalRuleDto, CreateApprovalRuleInput } from '../api'
 import ApprovalGateStatus from './approval/ApprovalGateStatus.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { riskLabel, approvalStatusLabel } = useStatusLabels()
 
 const props = withDefaults(defineProps<{
@@ -34,6 +35,7 @@ const ruleLabel = (rule: ApprovalRuleDto) => rule.kind === 'command_prefix'
   : rule.tool_id
 
 const isSpecProposal = (approval: ApprovalDto) => approval.tool_id === 'spec_propose'
+const kindLabel = (kind: string) => (te(`approval.kind.${kind}`) ? t(`approval.kind.${kind}`) : kind)
 type SpecStage = 'requirements' | 'design' | 'tasks'
 function specProposal(approval: ApprovalDto): { stage: SpecStage; document: string } | null {
   if (!isSpecProposal(approval) || !approval.arguments) return null
@@ -107,11 +109,11 @@ function decideCurrent(approval: ApprovalDto, decision: 'approved' | 'rejected')
       <article v-for="approval in pendingApprovals(approvals)" :key="approval.id" class="approval-row approval-row-pending" :class="{ 'approval-row--spec': isSpecProposal(approval) }">
       <div class="approval-facts">
         <div class="approval-head">
-          <strong>{{ isSpecProposal(approval) ? t('approval.specConfirmation') : approval.kind }}</strong>
+          <strong>{{ isSpecProposal(approval) ? t('approval.specConfirmation') : kindLabel(approval.kind) }}</strong>
           <code v-if="approval.tool_id && !isSpecProposal(approval)" class="approval-tool">{{ approval.tool_id }}</code>
           <span v-if="approval.risk" class="approval-risk" :data-risk="approval.risk">{{ riskLabel(approval.risk) }}</span>
         </div>
-        <p class="approval-summary">{{ isSpecProposal(approval) ? t('approval.specConfirmationHint') : approval.summary }}</p>
+        <p class="approval-summary">{{ isSpecProposal(approval) ? t('approval.specConfirmationHint') : approvalSummary(approval, { t, te }) }}</p>
         <section v-if="isSpecProposal(approval)" class="approval-spec" :aria-labelledby="`spec-document-${approval.id}`">
           <h3 :id="`spec-document-${approval.id}`" class="approval-spec-title">{{ specStageLabel(approval) }}</h3>
           <pre v-if="specProposal(approval)" class="approval-spec-document" tabindex="0" :aria-label="specStageLabel(approval)" data-testid="approval-spec-document">{{ specProposal(approval)!.document }}</pre>
@@ -183,7 +185,7 @@ function decideCurrent(approval: ApprovalDto, decision: 'approved' | 'rejected')
         <article v-for="approval in historyApprovals(approvals)" :key="`history-${approval.id}`" class="approval-history-row">
           <ShieldX v-if="approval.status === 'rejected'" :size="14" class="approval-history-icon rejected" />
           <Check v-else :size="14" class="approval-history-icon" />
-          <div class="approval-history-copy"><strong>{{ approval.command ?? approval.tool_id ?? approval.summary }}</strong><span>{{ approval.summary }}</span></div>
+          <div class="approval-history-copy"><strong>{{ approval.command ?? approval.tool_id ?? approvalSummary(approval, { t, te }) }}</strong><span>{{ approvalSummary(approval, { t, te }) }}</span></div>
           <span class="approval-history-status" :data-status="approval.status">{{ approvalStatusLabel(approval.status) }}</span>
         </article>
       </div>

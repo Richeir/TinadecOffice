@@ -1,22 +1,23 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useStatusLabels } from '@/lib/statusLabels'
 import { UiBadge, UiButton, UiInput, UiSelectField } from '@/components/ui'
 import { api as baseApi, type ToolMcpResource, type ToolMcpInput, type ToolSkillResource } from '@/api'
 import { scopedApi, projectStorageId, selectionIdentity } from '@/lib/storageScope'
 import { useNotifications } from '@/composables/useNotifications'
 import { formatSettings, validateSettings, type ToolJsonSchema } from '@/settings/toolSettings'
 import { decodeSkillAsset, skillNameFromDocument, SKILL_ASSET_MAX_BYTES, SKILL_PACKAGE_MAX_BYTES, validateSkillPackagePaths } from '@/settings/skillPackage'
-import { isUserToolActionTerminal } from '@/userToolAction'
+import { isUserToolActionTerminal, userToolActionReason } from '@/userToolAction'
 const ToolJsonEditor = defineAsyncComponent(() => import('./ToolJsonEditor.vue'))
 const ToolDraftDialog = defineAsyncComponent(() => import('./ToolDraftDialog.vue'))
 const props = defineProps<{ kind: 'mcp' | 'skills'; projectId: string; selection: string[] | null; inherited?: boolean; agentScope?: boolean; effectiveSelection?: string[] | null; canBind: boolean }>()
 const api = scopedApi(baseApi, () => projectStorageId(props.projectId))
 const emit = defineEmits<{ binding: [ids: string[] | null, inherit?: boolean]; dirty: [value: boolean]; changed: [] }>()
-const { t } = useI18n()
+const { t, te } = useI18n()
+const { userActionStatusLabel } = useStatusLabels()
 const { confirm, notify } = useNotifications()
 const rows = ref<(ToolMcpResource | ToolSkillResource)[]>([])
-const diagnostics = ref<string[]>([])
 const scope = ref<'shared' | 'project'>('shared')
 const loading = ref(false)
 const busy = ref(false)
@@ -40,6 +41,10 @@ let actionTimer: ReturnType<typeof setTimeout> | null = null
 let actionStartedAt = 0
 const draftDialog = ref(false)
 let chooseDraft: ((value: 'save' | 'discard' | 'cancel') => void) | null = null
+/** Skills that cannot be used, each with its path and reason; Core's own list repeats the rows' English reasons. */
+const diagnostics = computed(() => props.kind === 'skills'
+  ? rows.value.filter(row => (row as ToolSkillResource).valid === false).map(row => `${(row as ToolSkillResource).path ?? row.name}: ${skillReason(row)}`)
+  : [])
 const visibleRows = computed(() => rows.value.filter(row => scope.value === 'project' ? row.project_id === selectionIdentity(props.projectId).id : !row.project_id))
 const activeIds = computed(() => props.selection ?? (props.inherited ? props.effectiveSelection : null) ?? rows.value.filter(row => row.enabled && (!('valid' in row) || row.valid !== false)).map(row => row.resource_id))
 const dirty = computed(() => editing.value && (content.value !== baseline.value || enabled.value !== (selected.value?.enabled ?? true) || name.value !== (selected.value?.name ?? '') || JSON.stringify(files.value) !== baselineFiles.value))
@@ -47,13 +52,13 @@ watch(dirty, value => emit('dirty', value), { immediate: true })
 const mcpSchema: ToolJsonSchema = { type: 'object', additionalProperties: false, required: ['id', 'name', 'enabled', 'command', 'args', 'env'], properties: {
   id: { type: 'string', minLength: 1 }, name: { type: 'string' }, enabled: { type: 'boolean' }, command: { type: 'string', minLength: 1 }, args: { type: 'array', items: { type: 'string' } }, env: { type: 'object', additionalProperties: { type: ['string', 'null'] } }, cwd: { type: ['string', 'null'] }, project_id: { type: ['string', 'null'] },
 } }
-const validation = computed(() => validateSettings(content.value, mcpSchema))
+const validation = computed(() => validateSettings(content.value, mcpSchema, t))
 function discard() { ++epoch; editing.value = false; selected.value = null; content.value = baseline.value = ''; name.value = ''; enabled.value = true; files.value = {}; packageLoaded.value = false; baselineFiles.value = JSON.stringify({}); previewPath.value = previewContent.value = ''; emit('dirty', false) }
 function stopActionPoll() { if (actionTimer !== null) clearTimeout(actionTimer); actionTimer = null }
 function followAction(actionId: string, status: string) {
   stopActionPoll(); actionStartedAt = Date.now()
   const current = contextEpoch
-  const update = (next: string) => { result.value = t(scope.value === 'shared' ? 'toolsSettings.skillQueuedShared' : 'toolsSettings.skillQueued', { status: next, id: actionId }) }
+  const update = (next: string) => { result.value = t(scope.value === 'shared' ? 'toolsSettings.skillQueuedShared' : 'toolsSettings.skillQueued', { status: userActionStatusLabel(next), id: actionId }) }
   update(status)
   if (isUserToolActionTerminal(status)) return
   const poll = async () => {
@@ -66,7 +71,7 @@ function followAction(actionId: string, status: string) {
         actionTimer = null
         await refresh()
         if (current === contextEpoch) {
-          if (action.status !== 'completed') error.value = action.message || t('toolsSettings.skillActionFailed', { status: action.status })
+          if (action.status !== 'completed') error.value = userToolActionReason(action, { t, te }) || t('toolsSettings.skillActionFailed', { status: userActionStatusLabel(action.status) })
           emit('changed')
         }
         return
@@ -93,7 +98,7 @@ async function refresh() {
       if (current === epoch) rows.value = resources
     } else {
       const catalog = await api.listToolSkills(props.projectId || undefined)
-      if (current === epoch) { rows.value = catalog.skills; diagnostics.value = catalog.diagnostics }
+      if (current === epoch) rows.value = catalog.skills
     }
   } catch (err) { if (current === epoch) error.value = err instanceof Error ? err.message : String(err) }
   finally { if (current === epoch) loading.value = false }
@@ -196,6 +201,17 @@ async function addFiles(event: Event) {
 function previewAsset(path: string) { previewPath.value = path; previewContent.value = decodeSkillAsset(files.value[path] ?? '') ?? t('toolsSettings.binaryResource') }
 function skillStatus(row: ToolMcpResource | ToolSkillResource): string | null { return props.kind === 'skills' ? (row as ToolSkillResource).availability ?? null : null }
 function skillMeta(row: ToolMcpResource | ToolSkillResource, key: 'package_hash' | 'source' | 'version' | 'commit'): string { return String((row as ToolSkillResource)[key] ?? '') }
+/** A skill's reason in the interface language from its code; Core's English text when this build has no words for it. */
+function skillReason(row: ToolMcpResource | ToolSkillResource): string | null {
+  const skill = row as ToolSkillResource
+  const key = `toolsSettings.skillReason.${skill.reason_code}`
+  return skill.reason_code && te(key) ? t(key, skill.reason_data ?? {}) : skill.reason ?? null
+}
+/** Core's own sentence, kept reachable as the tooltip when the line shows a translation of it. */
+function skillReasonTitle(row: ToolMcpResource | ToolSkillResource): string | undefined {
+  const reason = (row as ToolSkillResource).reason ?? undefined
+  return skillReason(row) === reason ? undefined : reason
+}
 async function test(row: ToolMcpResource) {
   busy.value = true; error.value = ''
   const current = contextEpoch
@@ -236,11 +252,11 @@ onBeforeUnmount(() => { ++epoch; ++contextEpoch; stopActionPoll(); chooseDraft?.
             <strong>{{ row.name }}</strong><small>{{ row.resource_id }}</small>
             <small>{{ t(row.project_id ? 'toolsSettings.projectResources' : 'toolsSettings.shared') }} · {{ t('toolsSettings.revision') }} {{ row.revision ?? 0 }}</small>
             <small v-if="'description' in row">{{ row.description }}</small>
-            <small v-if="'reason' in row">{{ row.reason }}</small>
+            <small v-if="'reason' in row" :title="skillReasonTitle(row)">{{ skillReason(row) }}</small>
             <small v-if="kind === 'skills' && skillMeta(row, 'package_hash')">{{ t('toolsSettings.packageHash') }}: {{ skillMeta(row, 'package_hash') }}</small>
             <small v-if="kind === 'skills' && skillMeta(row, 'source')">{{ t('toolsSettings.packageSource') }}: {{ skillMeta(row, 'source') }}<template v-if="skillMeta(row, 'version')"> @ {{ skillMeta(row, 'version') }}</template></small>
             <small v-if="kind === 'skills' && skillMeta(row, 'commit')">{{ t('toolsSettings.packageCommit') }}: {{ skillMeta(row, 'commit') }}</small>
-            <small v-if="kind === 'mcp' && connectionResults[row.resource_id]">{{ t('toolsSettings.connectionTest') }}: {{ connectionResults[row.resource_id]?.status }} {{ connectionResults[row.resource_id]?.reason }}</small>
+            <small v-if="kind === 'mcp' && connectionResults[row.resource_id]">{{ t('toolsSettings.connectionTest') }}: {{ t(`toolsSettings.connectionStatus.${connectionResults[row.resource_id]?.status}`, connectionResults[row.resource_id]?.status ?? '') }} {{ connectionResults[row.resource_id]?.status === 'disabled' ? t('toolsSettings.connectionDisabledHint') : connectionResults[row.resource_id]?.status === 'not_reported' ? '' : connectionResults[row.resource_id]?.reason }}</small>
           </span>
         </label>
         <UiBadge :variant="skillStatus(row) === 'invalid' || skillStatus(row) === 'pending' ? 'secondary' : row.enabled ? 'outline' : 'secondary'">{{ t(skillStatus(row) === 'invalid' ? 'toolsSettings.invalid' : skillStatus(row) === 'pending' ? 'toolsSettings.pendingApproval' : row.enabled ? 'toolsSettings.enabled' : 'toolsSettings.disabled') }}</UiBadge>

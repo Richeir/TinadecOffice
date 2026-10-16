@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ShieldCheck } from '@lucide/vue'
 import { api, type CreatePreAuthorizationInput, type PreAuthorizationDto } from '@/api'
 import { UiSelectField } from '@/components/ui'
+import { useStatusLabels } from '@/lib/statusLabels'
 
 const props = defineProps<{
   open: boolean
@@ -15,6 +16,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { riskLabel } = useStatusLabels()
+const RISK_LEVELS = ['low', 'medium', 'high', 'elevated', 'critical'] as const
 
 const runId = ref('')
 const laneKey = ref('')
@@ -115,12 +118,7 @@ async function submit(): Promise<void> {
 
       <template v-if="!created">
         <p class="detail-dialog__summary" data-testid="pre-auth-hint">
-          {{
-            t(
-              'governance.preAuthorizeHint',
-              'Grant a bounded number of unattended uses for specific tools on one run. Binding checks still apply to every invocation.',
-            )
-          }}
+          {{ t('governance.preAuthorizeHint') }}
         </p>
 
         <section class="panel pre-auth-form">
@@ -143,13 +141,7 @@ async function submit(): Promise<void> {
                 v-model="riskMax"
                 data-testid="pre-auth-risk"
                 :aria-label="t('governance.preAuthRiskMax')"
-                :options="[
-                  { value: 'low', label: 'low' },
-                  { value: 'medium', label: 'medium' },
-                  { value: 'high', label: 'high' },
-                  { value: 'elevated', label: 'elevated' },
-                  { value: 'critical', label: 'critical' },
-                ]"
+                :options="RISK_LEVELS.map((value) => ({ value, label: riskLabel(value) }))"
               />
             </label>
             <label>
@@ -175,7 +167,7 @@ async function submit(): Promise<void> {
 
         <div class="detail-dialog__actions">
           <button type="button" class="detail-dialog__btn" data-testid="pre-auth-cancel" @click="cancel">
-            {{ t('common.cancel', 'Cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -184,7 +176,7 @@ async function submit(): Promise<void> {
             data-testid="pre-auth-submit"
             @click="submit"
           >
-            {{ submitting ? t('common.loading', 'Submitting…') : t('governance.preAuthorizeConfirm') }}
+            {{ submitting ? t('common.loading') : t('governance.preAuthorizeConfirm') }}
           </button>
         </div>
       </template>
@@ -198,8 +190,7 @@ async function submit(): Promise<void> {
             <strong>{{ created.id }}</strong>
             <p>{{ created.tool_scope.join(', ') }}</p>
             <p class="quiet">
-              risk_max: {{ created.risk_max }} · max_uses: {{ created.max_uses }} ·
-              use_count: {{ created.use_count }}
+              {{ t('governance.preAuthRecordFacts', { risk: riskLabel(created.risk_max), max: created.max_uses, used: created.use_count }) }}
             </p>
           </div>
         </div>

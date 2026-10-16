@@ -31,6 +31,7 @@ import {
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useStatusLabels } from '@/lib/statusLabels'
+import { formatDuration as formatElapsed } from '@/lib/conversation/format'
 import type { AgentActivity, AgentState, ThinkingStep, ProgressEvent } from '@/composables/useAgentActivity'
 import type { AgentAssignmentDto, OrchestrationSnapshotDto, TaskNodeDto } from '../api'
 import AgentStatusIndicator from './chat/AgentStatusIndicator.vue'
@@ -38,7 +39,7 @@ import SubAgentsPanel from './conversation/SubAgentsPanel.vue'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import type { TurnRunInput } from '@/lib/conversation/turns'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { severityLabel } = useStatusLabels()
 
 const props = defineProps<{
@@ -88,14 +89,7 @@ const elapsedMs = computed(() => {
   return Math.max(0, end - start)
 })
 
-const elapsedLabel = computed(() => {
-  if (elapsedMs.value == null) return null
-  const seconds = Math.floor(elapsedMs.value / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return `${minutes}m ${remainingSeconds}s`
-})
+const elapsedLabel = computed(() => (elapsedMs.value == null ? null : formatElapsed(elapsedMs.value, t)))
 
 const progressPercent = computed(() => {
   if (props.activity.totalNodes === 0) return 0
@@ -190,7 +184,7 @@ const stepConfig = (type: ThinkingStep['type']) => {
 
 function formatTime(ts: string): string {
   try {
-    return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    return new Date(ts).toLocaleTimeString(locale.value, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   } catch {
     return ''
   }
@@ -201,9 +195,7 @@ function formatDuration(ms: number | null): string | null {
   if (ms < 1000) return `${ms}ms`
   const seconds = ms / 1000
   if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  const remaining = Math.floor(seconds % 60)
-  return `${minutes}m${remaining}s`
+  return formatElapsed(ms, t)
 }
 
 // ---- Progress events ----
@@ -255,10 +247,10 @@ const visibleProgressEvents = computed(() => [...props.progressEvents].slice(-15
             <div class="agent-panel-status-info">
               <div class="agent-panel-status-title-row">
                 <strong>{{ activity.activeAgentName ?? t('agent.agent') }}</strong>
-                <span class="agent-panel-status-tag">{{ statusConfig.label }}</span>
+                <!-- Core's run summary is its English narration of the last transition: diagnostic, so a tooltip. -->
+                <span class="agent-panel-status-tag" :title="activity.runSummary ?? undefined">{{ statusConfig.label }}</span>
               </div>
               <div class="agent-panel-status-meta">
-                <span v-if="activity.runSummary" class="agent-panel-summary">{{ activity.runSummary }}</span>
                 <span v-if="elapsedLabel" class="agent-panel-elapsed">
                   <Clock :size="10" />
                   {{ elapsedLabel }}
@@ -642,15 +634,6 @@ const visibleProgressEvents = computed(() => [...props.progressEvents].slice(-15
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.agent-panel-summary {
-  overflow: hidden;
-  font-size: 11px;
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 200px;
 }
 
 .agent-panel-elapsed {

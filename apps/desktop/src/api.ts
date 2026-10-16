@@ -1,4 +1,5 @@
 import { readBackendResponse } from '@/lib/backendRequest'
+import i18n from '@/i18n'
 import type { AgentPackEnvelope } from '@/agentPacks/GraphSeedPack'
 import { CORE_EVENT_TYPES } from '@/events/coreEventTypes'
 import type { components } from '@/generated/schema'
@@ -115,6 +116,8 @@ export interface ApprovalDto {
   tool_id?: string | null;
   risk?: string | null;
   summary: string;
+  /** Set when `summary` is one of Core's fixed sentences; the UI words it from `approval.summaryCode.*` with `tool_id`. */
+  summary_code?: string | null;
   /**
    * Redacted, bounded projection of the tool parameters, minted with the approval.
    * Bulk values (file bodies, patches, MCP payloads) arrive as size plus hash and
@@ -627,29 +630,24 @@ export interface SaveModelProviderInstanceInput {
   enabled?: boolean;
 }
 
-export interface DoctorReportDto {
-  platform: string;
-  agent_core_version: string;
-  checks: Array<{ name: string; status: string; message: string }>;
-}
-
-export interface RuntimeReadinessComponentDto {
+/** One fixed check of Core's unified readiness receipt (database, model_route, tool_provider, …). */
+export interface ReadinessItemDto {
   id: string;
-  name: string;
+  /** ready | degraded | blocked | unavailable */
   status: string;
-  summary: string;
-  evidence: string[];
+  /** What `reason` is about; the UI words it from `doctor.reason.*` / `doctor.action.*` and `data`. */
+  reason_code?: string | null;
+  reason?: string | null;
+  action?: string | null;
+  checked_at?: string;
+  data?: Record<string, unknown> | null;
 }
 
+/** GET /api/v1/readiness: the overall status (ready | degraded | blocked) and the fixed items. */
 export interface RuntimeReadinessReceiptDto {
   status: string;
-  generated_at: string;
-  runtime: string;
-  receipt_id: string;
-  components: RuntimeReadinessComponentDto[];
-  ready_count: number;
-  warning_count: number;
-  blocked_count: number;
+  checked_at?: string;
+  items: ReadinessItemDto[];
 }
 
 export interface ToolLayerToolReadinessDto {
@@ -791,6 +789,9 @@ export interface MarketCatalogItemDto {
   /** False is not a defect in the entry — `install_blocker` says which case this is. */
   installable: boolean;
   install_blocker?: string;
+  /** What `install_blocker` is about; the UI words it from `market.installBlocker.*` and `install_blocker_data`. */
+  install_blocker_code?: string;
+  install_blocker_data?: Record<string, string>;
 }
 
 export interface MarketCatalogPageDto {
@@ -1063,6 +1064,8 @@ export interface HarnessChannelDto {
   protocol: string;
   drivable: boolean;
   reason?: string | null;
+  /** What `reason` is about; the UI words it from `settings.channelReason.*`. */
+  reason_code?: string | null;
 }
 
 export interface CliDiscoveryCandidateDto {
@@ -1081,6 +1084,9 @@ export interface CliDiscoveryCandidateDto {
    * harness's own ceiling. `missing` on its own reads as "not installed", which is a different claim.
    */
   probe_note?: string | null;
+  /** What `probe_note` is about; the UI words it from `settings.probeNote.*` and `probe_note_data`. */
+  probe_note_code?: string | null;
+  probe_note_data?: Record<string, string> | null;
   vendor?: string | null;
   channels?: HarnessChannelDto[];
   caveats?: string[];
@@ -2634,7 +2640,7 @@ async function requestResult<T>(path: string, init?: StorageRequestOptions): Pro
       data = JSON.parse(text);
     } catch {
       // Response body is not valid JSON – surface the raw text for debugging
-      throw new Error(`Invalid response from server: ${text.substring(0, 200)}`);
+      throw new Error(i18n.global.t('errors.invalidServerResponse', { text: text.substring(0, 200) }));
     }
   }
 
@@ -2700,7 +2706,7 @@ export async function createUserToolActionForPath(
   const projects = await request<ProjectDto[]>('/api/v1/projects');
   const normalized = path.replace(/[\\/]+$/, '').toLowerCase();
   const project = projects.find((item) => item.path.replace(/[\\/]+$/, '').toLowerCase() === normalized);
-  if (!project) throw new Error('The selected workspace is not registered in TinadecCore.');
+  if (!project) throw new Error(i18n.global.t('errors.workspaceNotRegistered'));
   return request<UserToolActionDto>('/api/v1/user/tool-actions', {
     method: 'POST',
     storageId: project.storage_id ?? capturedStorage,
@@ -2882,6 +2888,11 @@ export const api = {
   closeStorageScope: (storageId: string, signal?: AbortSignal) => request<void>(`/api/v1/storage/scopes/${encodeURIComponent(storageId)}/close`, { method: 'POST', storageId: 'user', signal }),
   exportStorageScope: async (storageId: string) => {
     const response = await storageFetch(`${gatewayUrl}/api/v1/storage/scopes/${encodeURIComponent(storageId)}/export`, { method: 'POST', storageId: 'user' })
+      .catch((error: unknown) => {
+        // Same wording as every other request when the backend cannot be reached.
+        if (!(error instanceof TypeError)) throw error
+        throw new Error(i18n.global.t('common.backendUnreachable', { origin: new URL(gatewayUrl).origin, reason: error.message }))
+      })
     if (!response.ok) {
       const data = await response.json().catch(() => null)
       throw Object.assign(new Error(extractErrorMessage(data, response.statusText)), { status: response.status })
@@ -2988,8 +2999,7 @@ export const api = {
       core_version: response.ok && typeof data.version === 'string' ? data.version : null,
     }
   },
-  doctor: () => request<DoctorReportDto>('/api/v1/doctor'),
-  readiness: () => request<RuntimeReadinessReceiptDto>('/api/v1/readiness'),
+  readiness: (options?: { signal?: AbortSignal }) => request<RuntimeReadinessReceiptDto>('/api/v1/readiness', options),
   getToolLayerReadiness: (options?: { signal?: AbortSignal }) => request<ToolLayerReadinessReceiptDto>('/api/v1/tool-layer-readiness', options),
   listProjects: (options?: { signal?: AbortSignal; storageId?: string; lifecycleStatus?: 'active' | 'archived' | 'trashed' }) => request<ProjectDto[]>(`/api/v1/projects${options?.lifecycleStatus ? '?lifecycle_status=' + encodeURIComponent(options.lifecycleStatus) : ''}`, options),
   createProject: (name: string, path: string) => request<ProjectDto>('/api/v1/projects', {
@@ -3007,7 +3017,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId ?? undefined, title, mode_version_id: modeVersionId ?? undefined, ...(viewMode === 'space' ? { view_mode: viewMode } : {}), ...settings })
   }).then(session => {
-    if (viewMode === 'space' && session.view_mode !== 'space') throw new Error('无法创建空间会话：服务尚未支持独立会话类型，请更新服务后重试。')
+    if (viewMode === 'space' && session.view_mode !== 'space') throw new Error(i18n.global.t('space.sessionUnsupported'))
     return session
   }),
   migrateSession: (sessionId: string, payload: { target_storage_id: string; target_project_id?: string }) => request<SessionTransferDto>(`/api/v1/sessions/${sessionId}/migrate`, {

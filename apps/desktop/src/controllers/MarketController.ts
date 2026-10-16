@@ -26,6 +26,7 @@ import { isUserToolActionTerminal, userToolActionNeedsDecision } from '@/userToo
 // Module-level composables are safe (they share module refs); `useI18n` is NOT
 // callable outside setup(), so translate via the global instance instead.
 const t = i18n.global.t
+const te = i18n.global.te
 const { notify, status, dismissByKey } = useNotifications()
 
 const sources = ref<ExtensionSourceDto[]>([])
@@ -55,7 +56,7 @@ let catalogEpoch = 0
 let ledgerEpoch = 0
 
 const sourceForm = reactive({
-  name: 'MCP Registry',
+  name: t('market.defaultSourceName'),
   kind: '',
   location: '',
 })
@@ -168,7 +169,7 @@ async function run(label: string, action: () => Promise<void>) {
   try {
     await action()
   } catch (err) {
-    notify.error(err, { title: `${label} failed`, source: 'market' })
+    notify.error(err, { title: t('home.actionFailed', { action: label }), source: 'market' })
   } finally {
     busy.value = false
   }
@@ -316,12 +317,12 @@ async function previewInstall() {
     return
   }
   if (item.installable === false) {
-    notify.warning({ message: item.install_blocker || t('market.notInstallable'), source: 'market' })
+    notify.warning({ message: installBlockerText(item), source: 'market' })
     return
   }
   proposalBusy.value = true
   try {
-    await run('install preview', async () => {
+    await run(t('market.action.installPreview'), async () => {
       const project = targetProjectId.value
       const scope = skillScope.value
       const preview = item.kind === 'skill' ? await api.previewMarketInstall(item.catalog_id, project, scope) : await api.previewMarketInstall(item.catalog_id, project)
@@ -337,7 +338,7 @@ async function previewRemoval() {
   if (!row) return
   proposalBusy.value = true
   try {
-    await run('uninstall preview', async () => {
+    await run(t('market.action.uninstallPreview'), async () => {
       proposal.value = await api.previewMarketUninstall(row.id)
     })
   } finally {
@@ -353,7 +354,7 @@ async function previewRemoval() {
 async function applyProposal() {
   const pending = activeProposal.value
   if (!pending) return
-  await run('queue install', async () => {
+  await run(t('market.action.queueInstall'), async () => {
     try {
       const row = await api.applyMarketInstallProposal(pending.id)
       proposal.value = null
@@ -375,23 +376,23 @@ async function applyProposal() {
 }
 
 async function addSource() {
-  await run('add source', async () => {
+  await run(t('market.action.addSource'), async () => {
     await api.createExtensionSource({ name: sourceForm.name, kind: sourceForm.kind, location: sourceForm.location, enabled: true })
     sourceForm.location = ''
     await loadAll()
-    notify.success({ message: 'Source added.', source: 'market' })
+    notify.success({ message: t('market.sourceAdded'), source: 'market' })
   })
 }
 
 async function toggleSource(sourceId: string, enabled: boolean) {
-  await run('enable source', async () => {
+  await run(t('market.action.enableSource'), async () => {
     await api.setExtensionSourceEnabled(sourceId, enabled)
     await loadAll()
   })
 }
 
 async function removeSource(sourceId: string) {
-  await run('delete source', async () => {
+  await run(t('market.action.deleteSource'), async () => {
     try {
       await api.deleteExtensionSource(sourceId)
       await loadAll()
@@ -404,18 +405,23 @@ async function removeSource(sourceId: string) {
 }
 
 async function refreshSource(sourceId: string) {
-  await run('refresh source', async () => {
+  await run(t('market.action.refreshSource'), async () => {
     const outcome = await api.refreshExtensionSource(sourceId)
     await loadAll()
     // A refresh that was blocked or never reached the market leaves the catalog standing, which
     // looks exactly like success from the outside. Say which of the three happened.
     if (outcome.outcome !== 'fetched') {
-      throw new Error(outcome.reason || `The source did not answer (${outcome.outcome}).`)
+      // The outcome is the sentence; the source's own error (network, parse) is the detail.
+      const key = `market.sourceOutcome.${outcome.outcome}`
+      notify.error(te(key) ? t(key) : t('market.sourceNoAnswer', { outcome: outcome.outcome }), {
+        title: t('home.actionFailed', { action: t('market.action.refreshSource') }), details: outcome.reason || undefined, source: 'market',
+      })
+      return
     }
     notify.success({
       message: outcome.truncated_pages
-        ? `Refreshed ${outcome.fetched_rows} entry/entries from ${outcome.pages_fetched} page(s); the listing was longer than this.`
-        : `Refreshed ${outcome.fetched_rows} entry/entries (${outcome.refused_rows} refused, ${outcome.removed_rows} dropped, ${outcome.retained_rows} kept because they are installed).`,
+        ? t('market.refreshedTruncated', { rows: outcome.fetched_rows, pages: outcome.pages_fetched })
+        : t('market.refreshed', { rows: outcome.fetched_rows, refused: outcome.refused_rows, removed: outcome.removed_rows, retained: outcome.retained_rows }),
       source: 'market',
     })
   })
@@ -442,12 +448,18 @@ function stop() {
   ++catalogEpoch; ++ledgerEpoch
 }
 
+/** Why an entry cannot be installed, from its code and facts; Core's sentence when this build has no words for it. */
+function installBlockerText(item: MarketCatalogItemDto): string {
+  const key = `market.installBlocker.${item.install_blocker_code}`
+  return item.install_blocker_code && te(key) ? t(key, item.install_blocker_data ?? {}) : item.install_blocker || t('market.notInstallable')
+}
+
 export const marketController = {
   sources, supportedKinds, catalog, installations, acpAdapters,
   mcpInventory, mcpServers, mcpSource, mcpReadSucceeded, mcpReason, mcpConfigPath,
   selectedCatalogId, kindFilter, sourceFilter, query, busy, loading,
   proposal, activeProposal, proposalBusy, sourceForm,
-  selectedItem, selectedInstallation, installationFor, awaitingDecision, actionFinished, installationUsable, skillScope,
+  selectedItem, selectedInstallation, installationFor, installBlockerText, awaitingDecision, actionFinished, installationUsable, skillScope,
   targetProjectId, targetProject,
   start, stop,
   loadAll, loadCatalog, loadInstallations,

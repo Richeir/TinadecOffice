@@ -22,7 +22,7 @@ vi.mock('@/controllers/HomeController', async () => {
 })
 vi.mock('@/api', () => ({ api: { readFile: h.readFile, controlRun: h.controlRun, createInteraction: h.createInteraction } }))
 vi.mock('@/composables/useNotifications', () => ({ useNotifications: () => ({ notify: { error: vi.fn() } }) }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({
+vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()), useI18n: () => ({
   t: (key: string, params?: Record<string, unknown>) => [key, ...Object.values(params ?? {})].join(' '), te: () => true,
 }) }))
 vi.mock('@/components/chat/ToolCallCard.vue', () => ({ default: {
@@ -245,6 +245,8 @@ describe('SpatialWorkCard summaries and detail', () => {
     await flushPromises()
     expect(h.readFile).toHaveBeenCalledWith('/workspace', 'src/a.ts', { start_row: 1, end_row: 500 })
     expect(wrapper.get('.space-file-view summary').text()).toContain('space.currentFile')
-    expect(wrapper.get('[role="status"]').text()).toBe('File unavailable')
+    // The card words the failure; the read tool's own sentence stays as the tooltip.
+    expect(wrapper.get('[role="status"]').text()).toBe('space.fileReadFailed')
+    expect(wrapper.get('[role="status"]').attributes('title')).toBe('File unavailable')
   })
 })

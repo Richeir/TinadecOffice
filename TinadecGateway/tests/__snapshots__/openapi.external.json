@@ -1578,6 +1578,15 @@
           "install_blocker": {
             "type": "string"
           },
+          "install_blocker_code": {
+            "type": "string"
+          },
+          "install_blocker_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "installable": {
             "type": "boolean"
           },
@@ -6364,6 +6373,17 @@
           "reason": {
             "nullable": true,
             "type": "string"
+          },
+          "reason_code": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reason_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "object"
           },
           "resource_id": {
             "type": "string"

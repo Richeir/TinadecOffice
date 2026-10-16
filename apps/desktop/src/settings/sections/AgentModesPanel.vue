@@ -12,7 +12,8 @@ import { useNotifications } from '@/composables/useNotifications'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
 import { consumeRequest, pendingModeId } from '@/lib/pageRequests'
 
-const { t } = useI18n()
+const { t, te, locale } = useI18n()
+const definitionStatusLabel = (status: string) => (te(`agentCenter.filter.${status}`) ? t(`agentCenter.filter.${status}`) : status)
 const { notify } = useNotifications()
 
 const modes = ref<AgentModeTopologyDto[]>([])
@@ -233,7 +234,7 @@ async function cloneSelectedMode() {
   modeBusy.value = true
   try {
     const m = await api.createAgentModeDraft({
-      display_name: `${source.display_name} (copy)`,
+      display_name: t('common.copyName', { name: source.display_name }),
       description: source.description ?? null,
       ...toCoreTopology(modeNodes.value, modeEdges.value),
       canvas_layout: {}
@@ -254,7 +255,7 @@ function addModeNode() {
   const firstAgent = agents.value[0]?.id ?? 'meeting'
   modeNodes.value = [
     ...modeNodes.value,
-    { id, agent_id: firstAgent, lane: 'operation', position: { x: 80 + modeNodes.value.length * 40, y: 80 }, label: `node ${modeNodes.value.length + 1}` }
+    { id, agent_id: firstAgent, lane: 'operation', position: { x: 80 + modeNodes.value.length * 40, y: 80 }, label: t('agentCenter.newNodeLabel', { n: modeNodes.value.length + 1 }) }
   ]
 }
 
@@ -418,9 +419,9 @@ defineExpose({ loadModes })
             <component :is="modeIcon(m.slug)" :size="14" class="ac-mode-icon" />
             <span class="ac-mode-meta" :title="m.description ?? undefined">
               <strong>{{ m.display_name }}</strong>
-              <small>{{ m.description || `rev ${m.revision ?? '—'}` }}</small>
+              <small>{{ m.description || t('agentCenter.revisionShort', { revision: m.revision ?? '—' }) }}</small>
             </span>
-            <UiBadge :variant="readinessVariant(m.status)">{{ m.status ?? 'draft' }}</UiBadge>
+            <UiBadge :variant="readinessVariant(m.status)">{{ m.status ? definitionStatusLabel(m.status) : t('common.draft') }}</UiBadge>
           </button>
           <div v-if="filteredModes.length === 0" class="quiet ac-mode-empty">{{ t('agentCenter.empty.noModes') }}</div>
         </div>
@@ -519,7 +520,7 @@ defineExpose({ loadModes })
         <div v-else class="ac-version-list">
           <div v-for="v in modeVersions" :key="v.id" class="center-list-row ac-version-row">
             <strong>v{{ v.version }}</strong>
-            <small>{{ v.created_at ? new Date(v.created_at).toLocaleString() : '—' }}</small>
+            <small>{{ v.created_at ? new Date(v.created_at).toLocaleString(locale) : '—' }}</small>
             <UiBadge :variant="v.is_active ? 'default' : 'secondary'">{{ v.is_active ? t('settings.agentVersionCurrent') : t('settings.agentVersionArchived') }}</UiBadge>
           </div>
           <div v-if="modeVersions.length === 0" class="quiet">{{ t('settings.noModeVersions') }}</div>

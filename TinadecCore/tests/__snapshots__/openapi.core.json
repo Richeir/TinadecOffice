@@ -1913,6 +1913,21 @@
               "string"
             ]
           },
+          "install_blocker_code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "install_blocker_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "installable": {
             "type": "boolean"
           },
@@ -6300,6 +6315,21 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "reason_code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "object"
             ]
           },
           "resource_id": {

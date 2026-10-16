@@ -44,27 +44,38 @@ async function loadAppConfig(): Promise<void> {
   gatewayUrlDraft.value = appConfig.value.gateway_url
 }
 
+/** The same rules the main process enforces, worded in the interface language before the IPC call. */
 function normalizedGatewayDraft(): string {
-  const url = new URL(gatewayUrlDraft.value.trim())
+  let url: URL
+  try { url = new URL(gatewayUrlDraft.value.trim()) } catch { throw new Error(t('settings.gatewayUrlInvalid')) }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(t('settings.gatewayUrlInvalid'))
+  if (url.username || url.password || url.search || url.hash) throw new Error(t('settings.gatewayUrlNoExtras'))
   return url.toString().replace(/\/$/, '')
 }
 
 async function testGatewayConnection(): Promise<void> {
   dismissByKey('gateway-config')
   gatewayConnectionState.value = 'testing'
+  let gatewayUrl: string
   try {
-    const gatewayUrl = normalizedGatewayDraft()
+    gatewayUrl = normalizedGatewayDraft()
+  } catch (error) {
+    gatewayConnectionState.value = 'failed'
+    status.error({ key: 'gateway-config', source: 'gateway', message: error instanceof Error ? error.message : t('settings.gatewayUrlInvalid') })
+    return
+  }
+  try {
     const response = await fetch(`${gatewayUrl}/api/v1/health`, {
       headers: { accept: 'application/json', 'x-tinadec-storage-id': 'user' },
       signal: AbortSignal.timeout(5000),
     })
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+    if (!response.ok) throw new Error(t('settings.gatewayConnectionHttp', { status: response.status }))
     gatewayConnectionState.value = 'ready'
     notify.success({ message: t('settings.gatewayConnectionReady'), source: 'gateway' })
   } catch (error) {
+    // The browser's own wording ("Failed to fetch", a timeout) stays as detail under a translated message.
     gatewayConnectionState.value = 'failed'
-    status.error({ key: 'gateway-config', source: 'gateway', message: error instanceof Error ? error.message : t('settings.gatewayConnectionFailed') })
+    status.error({ key: 'gateway-config', source: 'gateway', message: t('settings.gatewayConnectionFailed'), details: error instanceof Error ? error.message : undefined })
   }
 }
 
@@ -235,7 +246,7 @@ void dismissConfirm
                 {{ service.core_status === 'ready' ? t('settings.serviceCoreReady') : t('settings.serviceCoreUnreachable') }}
               </UiBadge>
               <UiBadge v-if="service.current" variant="outline">{{ t('settings.serviceCurrent') }}</UiBadge>
-              <span v-if="service.mode" class="service-discovery-meta">{{ service.mode }}</span>
+              <span v-if="service.mode" class="service-discovery-meta">{{ t(`settings.serviceMode.${service.mode}`, service.mode) }}</span>
             </button>
             <div v-else class="service-discovery-row service-discovery-row-core">
               <UiBadge variant="outline">{{ t('settings.serviceBadgeCore') }}</UiBadge>

@@ -29,6 +29,8 @@ import {
 } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { approvalSummary } from '@/userToolAction'
+import { useStatusLabels } from '@/lib/statusLabels'
 import { UiSelectField } from '@/components/ui'
 import type { ApprovalDto } from '../../api'
 import {
@@ -143,7 +145,8 @@ const emit = defineEmits<{
   'decide-approval': [approval: ApprovalDto, decision: 'approved' | 'rejected']
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+const { approvalStatusLabel } = useStatusLabels()
 
 // ---- Diff preview ----
 const showDiffPreview = ref(false)
@@ -160,7 +163,7 @@ const diffSections = computed<GitDiffSection[]>(() => [
   {
     id: 'working-tree',
     kind: 'working_tree',
-    title: 'Working tree diff',
+    title: t('context.gitWorkingTreeDiff'),
     diff: indexDiffText.value,
     files: indexDiffFiles.value,
     file_count: indexDiffFiles.value.length,
@@ -561,7 +564,7 @@ function handleCommitKeydown(e: KeyboardEvent) {
       <div v-show="filesExpanded" class="git-section-body">
         <div v-if="hasConflicts" class="git-conflict-banner">
           <AlertTriangle :size="14" />
-          <span>{{ conflictedFiles.length }} file{{ conflictedFiles.length === 1 ? '' : 's' }} with merge conflicts require resolution.</span>
+          <span>{{ t('context.gitConflictBanner', { n: conflictedFiles.length }, conflictedFiles.length) }}</span>
         </div>
         <!-- Controls bar: Tree/List toggle + Select All + Refresh -->
         <div class="git-view-controls-bar">
@@ -614,7 +617,7 @@ function handleCommitKeydown(e: KeyboardEvent) {
 
             <div v-show="stagedExpanded" class="git-sub-body">
               <div v-if="stagedFiles.length === 0" class="git-sub-empty">
-                0 files staged
+                {{ t('context.gitNoneStaged') }}
               </div>
               <!-- Staged Tree View -->
               <div v-else-if="viewMode === 'tree'" class="git-tree-container">
@@ -720,7 +723,7 @@ function handleCommitKeydown(e: KeyboardEvent) {
 
             <div v-show="unstagedExpanded" class="git-sub-body">
               <div v-if="unstagedFiles.length === 0" class="git-sub-empty">
-                0 uncommitted changes
+                {{ t('context.gitNoneUncommitted') }}
               </div>
               <!-- Unstaged Tree View -->
               <div v-else-if="viewMode === 'tree'" class="git-tree-container">
@@ -828,8 +831,8 @@ function handleCommitKeydown(e: KeyboardEvent) {
         <div v-if="resolveConflictApproval" class="git-conflict-approval">
           <div class="git-conflict-approval-info">
             <ShieldCheck :size="13" />
-            <span>{{ resolveConflictApproval.summary }}</span>
-            <span class="git-conflict-approval-status">{{ resolveConflictApproval.status }}</span>
+            <span>{{ approvalSummary(resolveConflictApproval, { t, te }) }}</span>
+            <span class="git-conflict-approval-status">{{ approvalStatusLabel(resolveConflictApproval.status) }}</span>
           </div>
           <div class="git-conflict-approval-actions">
             <div v-if="canDecideResolveConflictApproval" class="git-approval-decide">
@@ -874,8 +877,8 @@ function handleCommitKeydown(e: KeyboardEvent) {
           <div v-if="parsedDiff.files.length > 0" class="git-line-shelf">
             <div class="git-line-shelf-head">
               <div class="git-line-shelf-mode">
-                <button type="button" :class="{ active: indexMode === 'stage' }" @click="indexMode = 'stage'">Working tree</button>
-                <button type="button" :class="{ active: indexMode === 'unstage' }" :disabled="!stagedDiffText" @click="indexMode = 'unstage'">Staged index</button>
+                <button type="button" :class="{ active: indexMode === 'stage' }" @click="indexMode = 'stage'">{{ t('context.gitWorkingTree') }}</button>
+                <button type="button" :class="{ active: indexMode === 'unstage' }" :disabled="!stagedDiffText" @click="indexMode = 'unstage'">{{ t('context.gitStagedIndex') }}</button>
               </div>
               <button
                 type="button"
@@ -884,7 +887,7 @@ function handleCommitKeydown(e: KeyboardEvent) {
                 @click="requestSelectedLines"
               >
                 <Plus :size="13" />
-                <span>{{ indexMode === 'stage' ? 'Stage selected lines' : 'Unstage selected lines' }}</span>
+                <span>{{ indexMode === 'stage' ? t('context.gitStageLines') : t('context.gitUnstageLines') }}</span>
               </button>
             </div>
             <div v-for="file in parsedDiff.files" :key="file.id" class="git-line-shelf-file">
@@ -1012,8 +1015,8 @@ function handleCommitKeydown(e: KeyboardEvent) {
         <div v-if="discardApproval" class="git-discard-approval">
           <div class="git-discard-approval-info">
             <ShieldCheck :size="13" />
-            <span>{{ discardApproval.summary }}</span>
-            <span class="git-discard-approval-status">{{ discardApproval.status }}</span>
+            <span>{{ approvalSummary(discardApproval, { t, te }) }}</span>
+            <span class="git-discard-approval-status">{{ approvalStatusLabel(discardApproval.status) }}</span>
           </div>
           <div class="git-discard-approval-actions">
             <div v-if="canDecideDiscardApproval" class="git-approval-decide">
@@ -1080,7 +1083,7 @@ function handleCommitKeydown(e: KeyboardEvent) {
             <small>{{ t('context.gitAiConcerns') }}</small>
             <ul class="git-ai-list">
               <li v-for="(concern, idx) in aiAnalysis.concerns" :key="idx" :class="`severity-${concern.severity}`">
-                <strong>{{ concern.category }}:</strong> {{ concern.description }}
+                <strong>{{ te(`context.gitRiskCategory.${concern.category}`) ? t(`context.gitRiskCategory.${concern.category}`) : concern.category }}:</strong> {{ concern.description }}
               </li>
             </ul>
           </div>

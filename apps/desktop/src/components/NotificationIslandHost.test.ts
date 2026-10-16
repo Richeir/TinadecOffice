@@ -9,8 +9,8 @@ import {
 } from '@/composables/useNotifications'
 
 vi.mock('vue-router', () => ({ useRoute: () => ({ name: 'home' }) }))
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key, locale: { value: 'en' } }),
+vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
+  useI18n: () => ({ t: (key: string) => key, te: () => false, locale: { value: 'en' } }),
 }))
 
 const notifications = useNotifications()

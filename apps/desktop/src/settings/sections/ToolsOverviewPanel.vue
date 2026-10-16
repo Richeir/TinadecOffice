@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useStatusLabels } from '@/lib/statusLabels'
 import { UiBadge, UiButton, UiInput, UiSelectField } from '@/components/ui'
 import { api as baseApi, type HarnessManifestDto, type ToolCapabilities, type ToolDescriptorDto, type ToolLayerReadinessReceiptDto, type ToolSearchResultDto, type ToolSettingsEffective } from '@/api'
 import { scopedApi, projectStorageId } from '@/lib/storageScope'
@@ -12,12 +13,13 @@ import { useToolAgentUsage } from '@/settings/toolAgentUsage'
 const props = defineProps<{ agentId?: string; projectId?: string; agents?: { id: string; display_name?: string | null; slug?: string | null }[]; effectiveToolIds?: string[] | null; capabilities?: ToolCapabilities | null; hostSettings?: Record<string, unknown>; effective?: ToolSettingsEffective | null }>()
 const api = scopedApi(baseApi, () => projectStorageId(props.projectId))
 const { t } = useI18n()
+const { riskLabel } = useStatusLabels()
 const { notify } = useNotifications()
 const { usage: toolUsage, loading: usageLoading, failedAgentNames: usageFailures, refresh: refreshUsage } = useToolAgentUsage(() => props.agents ?? [], () => props.projectId, () => props.agentId)
 function usageText(toolId: string) {
   if (props.agentId) { const agent = props.agents?.find(item => item.id === props.agentId); return agent?.display_name || agent?.slug || props.agentId }
   if (usageLoading.value) return t('toolsSettings.usageLoading')
-  return toolUsage.value[toolId]?.join('、') || t(usageFailures.value.length ? 'toolsSettings.usageUnavailable' : 'toolsSettings.noUsingAgents')
+  return toolUsage.value[toolId]?.join(t('conversation.listSeparator')) || t(usageFailures.value.length ? 'toolsSettings.usageUnavailable' : 'toolsSettings.noUsingAgents')
 }
 const manifest = ref<HarnessManifestDto | null>(null)
 const tools = ref<ToolDescriptorDto[]>([])
@@ -77,7 +79,7 @@ defineExpose({ refresh })
     <strong>{{ t('toolsSettings.availableTools', { count: visibleTools.length }) }}</strong>
     <p class="quiet">{{ t('toolsSettings.effectiveScopeHint') }}</p>
     <div class="model-capability-row"><span v-for="resource in resources" :key="resource.label">{{ resource.label }} · {{ resource.count ?? '—' }}</span></div>
-    <p v-if="!capabilities?.capabilities" class="quiet">{{ capabilities?.reason || t('toolsSettings.executionUnknown') }}</p>
+    <p v-if="!capabilities?.capabilities" class="quiet" :title="capabilities?.reason ?? undefined">{{ t(capabilities?.reason ? 'toolsSettings.diagnostic.host_unavailable' : 'toolsSettings.executionUnknown') }}</p>
     <p v-else class="quiet">{{ t('toolsSettings.capabilitySummary', { rg: t(capabilities.capabilities.ripgrep?.available ? 'toolsSettings.detected' : 'toolsSettings.unavailable'), sandbox: t(capabilities.capabilities.sandbox?.supported ? 'toolsSettings.detected' : 'toolsSettings.unavailable') }) }}</p>
   </div>
   <div class="model-section-header"><h3>{{ t('settings.toolDiscovery') }}</h3><UiBadge variant="outline">{{ visibleResults.length }}</UiBadge></div>
@@ -88,8 +90,8 @@ defineExpose({ refresh })
     <UiButton size="sm" :disabled="loading" @click="search">{{ t('toolsSettings.searchTools') }}</UiButton>
   </div>
   <p v-if="error" class="tools-field-error" role="alert">{{ error }}</p>
-  <p v-if="usageFailures.length" class="quiet" role="status">{{ t('toolsSettings.usageFailed', { agents: usageFailures.join('、') }) }}</p>
-  <div class="tools-resource-list"><article v-for="result in visibleResults" :key="result.tool.id" class="tools-resource-row tool-discovery-card" :class="{ selected: result.tool.id === requestedToolId }"><span class="tools-tool-identity"><strong>{{ result.tool.display_name }}</strong><code v-if="result.tool.display_name !== result.tool.id">{{ result.tool.id }}</code><small>{{ result.tool.description }}</small></span><span class="tools-tool-facts"><small>{{ result.tool.source || t('toolsSettings.sourceUndeclared') }} · {{ result.tool.risk }}</small><small v-if="result.tool.requires_approval">{{ t('settings.approvalRequired') }}</small><small>{{ t('toolsSettings.usedBy', { agents: usageText(result.tool.id) }) }}</small></span></article></div>
+  <p v-if="usageFailures.length" class="quiet" role="status">{{ t('toolsSettings.usageFailed', { agents: usageFailures.join(t('conversation.listSeparator')) }) }}</p>
+  <div class="tools-resource-list"><article v-for="result in visibleResults" :key="result.tool.id" class="tools-resource-row tool-discovery-card" :class="{ selected: result.tool.id === requestedToolId }"><span class="tools-tool-identity"><strong>{{ result.tool.display_name }}</strong><code v-if="result.tool.display_name !== result.tool.id">{{ result.tool.id }}</code><small>{{ result.tool.description }}</small></span><span class="tools-tool-facts"><small>{{ result.tool.source || t('toolsSettings.sourceUndeclared') }} · {{ riskLabel(result.tool.risk) }}</small><small v-if="result.tool.requires_approval">{{ t('settings.approvalRequired') }}</small><small>{{ t('toolsSettings.usedBy', { agents: usageText(result.tool.id) }) }}</small></span></article></div>
   <p v-if="!loading && !error && !visibleResults.length" class="quiet">{{ t('settings.noTools') }}</p>
   <details class="tools-effective-card"><summary>{{ t('toolsSettings.runtimeDetails') }}</summary>
     <p class="quiet">{{ t('toolsSettings.globalReceipt') }}</p>

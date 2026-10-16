@@ -71,6 +71,50 @@ const panelSources = import.meta.glob(
     // Market labels are resolved by the controller (one owner for both the filter rail and the
     // row badges), so a dead key there would render in two cards at once.
     './../controllers/MarketController.ts',
+    // Pages whose wording moved out of the template into the locales; a dead key would show its
+    // dotted path where the heading or button was.
+    './../pages/LibraryPage.vue',
+    './../pages/WorkbenchPage.vue',
+    './../pages/MemoryPage.vue',
+    './../pages/GovernanceBoardPage.vue',
+    './../pages/RecoveryCheckPage.vue',
+    './../pages/SnapshotsPage.vue',
+    './../pages/DesktopPetPage.vue',
+    './../components/governance/PreAuthorizationDialog.vue',
+    './../components/governance/SnapshotOverrideDialog.vue',
+    // The code page and its Git panels, including the approval and status lines built in script.
+    './../pages/CodePage.vue',
+    './../components/code/*.vue',
+    './../components/git/*.vue',
+    './../controllers/CodeController.ts',
+    './../composables/useGitOperation.ts',
+    './../composables/useAiChangeAnalysis.ts',
+    './../userToolAction.ts',
+    // Settings sections that used to carry their own wording: storage spoke through an inline
+    // label(zh, en) pair, and tool settings built its validation sentences in script.
+    './../settings/sections/StorageSection.vue',
+    './../settings/sections/AboutHero.vue',
+    './../settings/toolSettings.ts',
+    // Home and chat: the controller's notices and send errors, the activity timeline, the host
+    // banner (its words used to live in a component-local message table) and the workspace dialog.
+    './../controllers/HomeController.ts',
+    './../composables/useAgentActivity.ts',
+    './../components/HostAvailabilityBanner.vue',
+    './../components/WorkspaceEditorDialog.vue',
+    './../components/AppSidebar.vue',
+    './../components/chat/TerminalCallBlock.vue',
+    './../components/chat/AgentActivityBanner.vue',
+    './../components/chat/AgentStatusIndicator.vue',
+    './../lib/hostAccess.ts',
+    './../lib/hostConnection.ts',
+    // The mode / pipeline canvases and Debug Studio, whose chrome was hardcoded Chinese.
+    './../components/canvas/AgentModeCanvas.vue',
+    './../components/canvas/PromptPipelineCanvas.vue',
+    './../debug/DebugStudio.vue',
+    './../debug/preview/PreviewGallery.vue',
+    './../debug/preview/ComponentPreview.vue',
+    './../debug/preview/PagePreview.vue',
+    './../debug/preview/ConversationPreview.vue',
   ],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
@@ -94,12 +138,22 @@ function cardSources(): Record<string, string> {
       out[rel] = readFileSync(path.join(root, group.name, file), 'utf8')
     }
   }
+  // The engine's own chrome (tab bars, card host, title bar) sits beside the cards; its keys were
+  // missing from both bundles once, which showed `uie.move` as a tooltip.
+  const components = path.resolve(root, '..')
+  for (const file of readdirSync(components)) {
+    if (file.endsWith('.vue')) out[`TinadecUI/components/${file}`] = readFileSync(path.join(components, file), 'utf8')
+  }
   return out
 }
 
 function referencedKeys(source: string): Set<string> {
   const keys = new Set<string>()
   for (const match of source.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
+    keys.add(match[1])
+  }
+  // <i18n-t keypath="…"> renders a sentence with markup inside it; its key is just as dead if missing.
+  for (const match of source.matchAll(/\bkeypath="([a-zA-Z0-9_.]+)"/g)) {
     keys.add(match[1])
   }
   return keys

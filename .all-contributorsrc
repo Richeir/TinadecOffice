@@ -1,0 +1,28 @@
+{
+  "projectName": "TinadecOffice",
+  "projectOwner": "Tinadec",
+  "files": [
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "imageSize": 80,
+  "commit": false,
+  "contributorsPerLine": 7,
+  "linkToUsage": true,
+  "contributors": [
+    {
+      "login": "hzeyu3958-cloud",
+      "name": "yangyang",
+      "avatar_url": "https://avatars.githubusercontent.com/u/258392117?v=4",
+      "profile": "https://github.com/hzeyu3958-cloud",
+      "contributions": [
+        "code",
+        "security",
+        "ideas",
+        "bug"
+      ]
+    }
+  ],
+  "repoType": "github",
+  "commitConvention": "angular"
+}

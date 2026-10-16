@@ -152,13 +152,131 @@ TinadecOffice/
 - **Discord** —— [discord.gg/EcKYQfbG72](https://discord.gg/EcKYQfbG72)
 - **X (Twitter)** —— [@tinadecoffice](https://x.com/tinadecoffice)
 
+## 团队
+
+Tinadec 团队 —— 日常建设 TinadecOffice 的人。
+
+<table>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/wwiinnddyy"><img src="https://github.com/wwiinnddyy.png?size=160" width="96" height="96" alt="lincube" /></a><br />
+      <sub><b>lincube</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/wwiinnddyy">@wwiinnddyy</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/chenjintang-shrimp"><img src="https://github.com/chenjintang-shrimp.png?size=160" width="96" height="96" alt="陈晋瑭" /></a><br />
+      <sub><b>陈晋瑭</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/chenjintang-shrimp">@chenjintang-shrimp</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/XMZO"><img src="https://github.com/XMZO.png?size=160" width="96" height="96" alt="XMZO" /></a><br />
+      <sub><b>XMZO</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/XMZO">@XMZO</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/Programmer-MrWang"><img src="https://github.com/Programmer-MrWang.png?size=160" width="96" height="96" alt="Wang Haoyu" /></a><br />
+      <sub><b>Wang Haoyu</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/Programmer-MrWang">@Programmer-MrWang</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/WSXYT"><img src="https://github.com/WSXYT.png?size=160" width="96" height="96" alt="ws xyt" /></a><br />
+      <sub><b>ws xyt</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/WSXYT">@WSXYT</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/Qziky"><img src="https://github.com/Qziky.png?size=160" width="96" height="96" alt="Qziky" /></a><br />
+      <sub><b>Qziky</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/Qziky">@Qziky</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/Ink-dark"><img src="https://github.com/Ink-dark.png?size=160" width="96" height="96" alt="Ink-dark" /></a><br />
+      <sub><b>Ink-dark</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/Ink-dark">@Ink-dark</a></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/adminlby"><img src="https://github.com/adminlby.png?size=160" width="96" height="96" alt="admin" /></a><br />
+      <sub><b>admin</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/adminlby">@adminlby</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/doudou0720"><img src="https://github.com/doudou0720.png?size=160" width="96" height="96" alt="doudou0720" /></a><br />
+      <sub><b>doudou0720</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/doudou0720">@doudou0720</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/fhzit"><img src="https://github.com/fhzit.png?size=160" width="96" height="96" alt="HelloFHZ" /></a><br />
+      <sub><b>HelloFHZ</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/fhzit">@fhzit</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/HelloCHLdev"><img src="https://github.com/HelloCHLdev.png?size=160" width="96" height="96" alt="HelloCHLdev" /></a><br />
+      <sub><b>HelloCHLdev</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/HelloCHLdev">@HelloCHLdev</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/MKStoler1024"><img src="https://github.com/MKStoler1024.png?size=160" width="96" height="96" alt="MKStoler1024" /></a><br />
+      <sub><b>MKStoler1024</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/MKStoler1024">@MKStoler1024</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/Morieity"><img src="https://github.com/Morieity.png?size=160" width="96" height="96" alt="Morieity" /></a><br />
+      <sub><b>Morieity</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/Morieity">@Morieity</a></sub>
+    </td>
+    <td align="center" width="140">
+      <a href="https://github.com/yuanbenxin"><img src="https://github.com/yuanbenxin.png?size=160" width="96" height="96" alt="本新同学" /></a><br />
+      <sub><b>本新同学</b></sub><br />
+      <!-- role -->
+      <sub><a href="https://github.com/yuanbenxin">@yuanbenxin</a></sub>
+    </td>
+  </tr>
+</table>
+
 ## 贡献者
 
-<a href="https://github.com/Tinadec/TinadecOffice/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Tinadec/TinadecOffice&anon=1" alt="Contributors" />
-</a>
+上表[团队](#团队)之外的贡献者。本表由 [all-contributors](https://allcontributors.org) 依据 [`.all-contributorsrc`](.all-contributorsrc) 生成 —— 不手工编辑 —— 且刻意不收录团队成员。
 
-与我们一起建设的还有 **Wang Haoyu**：文档与代码对齐、环境修复与 If-Match 修复、界面重写、主题页（PR #22–#25，随 #27 压缩合并进主干）。
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/hzeyu3958-cloud"><img src="https://avatars.githubusercontent.com/u/258392117?v=4?s=80" width="80px;" alt="yangyang"/><br /><sub><b>yangyang</b></sub></a><br /><a href="https://github.com/Tinadec/TinadecOffice/commits?author=hzeyu3958-cloud" title="Code">💻</a> <a href="#security-hzeyu3958-cloud" title="Security">🛡️</a> <a href="#ideas-hzeyu3958-cloud" title="Ideas, Planning, & Feedback">🤔</a> <a href="https://github.com/Tinadec/TinadecOffice/issues?q=author%3Ahzeyu3958-cloud" title="Bug reports">🐛</a></td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr>
+      <td align="center" size="13px" colspan="7">
+        <img src="https://raw.githubusercontent.com/all-contributors/all-contributors-cli/1b8533af435da9854653492b1327a23a4dbd0a10/assets/logo-small.svg">
+          <a href="https://all-contributors.js.org/docs/en/bot/usage">Add your contributions</a>
+        </img>
+      </td>
+    </tr>
+  </tfoot>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+完整提交记录见 [GitHub 贡献者图谱](https://github.com/Tinadec/TinadecOffice/graphs/contributors)。提交元数据中的自动化与 AI 身份不计入贡献者。
 
 ## Star 历史
 

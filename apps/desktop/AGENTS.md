@@ -6,9 +6,11 @@
 
 **实时状态是对话流里的步骤，不是会消失的标题。** `TurnWork` 每个阶段都有 Lucide 图标：起草 `PenLine`、规划 `ListChecks`、思考 `Brain`、工具 `Wrench`；当前 live 事件落定后仍回退到最近的 `plan`/`reasoning`，避免下一事件到达前退回泛化的“正在思考”。`ConversationTurn` 的答案占位同样按 run phase 显示“正在规划”或“正在起草”，并带对应图标。`TurnWork` 新增必需的 `runStatus`；`working` 仍只表示真正在产出，不把 parked 当工作。
 
+**监督裁决先解释再决定。** `supervision.user_review.requested.brief` 由 Core 按任务结果、未满足成功标准、监督可用性和修订预算确定性生成。`SupervisionGate` 以结构化摘要、建议和每个选项的后果呈现；原始 machine reasons 收进 `<details>`，旧事件无 brief 时回退到原列表。`brief` 不进入 `MeetingResponse`，assistant answer 仍只表示 run 完成后的正式答复。类型和容错解析在 `lib/conversation/supervision.ts`，reducer 与 space-mode `useAgentActivity` 共用。
+
 **Vite 冷启动优化器会卡在 UIE 的循环 barrel 上。** `vite.config.ts` 改为 `optimizeDeps.noDiscovery: true` + 显式首屏依赖清单；Monaco、Mermaid、Recharts、图标静态包等重依赖走 lazy/按需，不参与首屏预构建。新增 eager 的裸包 import 必须同步加入 `include`；`highlight.js/lib/core` 必须单列，否则原生 ESM 路径没有 default interop。不要退回默认全源图扫描，否则清空 `.vite` 后启动会停在“正在生成”且 `main.ts` 请求不返回。
 
-**验证**：`vue-tsc --noEmit` 通过；SSE/监督/阶段/国际化定向 **34/34**；`vite build` 成功（6m38s，既有大 chunk 警告仍在）。真实 Electron 用用户数据根复测：监督卡可见可答，真实模型 run 依次显示“正在规划 → 正在思考 → 正在起草”，完成后答案 `状态步骤图标已显示。` 入流。不要把无头组件测试当作这条链路的验收；IPC trust、原生 fetch 和真实 SSE 都必须在 Electron 里复验。
+**验证**：`vue-tsc --noEmit` 通过；SSE/监督/阶段/国际化定向 **34/34**，brief gate/reducer/i18n 定向 **25/25**；`vite build` 成功（6m38s，既有大 chunk 警告仍在）。真实 Electron 用用户数据根复测：监督卡可见可答，真实模型 run 依次显示“正在规划 → 正在思考 → 正在起草”，完成后答案 `状态步骤图标已显示。` 入流。不要把无头组件测试当作这条链路的验收；IPC trust、原生 fetch 和真实 SSE 都必须在 Electron 里复验。
 
 ## 2026-10-18 平面模式：状态进对话流，表头只剩标题
 

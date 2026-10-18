@@ -15,6 +15,8 @@
 
 平面状态不再是会消失的标题：`TurnWork` 以 `PenLine`/`ListChecks`/`Brain`/`Wrench` 分别表示起草、规划、思考、工具；live 事件落定后回退到最近的 plan/reasoning，保持“正在做什么”可见。`ConversationTurn` 在首个答案帧前按 run phase 显示“正在规划”或“正在起草”。真实模型 run 已验证“正在规划 → 正在思考 → 正在起草 → 答案入流”，完成后折叠摘要保留阶段记录。子智能体继续保持 Qoder 式层级卡，不另造重复入口。
 
+监督升级的 `supervision.user_review.requested` 现在带确定性 `brief`，gate 先展示任务完成数、阻塞/失败/未完成、缺少证据的成功标准、监督是否可用和修订预算，再给每个选项的后果；原始 machine reasons 折叠保留。`brief` 不是 `MeetingResponse`，正式答案仍只在决策后产生。
+
 `vite.config.ts` 的依赖优化改为显式首屏 `include` + `noDiscovery`，避开 UIE 循环 barrel 在冷缓存下卡死；Monaco/Mermaid/Recharts 等重包按需加载。新增 eager 裸包 import 必须同步 include，`highlight.js/lib/core` 必须单列以保留 default interop。验证：`vue-tsc` 通过、定向 34/34、生产构建成功、真实 Electron 监督卡与两条真实消息通过。详细记录见 `apps/desktop/AGENTS.md` 与 `.tinadec_dev/evidence/2026-10-18-supervision-gate/`。
 
 ### 2026-10-18 全链路性能（用户报告"整个应用很慢"）

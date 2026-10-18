@@ -66,6 +66,12 @@ Electron 实页观察到：
 内容: 状态步骤图标已显示。
 ```
 
+## 结构化裁决 brief
+
+监督 gate 增加 Core 确定性生成的 `brief`，不新增模型调用，也不写 `MeetingResponse`。payload 包含任务完成/阻塞/失败/未完成数、未满足成功标准数、修订预算和监督模型可用性。Desktop 展示可读摘要和每个选项后果，原始 reasons 收进折叠详情；旧事件没有 brief 时回退到原 reason 列表。
+
+验证：Core brief 单测 1/1；真实 supervision API 事件断言 1/1；Desktop gate/reducer/i18n 定向 25/25；`vue-tsc --noEmit` 通过。
+
 另一次真实 Team/worker run：
 
 - session `0FC72DE9-C555-4C44-9C4D-AD3B856F11D7`

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <NoWarn>OPENAI001;MEAI001;MSB3277</NoWarn>
+    <!--
+      InternalsVisibleTo in TinadecCore.DmaEA / TinadecCore.Models grants this probe
+      access to ModelOutputStream (the coalescing rule under test) and to the protocol
+      clients. Only the assembly NAME is borrowed; no production file is changed.
+    -->
+    <AssemblyName>TinadecCore.AgentFramework.Tests</AssemblyName>
+    <RootNamespace>StreamProbe</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="C:\git\agent\TinadecOffice\TinadecCore\DmaEA\TinadecCore.DmaEA.csproj" />
+    <ProjectReference Include="C:\git\agent\TinadecOffice\TinadecCore\Models\TinadecCore.Models.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pin the same OpenAI SDK the running Core resolves (Api/bin net10.0 = 2.12.0). -->
+    <PackageReference Include="OpenAI" Version="2.12.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.0" />
+  </ItemGroup>
+
+</Project>

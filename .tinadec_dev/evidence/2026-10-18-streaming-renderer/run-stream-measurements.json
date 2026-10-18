@@ -1,0 +1,237 @@
+[
+ {
+  "run_id": "07D22BCC-2D23-44DD-9B80-45491169664E",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "1099F9B6-376E-4D7B-BCE5-2FAB98E59C39",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "548A7D9E-10F6-450E-A947-3B1FF067324E",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "21B86D54-E5E6-4BA7-93F7-E6E0194560B1",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "7B3B2C18-CA45-4B48-9F0B-31C0F5A5D0D3",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "D6E0CEA3-B28C-4776-8735-E7FB525F83A2",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "BBAC004B-349F-42B5-90D8-A07F98E12F20",
+  "status": "failed",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "253B3B1F-E42B-48C7-A29D-D3D7D0AA38D4",
+  "status": "cancelled",
+  "total_s": 362.21,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "F3C56554-7449-4938-B57E-B57755414D53",
+  "status": "completed",
+  "total_s": 81.73,
+  "ack_to_answer_started_s": 62.84,
+  "answer_started_to_first_delta_s": 6.25,
+  "text_window_s": 0.88,
+  "last_delta_to_done_s": 11.75,
+  "answer_delta_count": 2,
+  "chunk_gaps_ms": [
+   882
+  ]
+ },
+ {
+  "run_id": "D7615B3B-6BD1-4566-9BEA-35F0571E3A83",
+  "status": "awaiting_user",
+  "total_s": null,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "91A9438F-E0ED-4860-9321-6F461C2EDAF7",
+  "status": "cancelled",
+  "total_s": 46.67,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "29A7F645-E518-4B36-8243-BFFA56D3265B",
+  "status": "completed",
+  "total_s": 16.46,
+  "ack_to_answer_started_s": 12.74,
+  "answer_started_to_first_delta_s": 2.04,
+  "text_window_s": 0.43,
+  "last_delta_to_done_s": 1.24,
+  "answer_delta_count": 3,
+  "chunk_gaps_ms": [
+   336,
+   99
+  ]
+ },
+ {
+  "run_id": "94FC4AD7-BE69-4207-9FEF-EF9638DD6ED7",
+  "status": "completed",
+  "total_s": 49.63,
+  "ack_to_answer_started_s": 36.28,
+  "answer_started_to_first_delta_s": 8.08,
+  "text_window_s": 3.64,
+  "last_delta_to_done_s": 1.63,
+  "answer_delta_count": 15,
+  "chunk_gaps_ms": [
+   220,
+   243,
+   227,
+   262,
+   210,
+   225,
+   439,
+   210,
+   232,
+   234,
+   284,
+   265,
+   289,
+   301
+  ]
+ },
+ {
+  "run_id": "A1602FC2-22BF-420E-A023-A920D43B3FB5",
+  "status": "cancelled",
+  "total_s": 12.13,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "B4D54641-F27F-464B-9CDA-3ED95A086924",
+  "status": "cancelled",
+  "total_s": 599.33,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "B294637F-96CE-48CA-9A11-1FDB893D455F",
+  "status": "cancelled",
+  "total_s": 497.32,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "1AD5BA8C-9253-4F94-B42B-C8DAF7BFEE2C",
+  "status": "completed",
+  "total_s": 27.51,
+  "ack_to_answer_started_s": 19.05,
+  "answer_started_to_first_delta_s": 3.35,
+  "text_window_s": 4.12,
+  "last_delta_to_done_s": 0.99,
+  "answer_delta_count": 4,
+  "chunk_gaps_ms": [
+   3489,
+   296,
+   337
+  ]
+ },
+ {
+  "run_id": "1EC15446-BCC2-4AB5-B3A7-BE9543F4B526",
+  "status": "cancelled",
+  "total_s": 998.68,
+  "ack_to_answer_started_s": null,
+  "answer_started_to_first_delta_s": null,
+  "text_window_s": 0,
+  "last_delta_to_done_s": null,
+  "answer_delta_count": 0,
+  "chunk_gaps_ms": []
+ },
+ {
+  "run_id": "6E36E2E4-723A-4F9F-9670-A785771C9D29",
+  "status": "completed",
+  "total_s": 85.83,
+  "ack_to_answer_started_s": 74.11,
+  "answer_started_to_first_delta_s": 3.32,
+  "text_window_s": 0.3,
+  "last_delta_to_done_s": 8.1,
+  "answer_delta_count": 2,
+  "chunk_gaps_ms": [
+   301
+  ]
+ }
+]

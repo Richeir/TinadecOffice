@@ -53,6 +53,10 @@ public static class DbContextSchemaBootstrapper
     private static async Task ReconcileModelColumnsAsync(DbContext db, CancellationToken cancellationToken)
     {
         var isSqlite = db.Database.IsSqlite();
+        // One catalog read per context instead of one round trip per table and per
+        // nullable column. Mounting a real project scope measured 698
+        // pragma_table_info round trips (~5.8 s) across 12 contexts before this.
+        var catalog = new SqliteColumnCatalog(db, isSqlite);
         var expectedByTable = new Dictionary<(string TableName, string? Schema), List<IProperty>>();
         foreach (var entityType in db.Model.GetEntityTypes())
         {
@@ -77,7 +81,7 @@ public static class DbContextSchemaBootstrapper
         foreach (var entry in expectedByTable)
         {
             var tableName = entry.Key.TableName;
-            var actualColumns = await GetTableColumnsAsync(db, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
+            var actualColumns = await GetTableColumnsAsync(db, catalog, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
             if (actualColumns is null) continue;
             var table = StoreObjectIdentifier.Table(tableName, entry.Key.Schema);
             foreach (var property in entry.Value)
@@ -88,9 +92,9 @@ public static class DbContextSchemaBootstrapper
             }
         }
 
-        await DropLegacyCapabilityLeaseNonceAsync(db, isSqlite, cancellationToken).ConfigureAwait(false);
-        await DropLegacyNotNullColumnsAsync(db, expectedByTable, isSqlite, cancellationToken).ConfigureAwait(false);
-        await RelaxModelNullableColumnsAsync(db, expectedByTable, isSqlite, cancellationToken).ConfigureAwait(false);
+        await DropLegacyCapabilityLeaseNonceAsync(db, catalog, isSqlite, cancellationToken).ConfigureAwait(false);
+        await DropLegacyNotNullColumnsAsync(db, catalog, expectedByTable, isSqlite, cancellationToken).ConfigureAwait(false);
+        await RelaxModelNullableColumnsAsync(db, catalog, expectedByTable, isSqlite, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -104,6 +108,7 @@ public static class DbContextSchemaBootstrapper
     /// </summary>
     private static async Task RelaxModelNullableColumnsAsync(
         DbContext db,
+        SqliteColumnCatalog catalog,
         Dictionary<(string TableName, string? Schema), List<IProperty>> expectedByTable,
         bool isSqlite,
         CancellationToken cancellationToken)
@@ -111,7 +116,7 @@ public static class DbContextSchemaBootstrapper
         foreach (var entry in expectedByTable)
         {
             var tableName = entry.Key.TableName;
-            var actualColumns = await GetTableColumnsAsync(db, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
+            var actualColumns = await GetTableColumnsAsync(db, catalog, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
             if (actualColumns is null) continue;
             var table = StoreObjectIdentifier.Table(tableName, entry.Key.Schema);
             var targets = new List<string>();
@@ -120,7 +125,7 @@ public static class DbContextSchemaBootstrapper
                 if (!property.IsNullable) continue;
                 var columnName = property.GetColumnName(table);
                 if (columnName is null || !actualColumns.Contains(columnName)) continue;
-                if (await IsNotNullColumnAsync(db, tableName, columnName, isSqlite, cancellationToken).ConfigureAwait(false))
+                if (await IsNotNullColumnAsync(db, catalog, tableName, columnName, isSqlite, cancellationToken).ConfigureAwait(false))
                     targets.Add(columnName);
             }
             if (targets.Count == 0) continue;
@@ -190,9 +195,9 @@ public static class DbContextSchemaBootstrapper
     /// <c>nonce_secret_reference</c>; the stale inline column breaks lease
     /// inserts on databases upgraded from that era. Drop it when present.
     /// </summary>
-    private static async Task DropLegacyCapabilityLeaseNonceAsync(DbContext db, bool isSqlite, CancellationToken cancellationToken)
+    private static async Task DropLegacyCapabilityLeaseNonceAsync(DbContext db, SqliteColumnCatalog catalog, bool isSqlite, CancellationToken cancellationToken)
     {
-        var actualColumns = await GetTableColumnsAsync(db, "capability_leases", isSqlite, cancellationToken).ConfigureAwait(false);
+        var actualColumns = await GetTableColumnsAsync(db, catalog, "capability_leases", isSqlite, cancellationToken).ConfigureAwait(false);
         if (actualColumns is null || !actualColumns.Contains("nonce")) return;
         if (isSqlite)
         {
@@ -215,6 +220,7 @@ public static class DbContextSchemaBootstrapper
     /// </summary>
     private static async Task DropLegacyNotNullColumnsAsync(
         DbContext db,
+        SqliteColumnCatalog catalog,
         Dictionary<(string TableName, string? Schema), List<IProperty>> expectedByTable,
         bool isSqlite,
         CancellationToken cancellationToken)
@@ -222,7 +228,7 @@ public static class DbContextSchemaBootstrapper
         foreach (var entry in expectedByTable)
         {
             var tableName = entry.Key.TableName;
-            var actualColumns = await GetTableColumnsAsync(db, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
+            var actualColumns = await GetTableColumnsAsync(db, catalog, tableName, isSqlite, cancellationToken).ConfigureAwait(false);
             if (actualColumns is null) continue;
             var mapped = entry.Value
                 .Select(property => property.GetColumnName(StoreObjectIdentifier.Table(tableName, entry.Key.Schema)))
@@ -233,7 +239,7 @@ public static class DbContextSchemaBootstrapper
             foreach (var column in actualColumns.ToList())
             {
                 if (mapped.Contains(column)) continue;
-                var notNull = await IsNotNullColumnAsync(db, tableName, column, isSqlite, cancellationToken).ConfigureAwait(false);
+                var notNull = await IsNotNullColumnAsync(db, catalog, tableName, column, isSqlite, cancellationToken).ConfigureAwait(false);
                 if (!notNull) continue; // nullable legacy columns are inert; keep them
                 await DropLegacyColumnAsync(db, tableName, column, isSqlite, cancellationToken).ConfigureAwait(false);
                 actualColumns.Remove(column);
@@ -241,14 +247,12 @@ public static class DbContextSchemaBootstrapper
         }
     }
 
-    private static async Task<bool> IsNotNullColumnAsync(DbContext db, string tableName, string columnName, bool isSqlite, CancellationToken cancellationToken)
+    private static async Task<bool> IsNotNullColumnAsync(DbContext db, SqliteColumnCatalog catalog, string tableName, string columnName, bool isSqlite, CancellationToken cancellationToken)
     {
         if (isSqlite)
         {
-            var notNull = await db.Database
-                .SqlQueryRaw<int>("SELECT \"notnull\" AS \"Value\" FROM pragma_table_info({0}) WHERE \"name\" = {1}", tableName, columnName)
-                .ToListAsync(cancellationToken).ConfigureAwait(false);
-            return notNull.Count > 0 && notNull[0] == 1;
+            var notNull = await catalog.IsNotNullAsync(tableName, columnName, cancellationToken).ConfigureAwait(false);
+            return notNull == true;
         }
         var pgNullable = await db.Database
             .SqlQueryRaw<string>("SELECT is_nullable AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = {0} AND column_name = {1}", tableName, columnName)
@@ -283,14 +287,11 @@ public static class DbContextSchemaBootstrapper
     }
 
     /// <summary>Returns the column names of an existing table, or <c>null</c> when the table does not exist.</summary>
-    private static async Task<List<string>?> GetTableColumnsAsync(DbContext db, string tableName, bool isSqlite, CancellationToken cancellationToken)
+    private static async Task<List<string>?> GetTableColumnsAsync(DbContext db, SqliteColumnCatalog catalog, string tableName, bool isSqlite, CancellationToken cancellationToken)
     {
         if (isSqlite)
         {
-            var columns = await db.Database
-                .SqlQueryRaw<string>("SELECT \"name\" AS \"Value\" FROM pragma_table_info({0})", tableName)
-                .ToListAsync(cancellationToken).ConfigureAwait(false);
-            return columns.Count == 0 ? null : columns;
+            return await catalog.ColumnsAsync(tableName, cancellationToken).ConfigureAwait(false);
         }
         var postgresColumns = await db.Database
             .SqlQueryRaw<string>("SELECT column_name AS \"Value\" FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = {0}", tableName)
@@ -318,4 +319,55 @@ public static class DbContextSchemaBootstrapper
         TypeCode.DateTime => "'0001-01-01 00:00:00'",
         _ => clrType == typeof(Guid) ? "'00000000-0000-0000-0000-000000000000'" : null
     };
+
+    /// <summary>
+    /// One SQLite catalog read per context. <c>pragma_table_info</c> is a table-valued
+    /// function, so a single query returns every table's columns; the per-table and
+    /// per-column shape it replaces cost one round trip each (698 measured while
+    /// mounting one real project scope, ~5.8 s). Results are memoized because a
+    /// reconciliation only reads, and the create script that follows may add
+    /// tables/columns that are never queried again through this object.
+    /// </summary>
+    private sealed class SqliteColumnCatalog(DbContext db, bool isSqlite)
+    {
+        private readonly Dictionary<string, Dictionary<string, bool>> _tables = new(StringComparer.OrdinalIgnoreCase);
+        private Task? _loaded;
+
+        private async Task LoadAsync(CancellationToken cancellationToken)
+        {
+            var rows = await db.Database
+                .SqlQueryRaw<string>("SELECT m.name || char(31) || p.name || char(31) || p.\"notnull\" AS \"Value\" FROM sqlite_master AS m JOIN pragma_table_info(m.name) AS p WHERE m.type = 'table'")
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var row in rows)
+            {
+                var parts = row.Split('\u001f');
+                if (parts.Length < 3) continue;
+                if (!_tables.TryGetValue(parts[0], out var columns))
+                    _tables[parts[0]] = columns = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                columns[parts[1]] = parts[2] == "1";
+            }
+        }
+
+        private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
+        {
+            if (_loaded is null) _loaded = LoadAsync(cancellationToken);
+            await _loaded.ConfigureAwait(false);
+        }
+
+        /// <summary>Column names of an existing table, or null when the table does not exist.</summary>
+        public async Task<List<string>?> ColumnsAsync(string tableName, CancellationToken cancellationToken)
+        {
+            if (!isSqlite) throw new InvalidOperationException("The SQLite column catalog is only valid for a SQLite database.");
+            await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+            return _tables.TryGetValue(tableName, out var columns) && columns.Count > 0 ? [.. columns.Keys] : null;
+        }
+
+        /// <summary>Whether the column is declared NOT NULL; null when the table or column is absent.</summary>
+        public async Task<bool?> IsNotNullAsync(string tableName, string columnName, CancellationToken cancellationToken)
+        {
+            if (!isSqlite) throw new InvalidOperationException("The SQLite column catalog is only valid for a SQLite database.");
+            await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
+            return _tables.TryGetValue(tableName, out var columns) && columns.TryGetValue(columnName, out var notNull) ? notNull : null;
+        }
+    }
 }

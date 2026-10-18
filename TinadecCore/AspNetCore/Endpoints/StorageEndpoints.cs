@@ -121,13 +121,16 @@ public static class StorageEndpoints
                 {
                     await using var lease = await registry.AcquireAsync(scope.StorageId, ct).ConfigureAwait(false);
                     var records = await lease.Services.GetRequiredService<ProjectSessionStore>().ListSessionsAsync(selected is null ? null : Guid.Parse(selected), status, ct).ConfigureAwait(false);
-                    foreach (var record in records) aggregate.Add(await ToSessionEnrichedAsync(record, lease.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>(), ct, scope.StorageId).ConfigureAwait(false));
+                    var defaults = await LoadSessionModeDefaultsAsync(records, lease.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>(), ct).ConfigureAwait(false);
+                    foreach (var record in records) aggregate.Add(ToSessionEnriched(record, scope.StorageId, defaults));
                 }
                 return Results.Ok(aggregate);
             }
             var sessions = await store.ListSessionsAsync(selected is null ? null : Guid.Parse(selected), status, ct).ConfigureAwait(false);
+            var sessionDefaults = await LoadSessionModeDefaultsAsync(sessions, cfgFactory, ct).ConfigureAwait(false);
             var enriched = new List<object>(sessions.Count);
-            foreach (var s in sessions) enriched.Add(await ToSessionEnrichedAsync(s, cfgFactory, ct, http.RequestServices.GetService<IScopeStorageLocations>()?.StorageId).ConfigureAwait(false));
+            var scopeStorageId = http.RequestServices.GetService<IScopeStorageLocations>()?.StorageId;
+            foreach (var s in sessions) enriched.Add(ToSessionEnriched(s, scopeStorageId, sessionDefaults));
             return Results.Ok(enriched);
         });
 
@@ -518,24 +521,49 @@ public static class StorageEndpoints
         lifecycle_status = session.LifecycleStatus, trashed_at = session.TrashedAt
     };
 
-    private static async Task<object> ToSessionEnrichedAsync(SessionRecord session, IDbContextFactory<AgentConfigurationDbContext> cfgFactory, CancellationToken ct, string? storageId = null)
+    /// <summary>
+    /// The workspace default mode is one row per workspace. Reading it inside the
+    /// per-session projection created one DbContext and one query per session
+    /// (9 sessions in the measured project read the same single row 9 times).
+    /// Callers with a batch read it once and pass the map in; the single-session
+    /// paths keep the lazy fallback so a lone read still works.
+    /// </summary>
+    private static async Task<Dictionary<(Guid TenantId, Guid WorkspaceId), Guid?>> LoadSessionModeDefaultsAsync(
+        IReadOnlyCollection<SessionRecord> sessions, IDbContextFactory<AgentConfigurationDbContext> cfgFactory, CancellationToken ct)
     {
-        bool hasUpdate = false;
-        Guid? latestModeVersionId = null;
+        var result = new Dictionary<(Guid, Guid), Guid?>();
+        var tenantIds = sessions.Select(x => x.TenantId).Distinct().ToArray();
+        var workspaceIds = sessions.Select(x => x.WorkspaceId).Distinct().ToArray();
+        if (tenantIds.Length == 0) return result;
         try
         {
             await using var cfg = await cfgFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            var wsDefault = await cfg.WorkspaceDefaults.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == session.TenantId && x.WorkspaceId == session.WorkspaceId, ct).ConfigureAwait(false);
-            if (wsDefault?.DefaultModeVersionId is { } defaultModeVersionId)
-            {
-                latestModeVersionId = defaultModeVersionId;
-                if (latestModeVersionId.HasValue && session.ModeVersionId.HasValue)
-                    hasUpdate = latestModeVersionId.Value != session.ModeVersionId.Value;
-                else if (latestModeVersionId.HasValue && !session.ModeVersionId.HasValue)
-                    hasUpdate = true;
-            }
+            var rows = await cfg.WorkspaceDefaults.AsNoTracking()
+                .Where(x => tenantIds.Contains(x.TenantId) && workspaceIds.Contains(x.WorkspaceId))
+                .Select(x => new { x.TenantId, x.WorkspaceId, x.DefaultModeVersionId })
+                .ToListAsync(ct).ConfigureAwait(false);
+            foreach (var row in rows) result[(row.TenantId, row.WorkspaceId)] = row.DefaultModeVersionId;
         }
         catch { }
+        return result;
+    }
+
+    private static async Task<object> ToSessionEnrichedAsync(SessionRecord session, IDbContextFactory<AgentConfigurationDbContext> cfgFactory, CancellationToken ct, string? storageId = null)
+        => ToSessionEnriched(session, storageId, await LoadSessionModeDefaultsAsync([session], cfgFactory, ct).ConfigureAwait(false));
+
+    private static object ToSessionEnriched(
+        SessionRecord session,
+        string? storageId,
+        Dictionary<(Guid TenantId, Guid WorkspaceId), Guid?> defaults)
+    {
+        bool hasUpdate = false;
+        Guid? latestModeVersionId = null;
+        if (defaults.TryGetValue((session.TenantId, session.WorkspaceId), out var defaultModeVersionId)
+            && defaultModeVersionId is { } resolvedDefault)
+        {
+            latestModeVersionId = resolvedDefault;
+            hasUpdate = session.ModeVersionId != resolvedDefault;
+        }
         return new { id = session.Id, storage_id = storageId, project_id = session.ProjectId, title = session.Title, status = session.Status, view_mode = session.ViewMode ?? "flat", mode_version_id = session.ModeVersionId, conversation_node_key = session.ConversationNodeKey, conversation_template_slug = session.ConversationTemplateSlug, meeting_model_override = ToMeetingModelOverride(session), permission_mode = session.PermissionMode ?? "default", space_options = ToSpaceOptionsDto(ProjectSessionStore.ReadSpaceOptions(session)), settings_revision = session.SettingsRevision, has_update = hasUpdate, latest_mode_version_id = latestModeVersionId, summary = session.Summary, history_revision = session.HistoryRevision, created_at = session.CreatedAt, updated_at = session.UpdatedAt, lifecycle_status = session.LifecycleStatus, trashed_at = session.TrashedAt };
     }
 

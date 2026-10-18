@@ -1162,6 +1162,13 @@ public sealed class StorageLifecycleService : IStorageMigrationParticipant
     {
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var runs = await db.Runs.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
+        // One existence read for the whole pass, never one per record: the rescan replays every
+        // line of every event file, and the previous per-record AnyAsync cost one round trip per
+        // line (measured 3,247 trips / ~55 s mounting one real project scope, which the first page
+        // load waits behind). The set keeps the original global event_id test exactly: an event
+        // already indexed under a different run stays a skip, not a duplicate-key insert.
+        var known = (await db.EventIndex.AsNoTracking().Select(x => x.EventId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false)).ToHashSet();
         foreach (var run in runs)
         {
             var path = _paths.EventLog(run.Id);
@@ -1181,7 +1188,7 @@ public sealed class StorageLifecycleService : IStorageMigrationParticipant
                 {
                     var record = JsonSerializer.Deserialize<EventFileRecord>(bytes.AsSpan(offset, newline - offset), JsonOptions)
                         ?? throw new JsonException("Event record was empty.");
-                    if (!await db.EventIndex.AnyAsync(x => x.EventId == record.EventId, cancellationToken).ConfigureAwait(false))
+                    if (known.Add(record.EventId))
                     {
                         db.EventIndex.Add(new EventIndexRecord { EventId = record.EventId, TenantId = run.TenantId, WorkspaceId = run.WorkspaceId, RunId = record.RunId, SessionId = record.SessionId, ProjectId = record.ProjectId, EventType = record.EventType, Severity = record.Severity, Sequence = record.Sequence, TaskId = record.TaskId, ApprovalId = record.ApprovalId, ToolId = record.ToolId, Summary = record.Summary, SchemaVersion = record.Version, PayloadHash = Convert.ToHexString(SHA256.HashData(bytes.AsSpan(offset, newline - offset))).ToLowerInvariant(), RelativeFilePath = Path.Combine("events", run.Id + ".events.jsonl"), ByteOffset = offset, ByteLength = length, Timestamp = record.Timestamp });
                     }

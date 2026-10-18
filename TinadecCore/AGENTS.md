@@ -198,9 +198,25 @@ The current worktree contains 23 source projects and 4 test projects, including 
 
 `CreateModelFactory` 给主链的 tracking client 注入输出观察器；`GetResponseAsync` 在观察器存在时走 provider streaming，再用 M.E.AI `ToChatResponse()` 保留函数调用/用量。运营旁路不观察，避免 run 完结后重新冒出思考。每次 candidate attempt 使用真实 invocation id 作为 `response_id`，失败尝试的正文不能拼进下一次尝试。
 
-`ModelOutputStream` 首段立即发送，后续在 token 到达时按 100ms/256 字符合并，换通道/结束必刷。只投影公开文本；SDK `ProtectedData`、raw metadata、提示词与参数禁止进入事件。主链的 `model.output.*` 会话事件与工具共用 journal sequence；正式 meeting 额外写 `answer.started/delta/failed` run SSE 预览，最终 `delta` 仍在 `TryClaimRunCompletionAsync` 之后。消费者必须在 started/failed 清预览、在最终 delta 替换；断流恢复复用原有 seq 去重。发布前复核运行终态/暂停和 lease owner/recovery epoch。
+`ModelOutputStream` 首段立即发送，后续在 token 到达时按 100ms/256 字符合并，换通道/结束必刷。只投影公开文本；SDK `ProtectedData`、raw metadata、提示词与参数禁止进入事件。主链的 `model.output.*` 会话事件与工具共用 journal sequence。发布前复核运行终态/暂停和 lease owner/recovery epoch。
 
 验证：Api 相关三类 68/68，AgentFramework 336/336，Architecture 17/17。`InvokeStream_AnswerArrivesBeforeTheProviderFinishes_AndCommitDoesNotDuplicateIt` 在 provider 闸门未放行时断首段已到达且 assistant 未落库；`ModelOutputStreamTests` 验分帧标签/公开推理/受保护数据不出线/函数调用与用量保留，并用真实 SDK + 假 HTTP SSE 验兼容 reasoning 字段；`StreamingRetryKeepsEachAttemptSeparate_AndDoesNotCommitFailedText` 验失败与成功各自的 response id 和最终正文。SSE kind 是既有 string 字段，新增事件负载不生成 HTTP DTO；三份契约产物无字节改动。端点/Gateway 仍透传，不另建第二套传输。未跑 Core Api 全量、PG、真实外部模型或 Electron 视觉验收。
+
+## STREAMING ANSWER AND RENDER PATH（2026-10-18）
+
+**答案只有一个流式 kind：`answer.delta`。** 旧的 `kind="delta"` 全文行已删除——它让同一个答案在库里存了三份（`messages.content`、`delta`、`answer.delta` 各一），实测 5/5 run 逐字节相等。`AnswerDraft`（`DmaEA/AnswerDraft.cs`）是答案的唯一累积器：流式走 `Append`，不走模型的路（evidence fallback、status_query）走 `SetWhole` 并在终态补发一条 `answer.delta` 全文，客户端因此只有"追加"一种处理方式。前端 `projectRunReply` 随之从含 `provisional` 状态机的 12 行降到 8 行纯累加。
+
+**`AnswerStreaming`（None / WorkLayer / AnswerLayer）取代了 `streamAnswer` 布尔。** 布尔只能回答"流不流"，而真实维度是"流到哪一层"：solo dispatch 下 meeting 同时是 worker，它的工作散文该进活动区、它的答案该进正文区。12 处 `CreateModelFactory` 调用全部显式标注，不再依赖默认值。**注意 `WorkLayer` 目前与 `None` 行为相同**——worker 文本本来就经 `model.output.*`（`channel=text`）进事件表，由 `reasoner` 渲染；枚举在这里是意图声明，不是新通路。
+
+**渲染不再经过 DB 轮询。** `RunStreamProjection`（`DmaEA/RunStreamProjection.cs`，DI 单例、每个 storage scope 一个）由 `FullDuplexRunEngine.PublishRunStreamAsync` 在**持久写入返回之后**发布，`FollowAsync` 优先读它、按信号唤醒而不是每 150 ms 查表，读不到就降级回 `ReplayRunStreamAsync`。四条约束都是承重的：先写后发布（读者不会看到崩溃会丢的 token）；空 buffer **不算**覆盖（否则跟随者会静默跳过存储里的历史帧）；每轮重评估数据源（跟随者才能从中途 replay 切到 live）；游标落后于保留窗口即降级（`Covers` 判据）。投影丢失只影响速度，不影响正确性——DB 仍是唯一真相。
+
+**删掉了伪造 done 的补丁。** 旧 `FollowAsync` 在读不到 `done` 帧时重试 3 次 `ReconcileTerminalRunAsync`，仍失败就伪造一个 `FinishReason: "completed"` 的 done 交给前端，前端无法分辨。现在 done 帧由写它的同一段代码发布，不需要事后修补；终态缺帧时直接汇报持久状态。
+
+回归：`RunStreamProjectionTests` 10/10（覆盖幂等、空 buffer 不覆盖、保留窗口、等待/唤醒/超时/取消）；`LifecycleManagementApiTests.FollowAsync_ServesAPublishedFrameWithoutReplayingStorage` 用真实 DI 容器证明投影路径送达帧；Dmaea 端点 8/8；`runReply.test.ts` 4/4；`vue-tsc` 无错。**未验证**：真实 Electron 观感、真实模型端到端、PostgreSQL。
+
+**落盘窗口聚合已评估并否决（2026-10-18，有测量）。** 真实库 5 个 run 只有 26 个 `answer.delta` 帧（平均 5.2/run，中位数 3），按 500ms 聚合只省 10 次本地 SQLite 写入。为这个量级引入窗口缓冲、终态强制 flush、崩溃处置与投影发布时序协调，代价远大于收益；而且聚合会让最后 500ms 的正文不落盘，破坏现在「写盘之后才发布、读者永远看不到会丢的 token」这条性质。若将来真出现长正文高频输出（上千帧），按那时的实测再决定。
+
+**答案出现前的静默是观感问题的真正来源（2026-10-18）。** 同一批 run 量出 `run 开始 → answer.started` 占整轮 69%–86%（12.7–74.1 s），而答案窗口只有 3.7–18.9 s；答案到达后的帧本身健康（200–300 ms 间隔、152–299 字节、真增量）。所以「输出完突然显示」不是流式坏了，是那几十秒里界面上没有答案区。`ConversationTurn.vue` 因此在活跃 run 尚无答案文本时，于答案位置渲染 `conversation.reasoning.drafting` 占位（`data-testid="answer-drafting"`，`role=status`）；判据只用 `run.live` 而不看 activity 是否有内容，因为 run 刚启动时 entries 为空、那正是最需要占位的时刻。`ConversationTurn.test.ts` 4/4 钉住四种情形（活跃无文本显示、有流式文本让位、结束后消失、已取消不显示）。**这条不缩短真实等待**——前几十秒模型确实在思考/调工具，缩短等待需要提高首字延迟或减少前置步骤，属另一条优化线。
 
 ## SUPERVISION REVIEW（2026-09-24）
 

@@ -93,6 +93,9 @@ internal sealed class FullDuplexRunCoordinator : IFullDuplexRunCoordinator
     private readonly ITinaChatRunInput? _chatInputs;
     private readonly ISessionStorageAdmissionGuard? _storageGuard;
     private readonly IScopeStorageLocations? _storageLocations;
+    // Live frames published by the engine after each durable append. Optional: without it the
+    // coordinator simply replays storage, which is what it always did and is always correct.
+    private readonly RunStreamProjection? _projection;
 
     public FullDuplexRunCoordinator(
         IConversationStore conversations,
@@ -103,7 +106,8 @@ internal sealed class FullDuplexRunCoordinator : IFullDuplexRunCoordinator
         IEnumerable<IRunInFlightToolCancellation> runToolCancellations,
         ITinaChatRunInput? chatInputs = null,
         ISessionStorageAdmissionGuard? storageGuard = null,
-        IScopeStorageLocations? storageLocations = null)
+        IScopeStorageLocations? storageLocations = null,
+        RunStreamProjection? projection = null)
     {
         _conversations = conversations;
         _lifecycle = lifecycle;
@@ -114,6 +118,7 @@ internal sealed class FullDuplexRunCoordinator : IFullDuplexRunCoordinator
         _chatInputs = chatInputs;
         _storageGuard = storageGuard;
         _storageLocations = storageLocations;
+        _projection = projection;
     }
 
     public async Task<RunSubmission> SubmitAsync(FullDuplexInvocation invocation, CancellationToken cancellationToken = default)
@@ -591,72 +596,75 @@ internal sealed class FullDuplexRunCoordinator : IFullDuplexRunCoordinator
         if (afterSequence < 0) throw new ArgumentOutOfRangeException(nameof(afterSequence));
 
         var cursor = afterSequence;
-        DateTimeOffset? terminalObservedAt = null;
-        var terminalRepairAttempts = 0;
         var lastEmitAt = DateTimeOffset.UtcNow;
+        // True while the reader is fed from the live projection. It starts live when the run has
+        // a buffer covering the cursor, and the durable replay below is the only way back: replay
+        // is always correct, only slower, so any doubt resolves to replay.
+        var live = false;
+
         while (!cancellationToken.IsCancellationRequested)
         {
-            var chunks = await _lifecycle.ReplayRunStreamAsync(runId.ToString(), turnId, cursor, cancellationToken).ConfigureAwait(false);
-            foreach (var chunk in chunks)
+            // Ask to be fed live. Tracking is idempotent and registers this run even before the
+            // engine has published anything, so a follower that attaches at admission is already
+            // subscribed when the first token is produced instead of discovering it one poll
+            // later. Covers then decides whether the buffer actually has the frame we need.
+            if (_projection is not null)
+            {
+                _projection.Track(runId);
+                live = _projection.Covers(runId, cursor);
+            }
+
+            // One batch from whichever source can answer, so both paths share the emit rules.
+            var batch = live ? _projection!.Since(runId, cursor) : await ReplayAsync();
+
+            // Replay caught up and the run is now producing live frames: switch sources at once
+            // rather than spending another poll interval on storage before noticing.
+            if (!live && _projection?.HasFramesPast(runId, cursor) == true)
+            {
+                live = true;
+                batch = _projection.Since(runId, cursor);
+            }
+
+            var emitted = false;
+            foreach (var chunk in batch)
             {
                 // The durable tail is written before CompleteRunAsync so a crashed owner can
-                // finish its claim. Do not publish success while the run still says reviewing.
-                // Keep the cursor before this frame; recovery or the owner will commit the status.
+                // finish its claim. Do not publish success while the run still says reviewing;
+                // keeping the cursor before this frame lets the committed status be seen first.
                 if (chunk.Kind == "done" && chunk.FinishReason == "completed"
                     && (await _lifecycle.GetRunStateAsync(runId.ToString(), cancellationToken).ConfigureAwait(false)).Status != RunStatus.Completed)
                     break;
-                cursor = Math.Max(cursor, chunk.Sequence);
+                cursor = Math.Max(cursor, chunk.Seq);
                 lastEmitAt = DateTimeOffset.UtcNow;
-                yield return ToStreamChunk(chunk);
+                emitted = true;
+                yield return chunk;
                 if (chunk.Kind is "done" or "error") yield break;
             }
 
             var state = await _lifecycle.GetRunStateAsync(runId.ToString(), cancellationToken).ConfigureAwait(false);
             if (IsTerminal(state.Status))
             {
-                // The stream write and terminal run update use independent durable
-                // transactions. Actively repair the idempotent terminal tail before
-                // giving up; a terminal status must never make the current SSE reader
-                // disappear without done/error.
-                terminalObservedAt ??= DateTimeOffset.UtcNow;
-                if (terminalRepairAttempts < 3)
+                // The run finished and nothing more will be appended. A terminal frame is written
+                // by the same path that ends the run, so a reader that saw done/error already
+                // returned; reaching here means the run ended without one — a failure before the
+                // answer, or a run finished elsewhere. Report the durable state instead of the old
+                // behaviour of forging a "done" after retrying a repair helper, which showed the
+                // client a success the stream never carried.
+                yield return state.Status switch
                 {
-                    terminalRepairAttempts++;
-                    try
-                    {
-                        await _engine.ReconcileTerminalRunAsync(runId, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-                    {
-                        // The hosted repair loop will retry the durable tail. Keep the
-                        // live reader open and, after a bounded grace period, emit an
-                        // authoritative in-memory terminal fallback instead of EOF.
-                    }
-                    continue;
-                }
-                if (DateTimeOffset.UtcNow - terminalObservedAt >= TimeSpan.FromSeconds(2))
-                {
-                    yield return state.Status switch
-                    {
-                        RunStatus.Cancelled => new RunStreamChunk(
-                            runId, turnId ?? Guid.Empty, null, cursor, "done",
-                            FinishReason: "cancelled", OccurredAt: DateTimeOffset.UtcNow),
-                        RunStatus.Failed => new RunStreamChunk(
-                            runId, turnId ?? Guid.Empty, null, cursor, "error",
-                            ErrorCategory: state.TerminalErrorCategory ?? RunErrorTaxonomy.Runtime,
-                            SafeErrorMessage: state.Summary ?? "The run failed before producing a final response.",
-                            OccurredAt: DateTimeOffset.UtcNow),
-                        _ => new RunStreamChunk(
-                            runId, turnId ?? Guid.Empty, null, cursor, "done",
-                            FinishReason: "completed", OccurredAt: DateTimeOffset.UtcNow)
-                    };
-                    yield break;
-                }
-            }
-            else
-            {
-                terminalObservedAt = null;
-                terminalRepairAttempts = 0;
+                    RunStatus.Cancelled => new RunStreamChunk(
+                        runId, turnId ?? Guid.Empty, null, cursor, "done",
+                        FinishReason: "cancelled", OccurredAt: DateTimeOffset.UtcNow),
+                    RunStatus.Failed => new RunStreamChunk(
+                        runId, turnId ?? Guid.Empty, null, cursor, "error",
+                        ErrorCategory: state.TerminalErrorCategory ?? RunErrorTaxonomy.Runtime,
+                        SafeErrorMessage: state.Summary ?? "The run failed before producing a final response.",
+                        OccurredAt: DateTimeOffset.UtcNow),
+                    _ => new RunStreamChunk(
+                        runId, turnId ?? Guid.Empty, null, cursor, "done",
+                        FinishReason: "completed", OccurredAt: DateTimeOffset.UtcNow)
+                };
+                yield break;
             }
 
             if (DateTimeOffset.UtcNow - lastEmitAt >= HeartbeatInterval)
@@ -668,8 +676,15 @@ internal sealed class FullDuplexRunCoordinator : IFullDuplexRunCoordinator
                     OccurredAt: DateTimeOffset.UtcNow);
             }
 
-            await Task.Delay(FollowPollInterval, cancellationToken).ConfigureAwait(false);
+            if (live)
+                await _projection!.WaitForFramesAsync(runId, cursor, cancellationToken).ConfigureAwait(false);
+            else
+                await Task.Delay(FollowPollInterval, cancellationToken).ConfigureAwait(false);
         }
+
+        async Task<IReadOnlyList<RunStreamChunk>> ReplayAsync() =>
+            (await _lifecycle.ReplayRunStreamAsync(runId.ToString(), turnId, cursor, cancellationToken).ConfigureAwait(false))
+                .Select(ToStreamChunk).ToArray();
     }
 
     public async Task<RunControlResult> ControlAsync(

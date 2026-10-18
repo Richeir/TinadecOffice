@@ -368,6 +368,41 @@ public sealed class LifecycleManagementApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FollowAsync_ServesAPublishedFrameWithoutReplayingStorage()
+    {
+        // The coordinator reads a followed run from the live projection. This drives that path
+        // through the real container: the frame is published the way the engine publishes it
+        // (after the durable append returned), and the reader must receive it.
+        var client = _factory!.CreateClient();
+        var project = await CreateProjectAsync(client, "projection-live");
+        var session = await CreateSessionAsync(client, project.GetProperty("id").GetGuid(), "Projection live");
+        var sessionId = session.GetProperty("id").GetGuid();
+        var conversations = _factory.Services.GetRequiredService<IConversationStore>();
+        var user = await conversations.AppendMessageAsync(sessionId, "user", "projection");
+        var lifecycle = _factory.Services.GetRequiredService<ILifecycleManager>();
+        var runId = await lifecycle.StartRunAsync(sessionId.ToString(), user.Id.ToString());
+        await lifecycle.SetRunStatusAsync(runId, "executing");
+        var turnId = Guid.NewGuid();
+        var coordinator = _factory.Services.GetRequiredService<TinadecCore.DmaEA.IFullDuplexRunCoordinator>();
+        var projection = _factory.Services.GetRequiredService<TinadecCore.DmaEA.RunStreamProjection>();
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await using var stream = coordinator.FollowAsync(Guid.Parse(runId), turnId, cancellationToken: timeout.Token).GetAsyncEnumerator();
+
+        // Let the follower attach, then publish one answer frame the way the engine publishes it.
+        var next = stream.MoveNextAsync().AsTask();
+        await Task.Delay(300, timeout.Token);
+        var appended = await lifecycle.AppendRunStreamAsync(runId, new(turnId, "answer.delta", Delta: "live text"));
+        projection.Publish(new TinadecCore.DmaEA.RunStreamChunk(
+            Guid.Parse(runId), turnId, null, appended.Sequence, "answer.delta", "live text",
+            OccurredAt: appended.CreatedAt));
+
+        Assert.True(await next.WaitAsync(timeout.Token));
+        Assert.Equal("answer.delta", stream.Current.Kind);
+        Assert.Equal("live text", stream.Current.Delta);
+    }
+
+    [Fact]
     public async Task ExecutionChildRun_PersistsItsParentAndFollowsParentControl()
     {
         var client = _factory!.CreateClient();

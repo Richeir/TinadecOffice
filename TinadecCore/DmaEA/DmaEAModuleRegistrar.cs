@@ -45,6 +45,10 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<IRunReplayService, RunReplayService>();
         // Hard insert (todo D2): process-local, like the in-flight tool registry.
         builder.Services.AddSingleton<IRunInterrupts, RunInterruptRegistry>();
+        // The live positions of followed runs. One instance per storage scope, shared by the
+        // engine (which publishes after a durable append) and the coordinator (which reads
+        // instead of polling storage).
+        builder.Services.AddSingleton<RunStreamProjection>();
         builder.Services.AddSingleton<FullDuplexRunEngine>();
         builder.Services.AddSingleton<IFullDuplexRunEngine>(sp => sp.GetRequiredService<FullDuplexRunEngine>());
         builder.Services.AddHostedService(sp => sp.GetRequiredService<FullDuplexRunEngine>());

@@ -162,6 +162,15 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     // owner is unwinding. Keep that wake-up durable until the owner has left the
     // running set; otherwise the queue item is consumed and silently discarded.
     private readonly ConcurrentDictionary<Guid, byte> _wakeAfterRun = new();
+    // The user-visible answer of a run being produced. A run's answer is generated in one tick
+    // (the meeting/interaction call streams into it) and published in a later one (finalization),
+    // so the draft outlives a single method. Keyed by run id because runs advance in parallel,
+    // and dropped at the terminal boundary so a long-lived host does not retain answers.
+    private readonly ConcurrentDictionary<Guid, AnswerDraft> _answerDrafts = new();
+    // Live frames of runs a client is following, so the read side does not poll storage.
+    // Optional: an engine built without one (a test fixture) simply publishes nothing and
+    // followers replay the durable stream, which is always correct.
+    private readonly RunStreamProjection? _projection;
     private readonly string _ownerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
 
     public FullDuplexRunEngine(
@@ -191,6 +200,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         _directiveValidator = directiveValidator ?? services.GetService(typeof(IOrchestrationDirectiveValidator)) as IOrchestrationDirectiveValidator;
         _longTermMemory = services.GetService(typeof(ILongTermMemoryService)) as ILongTermMemoryService;
         _resourceLeases = services.GetService(typeof(IResourceLeaseService)) as IResourceLeaseService;
+        _projection = services.GetService(typeof(RunStreamProjection)) as RunStreamProjection;
         _logger = logger;
     }
 
@@ -602,7 +612,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 && run.Status is not RunStatus.AwaitingUser and not RunStatus.Executing)
             {
                 if (checkpoint.SupervisionDecision == "escalate" && !checkpoint.AwaitingApprovalExpiryReview)
-                    await PublishSupervisionReviewAsync(run, checkpoint, stoppingToken).ConfigureAwait(false);
+                    await PublishSupervisionReviewAsync(run, configuration, checkpoint, stoppingToken).ConfigureAwait(false);
                 await TrySetRunStatusAsync(run.RunId, "awaiting_user", "Supervision requires user review.", stoppingToken).ConfigureAwait(false);
                 return;
             }
@@ -1290,7 +1300,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             {
                 var contextForPlanner = CreateRunContext(run, checkpoint);
                 var planner = new PlanningAgent(CreateModelFactory(configuration, checkpoint, plannerDefinition,
-                    checkpoint.PlannerAgentId, null), _logger);
+                    checkpoint.PlannerAgentId, null, AnswerStreaming.None), _logger);
                 // Attempt 2 carries the first attempt's failure back to the model: a
                 // byte-identical blind resend re-commits the same mistake (the 2026-09-17
                 // plan_parse_failed cluster failed both attempts with the same scalar
@@ -2644,7 +2654,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             ? "\n\n" + BuildDispatchRosterSection(DispatchRosterOf(configuration))
             : string.Empty;
         return await new ExecutionAgent(CreateModelFactory(configuration, checkpoint, workerDefinition,
-            worker.Id, worker.ParentInstanceId, task: task), _logger).GetNextTurnAsync(
+            worker.Id, worker.ParentInstanceId, AnswerStreaming.WorkLayer, task: task), _logger).GetNextTurnAsync(
             CreateRunContext(run, checkpoint),
             agent,
             ToPlannedTask(task),
@@ -3249,7 +3259,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         RuntimeAgentDefinition definition,
         Guid? instanceId,
         Guid? parentInstanceId,
-        bool streamAnswer = false,
+        AnswerStreaming streaming = AnswerStreaming.None,
         bool observeOutput = true,
         DurableTaskNode? task = null,
         bool interruptible = true)
@@ -3273,6 +3283,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 // A task worker's text is journaled too: Solo's master answers its task before
                 // the meeting writes the reply, and without its words the turn showed nothing
                 // until then. The conversation's own answer streams on the run stream instead.
+                // A call that carries a task is producing work in progress, whatever agent it
+                // runs as: in solo dispatch the meeting agent also does the work, and its prose
+                // is then the visible activity rather than the answer. Reasoning is always
+                // journaled so the activity feed can show what the agent is thinking.
                 if (frame.Kind != "delta" || frame.Channel == "reasoning" || task is not null)
                     await AppendEventAsync(checkpoint.RunId, $"model.output.{frame.Kind}",
                         "Model output update.", new
@@ -3284,10 +3298,24 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                             instance_id = instanceId, task_id = task?.TaskId, handle = task?.WorkerHandle,
                             channel = frame.Channel, delta = frame.Delta
                         }, ct).ConfigureAwait(false);
+                // The answer is one draft: streaming appends to it, and a path that answers
+                // without a model sets it whole. Finalization publishes whatever it still holds,
+                // which is why no second authoritative "delta" frame is needed.
+                // Only the answer layer owns the draft: work-layer prose is visible in the
+                // activity feed, but it must never become the conversation's answer.
+                var draft = streaming == AnswerStreaming.AnswerLayer
+                    ? _answerDrafts.GetOrAdd(checkpoint.RunId, _ => new AnswerDraft())
+                    : null;
+                var delta = frame.Kind == "delta" && frame.Channel == "text"
+                    ? draft?.Append(frame.Delta ?? string.Empty)
+                    : null;
                 // An answer the user cut off is withdrawn like a failed one; the redone step streams anew.
-                if (streamAnswer && (frame.Kind is "started" or "failed" or "interrupted" || frame.Channel == "text"))
-                    await _lifecycle.AppendRunStreamAsync(checkpoint.RunId.ToString(), new DurableRunStreamAppend(
-                        checkpoint.TurnId, frame.Kind == "interrupted" ? "answer.failed" : $"answer.{frame.Kind}", Delta: frame.Delta), ct).ConfigureAwait(false);
+                if (streaming == AnswerStreaming.AnswerLayer && (frame.Kind is "started" or "failed" or "interrupted" || frame.Channel == "text"))
+                {
+                    await PublishRunStreamAsync(checkpoint.RunId.ToString(), new DurableRunStreamAppend(
+                        checkpoint.TurnId, frame.Kind == "interrupted" ? "answer.failed" : $"answer.{frame.Kind}", Delta: delta ?? frame.Delta), ct).ConfigureAwait(false);
+                    if (frame.Kind == "delta" && frame.Channel == "text") draft?.MarkPublished();
+                }
             } : null,
             // Only calls whose step the engine redoes may be cut off: the operations that run
             // after an answer (observeOutput: false) are not.
@@ -4170,7 +4198,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
                 var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, context, cancellationToken).ConfigureAwait(false);
                 var supervisor = new SupervisionAgent(CreateModelFactory(configuration, checkpoint, supervisorDefinition,
-                    supervisorInstance.Id, supervisorInstance.ParentInstanceId), _logger);
+                    supervisorInstance.Id, supervisorInstance.ParentInstanceId, AnswerStreaming.None), _logger);
                 verdict = await supervisor.ReviewAsync(checkpoint.UserGoal, plans, results, checkpoint.SupervisionRound, assembly.Instructions, cancellationToken).ConfigureAwait(false);
                 checkpoint.ModelUsage = Maf18RuntimeAdapter.AddUsage(checkpoint.ModelUsage, supervisor.LastUsage);
             }
@@ -4239,7 +4267,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             checkpoint.Phase = "awaiting_user";
             checkpoint.MeetingResponse = null;
             checkpoint = await SaveCheckpointAsync(checkpoint, checkpoint.CheckpointRevision, "supervision-escalated", cancellationToken).ConfigureAwait(false);
-            await PublishSupervisionReviewAsync(run, checkpoint, cancellationToken).ConfigureAwait(false);
+            await PublishSupervisionReviewAsync(run, configuration, checkpoint, cancellationToken).ConfigureAwait(false);
             await TrySetRunStatusAsync(run.RunId, "awaiting_user", "Supervision requires user review before this run can finish.", cancellationToken).ConfigureAwait(false);
             return checkpoint;
         }
@@ -4377,6 +4405,35 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         };
     }
 
+    internal static SupervisionReviewBrief BuildSupervisionReviewBrief(
+        IReadOnlyList<DurableTaskNode> tasks,
+        int revisionRound,
+        int maxRevisionRounds,
+        bool supervisorRequired,
+        bool supervisorAvailable)
+    {
+        var completed = tasks.Count(task => string.Equals(task.Status, "completed", StringComparison.Ordinal));
+        var blocked = tasks.Count(task => string.Equals(task.Status, "blocked", StringComparison.Ordinal));
+        var failed = tasks.Count(task => string.Equals(task.Status, "failed", StringComparison.Ordinal));
+        var pending = Math.Max(0, tasks.Count - completed - blocked - failed);
+        var requireSupervisorEvidence = supervisorRequired && supervisorAvailable;
+        var unmetCriteria = tasks
+            .Where(task => string.Equals(task.Status, "completed", StringComparison.Ordinal))
+            .Sum(task => task.SuccessCriteria.Count(criterion =>
+                !HasSatisfiedCriterionEvidence(task, criterion, revisionRound, requireSupervisorEvidence)));
+        return new SupervisionReviewBrief(
+            tasks.Count,
+            completed,
+            blocked,
+            failed,
+            pending,
+            unmetCriteria,
+            revisionRound,
+            maxRevisionRounds,
+            supervisorRequired,
+            supervisorAvailable);
+    }
+
     /// <summary>
     /// A completed status is only a claim. Every declared success criterion must
     /// have a satisfied verdict with non-empty evidence. Modes with a supervisor
@@ -4397,13 +4454,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             if (!string.Equals(task.Status, "completed", StringComparison.Ordinal)) continue;
             foreach (var criterion in task.SuccessCriteria)
             {
-                var candidates = task.CriteriaVerdicts
-                    .Where(item => string.Equals(item.Criterion, criterion, StringComparison.Ordinal));
-                candidates = requireSupervisorEvidence
-                    ? candidates.Where(item => string.Equals(item.ReviewedBy, "supervisor", StringComparison.Ordinal)
-                        && item.Round == revisionRound)
-                    : candidates.Where(item => item.ReviewedBy?.StartsWith("worker:", StringComparison.Ordinal) == true);
-                var latest = candidates.OrderBy(item => item.Round).LastOrDefault();
+                var latest = LatestCriterionVerdict(task, criterion, revisionRound, requireSupervisorEvidence);
                 if (latest is { Satisfied: true } && !string.IsNullOrWhiteSpace(latest.Evidence)) continue;
                 var source = requireSupervisorEvidence ? "supervisor" : "worker";
                 var detail = latest is null
@@ -4444,6 +4495,31 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             Reasons = reasons,
             ReviseTaskIndexes = []
         };
+    }
+
+    private static CriterionVerdict? LatestCriterionVerdict(
+        DurableTaskNode task,
+        string criterion,
+        int revisionRound,
+        bool requireSupervisorEvidence)
+    {
+        var candidates = task.CriteriaVerdicts
+            .Where(item => string.Equals(item.Criterion, criterion, StringComparison.Ordinal));
+        candidates = requireSupervisorEvidence
+            ? candidates.Where(item => string.Equals(item.ReviewedBy, "supervisor", StringComparison.Ordinal)
+                && item.Round == revisionRound)
+            : candidates.Where(item => item.ReviewedBy?.StartsWith("worker:", StringComparison.Ordinal) == true);
+        return candidates.OrderBy(item => item.Round).LastOrDefault();
+    }
+
+    private static bool HasSatisfiedCriterionEvidence(
+        DurableTaskNode task,
+        string criterion,
+        int revisionRound,
+        bool requireSupervisorEvidence)
+    {
+        var latest = LatestCriterionVerdict(task, criterion, revisionRound, requireSupervisorEvidence);
+        return latest is { Satisfied: true } && !string.IsNullOrWhiteSpace(latest.Evidence);
     }
 
     internal static SupervisionVerdict EnforceRevisionBudget(
@@ -4510,7 +4586,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             {
                 var contextForPlanner = CreateRunContext(run, checkpoint);
                 var planner = new PlanningAgent(CreateModelFactory(configuration, checkpoint, plannerDefinition,
-                    checkpoint.PlannerAgentId, null), _logger);
+                    checkpoint.PlannerAgentId, null, AnswerStreaming.None), _logger);
                 var instructionsForAttempt = attempt == 0
                     ? PlannerInstructions(checkpoint, instructions)
                     : PlannerInstructions(checkpoint, instructions) + BuildPlannerRetryHint(lastError, replanParseError);
@@ -4636,7 +4712,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     {
         var meetingDefinition = RequiredConversationAgent(configuration);
         var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
-        var factory = CreateModelFactory(configuration, checkpoint, meetingDefinition, checkpoint.MeetingAgentId, null);
+        // An interaction reply is answered to the person, so it streams like the meeting answer
+        // does: without this the follow-up path emitted no answer.started/delta at all and the
+        // visible reply only appeared when the final delta landed.
+        var factory = CreateModelFactory(configuration, checkpoint, meetingDefinition, checkpoint.MeetingAgentId, null, AnswerStreaming.AnswerLayer);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable)
         {
@@ -4754,15 +4833,43 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
 
     // The decision evidence must be durable before the externally visible waiting status.
     // Recovery uses the same key if the host stopped between checkpoint/event/status writes.
-    private Task PublishSupervisionReviewAsync(RunState run, FullDuplexCheckpointV1 checkpoint, CancellationToken ct) =>
-        AppendEventAsync(Guid.Parse(run.RunId), "supervision.user_review.requested",
+    private Task PublishSupervisionReviewAsync(
+        RunState run,
+        FrozenRunConfigurationV1 configuration,
+        FullDuplexCheckpointV1 checkpoint,
+        CancellationToken ct)
+    {
+        var supervisorRequired = configuration.Supervision.RequiredBeforeFinal;
+        var supervisorAvailable = configuration.OperationAgents.Any(agent =>
+            agent.Enabled && string.Equals(agent.Id, "supervisor", StringComparison.Ordinal));
+        var brief = BuildSupervisionReviewBrief(
+            checkpoint.Tasks,
+            checkpoint.SupervisionRound,
+            configuration.Supervision.MaxRevisionRounds,
+            supervisorRequired,
+            supervisorAvailable);
+        return AppendEventAsync(Guid.Parse(run.RunId), "supervision.user_review.requested",
             "Supervision escalated the run and is waiting for a user decision.", new
             {
                 run_id = run.RunId,
                 decision = "escalate",
                 reasons = checkpoint.SupervisionReasons,
-                options = new[] { "continue", "correct", "cancel" }
+                options = new[] { "continue", "correct", "cancel" },
+                brief = new
+                {
+                    total_tasks = brief.TotalTasks,
+                    completed_tasks = brief.CompletedTasks,
+                    blocked_tasks = brief.BlockedTasks,
+                    failed_tasks = brief.FailedTasks,
+                    pending_tasks = brief.PendingTasks,
+                    unmet_criteria = brief.UnmetCriteria,
+                    revision_round = brief.RevisionRound,
+                    max_revision_rounds = brief.MaxRevisionRounds,
+                    supervisor_required = brief.SupervisorRequired,
+                    supervisor_available = brief.SupervisorAvailable
+                }
             }, ct, idempotencyKey: $"run:{run.RunId}:supervision-review:{checkpoint.PlanRevision}:{checkpoint.SupervisionRound}");
+    }
 
     private async Task FinalizeAsync(
         RunState run,
@@ -4925,11 +5032,22 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             return;
         }
 
-        await _lifecycle.AppendRunStreamAsync(run.RunId, new DurableRunStreamAppend(
-            checkpoint.TurnId,
-            "delta",
-            Delta: meetingResponse,
-            IdempotencyKey: $"run:{run.RunId}:turn:{checkpoint.TurnId}:meeting:delta:0"), cancellationToken).ConfigureAwait(false);
+        // The answer is published once. A run whose meeting call streamed has already shown it
+        // frame by frame, so republishing the whole text as a second authoritative frame was
+        // pure duplication (messages, "delta" and the accumulated frames all held the same
+        // bytes) and forced the client's provisional/replace state machine. Only a path that
+        // never streamed — an evidence fallback or a status query — still has to publish, and it
+        // publishes as the same "answer.delta" kind so the client has a single shape to append.
+        var answerDraft = _answerDrafts.TryRemove(runId, out var produced) ? produced : null;
+        if (answerDraft is { PublishedAnyFrame: false })
+        {
+            answerDraft.SetWhole(meetingResponse);
+            await PublishRunStreamAsync(run.RunId, new DurableRunStreamAppend(
+                checkpoint.TurnId,
+                "answer.delta",
+                Delta: meetingResponse,
+                IdempotencyKey: $"run:{run.RunId}:turn:{checkpoint.TurnId}:meeting:answer.delta:0"), cancellationToken).ConfigureAwait(false);
+        }
 
         if (checkpoint.AssistantMessageId is null)
         {
@@ -4951,7 +5069,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             character_count = meetingResponse.Length,
             supervision_decision = checkpoint.SupervisionDecision
         }, cancellationToken).ConfigureAwait(false);
-        await _lifecycle.AppendRunStreamAsync(run.RunId, new DurableRunStreamAppend(
+        await PublishRunStreamAsync(run.RunId, new DurableRunStreamAppend(
             checkpoint.TurnId,
             "done",
             checkpoint.AssistantMessageId,
@@ -4983,7 +5101,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     {
         var revision = await _conversations.GetContextRevisionAsync(checkpoint.SessionId, cancellationToken).ConfigureAwait(false);
         await _conversations.CompleteTurnAsync(checkpoint.TurnId, runId, null, revision, "cancelled", cancellationToken).ConfigureAwait(false);
-        await _lifecycle.AppendRunStreamAsync(runId.ToString(), new DurableRunStreamAppend(
+        await PublishRunStreamAsync(runId.ToString(), new DurableRunStreamAppend(
             checkpoint.TurnId,
             "done",
             FinishReason: "cancelled",
@@ -5008,7 +5126,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     {
         var revision = await _conversations.GetContextRevisionAsync(checkpoint.SessionId, cancellationToken).ConfigureAwait(false);
         await _conversations.CompleteTurnAsync(checkpoint.TurnId, runId, null, revision, "failed", cancellationToken).ConfigureAwait(false);
-        await _lifecycle.AppendRunStreamAsync(runId.ToString(), new DurableRunStreamAppend(
+        await PublishRunStreamAsync(runId.ToString(), new DurableRunStreamAppend(
             checkpoint.TurnId,
             "error",
             ErrorCategory: category,
@@ -5346,7 +5464,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         ContextPack context,
         CancellationToken cancellationToken)
     {
-        var factory = CreateModelFactory(configuration, checkpoint, meetingDefinition, checkpoint.MeetingAgentId, null, streamAnswer: true);
+        var factory = CreateModelFactory(configuration, checkpoint, meetingDefinition, checkpoint.MeetingAgentId, null, AnswerStreaming.AnswerLayer);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, context, cancellationToken).ConfigureAwait(false);
@@ -5831,7 +5949,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             return;
         }
 
-        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, observeOutput: false, interruptible: false);
+        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), match.Agent, context, cancellationToken).ConfigureAwait(false);
@@ -5898,7 +6016,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     {
         var runId = Guid.Parse(run.RunId);
         var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
-        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, observeOutput: false, interruptible: false);
+        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), match.Agent, context, cancellationToken).ConfigureAwait(false);
@@ -6009,7 +6127,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
 
         var runId = Guid.Parse(run.RunId);
         var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
-        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, observeOutput: false, interruptible: false);
+        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), match.Agent, context, cancellationToken).ConfigureAwait(false);
@@ -6148,7 +6266,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
 
         var runId = Guid.Parse(run.RunId);
         var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
-        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, observeOutput: false, interruptible: false);
+        var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), match.Agent, context, cancellationToken).ConfigureAwait(false);
@@ -6250,6 +6368,36 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
 
     private Task AppendEventAsync(Guid runId, string type, string summary, object payload, CancellationToken ct, Guid? taskId = null, string? idempotencyKey = null) =>
         _lifecycle.AppendEventAsync(runId, type, payload, summary, taskId: taskId, idempotencyKey: idempotencyKey, cancellationToken: ct);
+
+    /// <summary>
+    /// The one way a frame reaches a follower: write it durably, then publish the position.
+    ///
+    /// The order is load-bearing. Publishing after the write means a follower can never render a
+    /// token that a crash would lose, and it means the terminal frame is live only once the
+    /// record exists — so a reader that sees <c>done</c> can immediately re-read the session and
+    /// find the persisted answer. It also removes the need for the old "terminal status observed
+    /// but no terminal frame" repair loop, because the frame is published by the same code path
+    /// that wrote it, not discovered later by a poller.
+    ///
+    /// Awaiting the write keeps the existing back-pressure: a slow disk slows the stream rather
+    /// than building an unbounded queue of unpersisted text.
+    /// </summary>
+    private async Task<DurableRunStreamChunk> PublishRunStreamAsync(
+        string runId, DurableRunStreamAppend item, CancellationToken cancellationToken)
+    {
+        var chunk = await _lifecycle.AppendRunStreamAsync(runId, item, cancellationToken).ConfigureAwait(false);
+        if (_projection is not null && Guid.TryParse(runId, out var id))
+        {
+            _projection.Publish(new RunStreamChunk(
+                id, chunk.TurnId, chunk.MessageId, chunk.Sequence, chunk.Kind, chunk.Delta,
+                chunk.UsageJson, chunk.FinishReason, chunk.ErrorCategory,
+                chunk.SafeErrorMessage, chunk.CreatedAt));
+            // A terminal frame ends the run's live window; a follower drains it and then reads
+            // storage, which is where recovery already starts.
+            if (chunk.Kind is "done" or "error") _projection.Seal(id);
+        }
+        return chunk;
+    }
 
     private static bool IsTerminal(RunStatus status) => status is RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled;
 
@@ -7216,6 +7364,18 @@ internal sealed class DurableTaskNode
     /// </summary>
     public List<CriterionVerdict> CriteriaVerdicts { get; set; } = [];
 }
+
+internal sealed record SupervisionReviewBrief(
+    int TotalTasks,
+    int CompletedTasks,
+    int BlockedTasks,
+    int FailedTasks,
+    int PendingTasks,
+    int UnmetCriteria,
+    int RevisionRound,
+    int MaxRevisionRounds,
+    bool SupervisorRequired,
+    bool SupervisorAvailable);
 
 /// <summary>One step of an agent's plan_update plan; status is pending, in_progress or completed.</summary>
 public sealed record TaskPlanStep(

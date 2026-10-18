@@ -2023,6 +2023,11 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         Assert.Equal("高风险", Assert.Single(reviewPayload.GetProperty("reasons").EnumerateArray()).GetString());
         Assert.Equal(new[] { "continue", "correct", "cancel" }, reviewPayload.GetProperty("options").EnumerateArray()
             .Select(item => item.GetString()).ToArray());
+        var brief = reviewPayload.GetProperty("brief");
+        Assert.True(brief.GetProperty("total_tasks").GetInt32() >= 1);
+        Assert.True(brief.GetProperty("revision_round").GetInt32() >= 0);
+        Assert.True(brief.GetProperty("max_revision_rounds").GetInt32() >= 1);
+        Assert.True(brief.GetProperty("supervisor_available").GetBoolean());
         // The projection keeps one row per supervision event (requested + completed),
         // so the escalate verdict is the row that carries the decision.
         var finding = Assert.Single(

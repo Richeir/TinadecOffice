@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using TinadecCore.Abstractions;
 using TinadecCore.Abstractions.Ports;
 using TinadecCore.DmaEA;
+using TinadecCore.DmaEA.Orchestration;
 
 namespace TinadecCore.AgentFramework.Tests;
 
@@ -322,6 +323,43 @@ public sealed class DmaeaOrchestrationTests
         Assert.Equal(SupervisionDecision.Escalate, escalate.Decision);
         Assert.Empty(escalate.ReviseTaskIndexes);
         Assert.Contains(escalate.Reasons, reason => reason.Contains("require user review", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SupervisionReviewBrief_CountsTaskOutcomesAndUnmetCriteria()
+    {
+        var completed = new DurableTaskNode
+        {
+            TaskKey = "done",
+            Status = "completed",
+            SuccessCriteria = ["has-evidence", "missing-evidence"],
+            CriteriaVerdicts =
+            [
+                new CriterionVerdict("has-evidence", true, "worker evidence", "worker:search#1"),
+                new CriterionVerdict("missing-evidence", false, null, "worker:search#1")
+            ]
+        };
+        var blocked = new DurableTaskNode { TaskKey = "blocked", Status = "blocked" };
+        var failed = new DurableTaskNode { TaskKey = "failed", Status = "failed" };
+        var pending = new DurableTaskNode { TaskKey = "pending", Status = "pending" };
+
+        var brief = FullDuplexRunEngine.BuildSupervisionReviewBrief(
+            [completed, blocked, failed, pending],
+            revisionRound: 2,
+            maxRevisionRounds: 2,
+            supervisorRequired: true,
+            supervisorAvailable: false);
+
+        Assert.Equal(4, brief.TotalTasks);
+        Assert.Equal(1, brief.CompletedTasks);
+        Assert.Equal(1, brief.BlockedTasks);
+        Assert.Equal(1, brief.FailedTasks);
+        Assert.Equal(1, brief.PendingTasks);
+        Assert.Equal(1, brief.UnmetCriteria);
+        Assert.Equal(2, brief.RevisionRound);
+        Assert.Equal(2, brief.MaxRevisionRounds);
+        Assert.True(brief.SupervisorRequired);
+        Assert.False(brief.SupervisorAvailable);
     }
 
     /// <summary>

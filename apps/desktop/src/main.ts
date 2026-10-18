@@ -5,7 +5,7 @@ import * as Vue from 'vue'
 const vaporInteropPlugin = (Vue as unknown as Record<string, unknown>).vaporInteropPlugin as Parameters<ReturnType<typeof createApp>['use']>[0] | undefined
 import App from './App.vue'
 import router from './router'
-import i18n from './i18n'
+import i18n, { ensureActiveLocale, isSupportedLocale, setInterfaceLocale } from './i18n'
 import { useTheme } from './composables/useTheme'
 import { useDynamicPalette } from './composables/useDynamicPalette'
 import { setErrorActionLabels, setNotificationFallbackText } from './composables/useNotifications'
@@ -53,13 +53,28 @@ function applyLocaleText(): void {
     choose_folder: i18n.global.t('errors.actions.chooseFolder'),
   })
 }
+// A window that starts in a saved non-default language must have that bundle before the first paint:
+// the strings registered below (unknown-error fallback, server-classified action labels) live outside
+// Vue and are only recomputed when the locale changes, and the mounted tree would render in a fallback
+// language until the chunk landed. zh-CN is in the entry chunk, so a default boot awaits nothing.
+if (i18n.global.locale.value !== 'zh-CN') {
+  try {
+    await ensureActiveLocale()
+  } catch {
+    // The chunk could not be fetched; a complete language beats dotted keys.
+    i18n.global.locale.value = 'zh-CN'
+  }
+}
 applyLocaleText()
 watch(() => i18n.global.locale.value, applyLocaleText)
 // A language picked in one window reaches the other open windows (detached panels, pets) through
 // the localStorage key i18n.ts reads on boot.
 window.addEventListener('storage', (event) => {
-  const next = event.key === 'tinadec-locale' ? i18n.global.availableLocales.find((value) => value === event.newValue) : undefined
-  if (next && next !== i18n.global.locale.value) i18n.global.locale.value = next
+  // The announced language's bundle lives in another chunk; switch only once it is here, otherwise the
+  // window repaints into a language it does not have yet. A failed load keeps the current language.
+  if (event.key !== 'tinadec-locale' || !isSupportedLocale(event.newValue)) return
+  if (event.newValue === i18n.global.locale.value) return
+  void setInterfaceLocale(event.newValue)
 })
 
 // 在挂载前初始化主题，确保 DOM 准备好后再应用样式

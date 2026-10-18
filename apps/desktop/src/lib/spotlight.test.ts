@@ -460,7 +460,14 @@ describe('search transport', () => {
         original.api.grepContent('C:/ws', 'literal[', { fixed_strings: true }, { signal: controller.signal }),
       ])
       expect(fetchSpy).toHaveBeenCalledTimes(7)
-      expect(fetchSpy.mock.calls.every(([, init]) => init?.signal === controller.signal)).toBe(true)
+      // Per-caller cancellation reaches HTTP directly. The shared catalogs (providers, agents)
+      // deliberately keep their transport alive — one surface leaving must not cancel data a
+      // second surface is waiting for — and that caller's own await still rejects instead
+      // (see apiReadCache.test.ts).
+      const sharedCatalogs = new Set(['/api/v1/model-providers', '/api/v1/agents'])
+      const direct = fetchSpy.mock.calls.filter(([url]) => !sharedCatalogs.has(new URL(String(url)).pathname))
+      expect(direct.every(([, init]) => init?.signal === controller.signal)).toBe(true)
+      expect(fetchSpy.mock.calls.filter(([url]) => sharedCatalogs.has(new URL(String(url)).pathname))).toHaveLength(2)
       const contentRequest = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/code/tools/file_search/execute'))
       expect(JSON.parse(String(contentRequest?.[1]?.body))).toEqual({ cwd: 'C:/ws', arguments: { pattern: 'literal[', fixed_strings: true } })
     } finally {

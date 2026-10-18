@@ -6,7 +6,8 @@ import type { components } from '@/generated/schema'
 import type { MessageAttachmentDto, MessageDto, SseChunk } from '@/generated/client'
 import { createRunStream, runStreamDelta, type RunStreamHandle } from '@/lib/runStream'
 import { ApiError } from '@/lib/apiError'
-import { captureStorageId, rememberStorageResult, normalizeStorageRequest, storageHeaders, storageFetch, sessionStorageId, selectionIdentity, type StorageRequestOptions } from '@/lib/storageScope'
+import { captureStorageId, rememberStorageResult, normalizeStorageRequest, storageHeaders, storageFetch, sessionStorageId, selectionIdentity, selectedStorageId, type StorageRequestOptions } from '@/lib/storageScope'
+import { cachedRead, invalidateReadCache } from '@/lib/readCache'
 import type { StorageScopeDto, StorageStatsDto, StorageCleanupPreviewDto, StorageContentPreviewDto, StorageDeletePreviewDto, SessionTransferDto, ConfigurationDocumentDto, StorageConfigureInput } from '@/settings/storage'
 import { ScopedEventSource } from '@/lib/scopedEventSource'
 type StorageDiagnosticResult = { storage_id: string; scope: StorageScopeDto; diagnostics: Array<Record<string, unknown>>; configuration: { content_hash: string; documents: Record<string, string> } }
@@ -2621,6 +2622,9 @@ function querySuffix(params: Record<string, string | number | boolean | undefine
 
 const gatewayUrl = window.tinadec?.gatewayUrl?.() ?? 'http://127.0.0.1:48730';
 
+/** Catalog reads describe one storage scope; a switch must never be answered from another. */
+function catalogKey(name: string): string { return `${selectedStorageId()}:${name}` }
+
 interface JsonRequestResult<T> {
   data: T
   headers: Headers
@@ -2650,6 +2654,8 @@ async function requestResult<T>(path: string, init?: StorageRequestOptions): Pro
   }
 
   rememberStorageResult(path, data, storageId)
+  // A completed write makes every cached catalog stale, whatever it touched.
+  if (init?.method && init.method !== 'GET' && init.method !== 'HEAD') invalidateReadCache()
   return { data: data as T, headers: response.headers };
 }
 
@@ -3188,7 +3194,7 @@ export const api = {
     body: JSON.stringify(input)
   }),
   listModelProviderTemplates: (options?: { signal?: AbortSignal }) => request<ModelProviderTemplateDto[]>('/api/v1/model-provider-templates', options),
-  listModelProviders: (options?: { signal?: AbortSignal }) => request<ModelProviderInstanceDto[]>('/api/v1/model-providers', options),
+  listModelProviders: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-providers'), () => request<ModelProviderInstanceDto[]>('/api/v1/model-providers'), options?.signal),
   discoverHarnesses: () => request<CliDiscoveryResultDto>('/api/v1/model-providers/harnesses/discover'),
   connectHarness: (input: ConnectHarnessInput) => request<ModelProviderInstanceDto>('/api/v1/model-providers/harnesses/connect', {
     method: 'POST',
@@ -3218,7 +3224,7 @@ export const api = {
       headers: options?.expected_revision !== undefined ? { 'if-match': `"${options.expected_revision}"` } : undefined
     })
   },
-  listModelRoutes: (options?: { signal?: AbortSignal }) => request<ModelRouteDto[]>('/api/v1/model-routes', options),
+  listModelRoutes: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-routes'), () => request<ModelRouteDto[]>('/api/v1/model-routes'), options?.signal),
   saveModelRoute: (purpose: string, candidates: ModelRouteWriteRequestDto | string, model?: string | null, options?: { expected_revision?: number }) => request<ModelRouteDto>(`/api/v1/model-routes/${encodeURIComponent(purpose)}`, {
     method: 'PUT',
     headers: options?.expected_revision !== undefined ? { 'if-match': `"${options.expected_revision}"` } : undefined,
@@ -3295,7 +3301,7 @@ export const api = {
     request<McpServerToolsDto>(`/api/v1/mcp/servers/${encodeURIComponent(serverId)}/tools`),
   listAcpAdapters: (options?: { signal?: AbortSignal }) => request<AcpAdapterDto[]>('/api/v1/acp/adapters', options),
   listAgentModes: (options?: { signal?: AbortSignal }) => request<AgentModeDto[]>('/api/v1/agent-modes', options),
-  listAgents: (options?: { signal?: AbortSignal }) => request<AgentDirectoryItemDto[]>('/api/v1/agents', options),
+  listAgents: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('agents'), () => request<AgentDirectoryItemDto[]>('/api/v1/agents'), options?.signal),
   getAgent: (id: string, options?: { signal?: AbortSignal }) => request<AgentDefinitionDto>(`/api/v1/agents/${encodeURIComponent(id)}`, options),
   // ── New 5-tab config objects (snake_case, If-Match via etag) ──
   // `/api/v1/agents` is the directory projection; full definitions are fetched per id.
@@ -3343,7 +3349,7 @@ export const api = {
   listAgentVersions: (id: string) => request<AgentVersionDto[]>(`/api/v1/agents/${encodeURIComponent(id)}/versions`),
   getAgentVersion: (id: string, versionId: string) => request<AgentVersionDto>(`/api/v1/agents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`),
   // agent-modes topology
-  listAgentModeTopologies: () => request<AgentModeTopologyDto[]>('/api/v1/agent-modes'),
+  listAgentModeTopologies: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('agent-modes'), () => request<AgentModeTopologyDto[]>('/api/v1/agent-modes'), options?.signal),
   createAgentModeDraft: (body: Omit<Partial<AgentModeTopologyDto>, 'nodes' | 'edges'> & Partial<AgentModeTopologyWriteDto>) => request<AgentModeTopologyDto>('/api/v1/agent-modes', { method: 'POST', body: JSON.stringify(body) }),
   getAgentModeTopology: (id: string) => request<AgentModeTopologyDto>(`/api/v1/agent-modes/${encodeURIComponent(id)}`),
   updateAgentModeDraft: (id: string, body: AgentModeTopologyWriteDto, etag?: string | null) => request<AgentModeTopologyDto>(`/api/v1/agent-modes/${encodeURIComponent(id)}/draft`, { method: 'PUT', headers: etag ? { 'if-match': etag } : {}, body: JSON.stringify(body) }),
@@ -3480,7 +3486,7 @@ export const api = {
     api.executeCodeTool('git_worktree_manager', { cwd, arguments: { action: 'diff_compare', base_ref: baseRef, head_ref: headRef, paths } }),
   gitLog: (cwd: string, limit?: number, ref?: string) =>
     api.executeCodeTool('git_worktree_manager', { cwd, arguments: { action: 'log', limit, ref } }),
-  listAgentCandidates: (options?: { signal?: AbortSignal }) => request<AgentCandidateDto[]>('/api/v1/agent-candidates', options),
+  listAgentCandidates: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('agent-candidates'), () => request<AgentCandidateDto[]>('/api/v1/agent-candidates'), options?.signal),
 
   // --- Memory review (candidates are never retrieval-visible; only promoted items are) ---
   listMemoryCandidates: (query: MemoryQueueQuery = {}) =>

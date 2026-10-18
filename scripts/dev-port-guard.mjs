@@ -22,6 +22,9 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORTS = [48730, 48731, 5173, 9222];
+// 9222 是 Electron 的远程调试口，不是服务监听端口：它被占着不会让 dev 启动失败，
+// 只影响 DevTools 能不能连上。所以它不参与“要不要走完整检查”的判断，也不阻塞启动。
+const BLOCKING_PORTS = [48730, 48731, 5173];
 const PORT_LABELS = {
   48730: 'Gateway',
   48731: 'Core',
@@ -47,6 +50,33 @@ function run(command, args) {
   } catch {
     return '';
   }
+}
+
+// 快速路径：绝大多数启动都没有残留监听者。netstat 读一遍约 80ms，而下面那次
+// PowerShell 查询要拉起一个 Windows PowerShell 5 进程并逐端口 Get-CimInstance，
+// 实测稳定 5.4s——这是每次 `npm run dev` 的固定开销。
+// 只在「确实有本项目的 dev 端口在监听」时才回落到 PowerShell 判归属，
+// 判定逻辑本身一行未改。netstat 不可用或输出看不懂时同样回落，
+// 所以省时间永远不会变成漏检。
+function listeningDevPorts() {
+  const raw = run('netstat', ['-ano', '-p', 'TCP']);
+  if (!raw) return null; // 查不到就按「不知道」处理，走完整检查
+  const listening = new Set();
+  for (const line of raw.split(/\r?\n/)) {
+    const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+\d+\s*$/i.exec(line);
+    if (match) listening.add(Number(match[1]));
+  }
+  return listening;
+}
+
+const listeningPorts = listeningDevPorts();
+if (listeningPorts !== null && !BLOCKING_PORTS.some((port) => listeningPorts.has(port))) {
+  // 三个服务端口都没人监听，就没有“端口被占导致启动失败”要防的事。
+  // 9222 是 DevTools 口，被占只影响调试连接，不为它拉一次 PowerShell。
+  if (listeningPorts.has(9222)) {
+    console.log('[dev-port-guard] 端口 9222（Electron DevTools）已被占用，不影响 dev 启动，跳过检查。');
+  }
+  process.exit(0);
 }
 
 // 单次 PowerShell 调用取回「端口 → 进程名 + 命令行」，脚本内不使用双引号以免转义问题。
@@ -86,11 +116,17 @@ function isOwnDevProcess(listener) {
 
 const reclaimed = [];
 const foreign = [];
+const advisory = [];
 
 for (const listener of listeners) {
   const label = PORT_LABELS[listener.port] ?? 'dev service';
   const who = `${listener.name ?? 'unknown'} (pid ${listener.pid})`;
   if (!isOwnDevProcess(listener)) {
+    // 9222 被仓库外的进程占着时只提示，不阻塞启动：dev 本身不需要这个端口。
+    if (listener.port === 9222) {
+      advisory.push({ ...listener, label, who });
+      continue;
+    }
     foreign.push({ ...listener, label, who });
     continue;
   }
@@ -113,6 +149,9 @@ if (reclaimed.length > 0 && reportOnly) {
 }
 if (reclaimed.length > 0) {
   console.log('[dev-port-guard] 上一次 dev 运行的残留进程已结束，继续启动。');
+}
+for (const item of advisory) {
+  console.log(`[dev-port-guard] 端口 ${item.port}（${item.label}）被 ${item.who} 占用：不影响 dev 启动，只影响 DevTools。`);
 }
 if (foreign.length > 0) {
   console.log('[dev-port-guard] 以下端口被本仓库之外的进程占用，已停止启动：');

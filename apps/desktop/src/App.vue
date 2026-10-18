@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterView, useRoute } from 'vue-router'
-import { computed, watch, onMounted, onBeforeUnmount, ref } from 'vue'
+import { watch, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useBackground } from '@/composables/useBackground'
 import {
@@ -9,6 +9,7 @@ import {
   retryConnection,
 } from '@/composables/useConnection'
 import { useNotifications, startStatusSync } from '@/composables/useNotifications'
+import { setHostAccessStatus, useHostAccess } from '@/lib/hostAccess'
 import { ensureGraphSeedPack, setGraphSeedPackTranslator } from '@/agentPacks/graphSeedPackBootstrap'
 import AppSplash from '@/components/AppSplash.vue'
 import HostAvailabilityBanner from '@/components/HostAvailabilityBanner.vue'
@@ -34,7 +35,12 @@ const { settings: backgroundSettings, applyBackground } = useBackground()
 watch(backgroundSettings, () => applyBackground(), { deep: true, immediate: true })
 
 // ---- Backend connection gating ----
-// Health success/timeout mounts the route; splash leaves when that route is ready.
+// The shell mounts on the first frame, whatever the backend is doing. Main no longer blocks the
+// window on backend startup, so waiting for "connected" here would park the splash for up to the
+// 30 s timeout on a slow or broken host. What the user gets instead is the real interface plus
+// HostAvailabilityBanner, which names the state and offers the retry. Business reads stay gated on
+// host access (useHostAccess / assertHostAccess), so an unverified host still refuses them; the
+// splash itself still leaves only when the mounted route reports its prepared frame.
 // 子窗口（?splash=0，如 Debug Studio / Detached Panel）跳过 splash：
 // 它们复用主窗口已建立的后端连接，不应重播首次启动序列。
 const isChildWindow = new URLSearchParams(window.location.search).get('splash') === '0'
@@ -46,14 +52,17 @@ let graphSeedBootstrapped = false
 const { status, dismissByKey } = useNotifications()
 let unsubscribeStatusSync: (() => void) | undefined
 let uninstallPaletteKeys: (() => void) | undefined
-const isConnecting = computed(() => !isChildWindow && connectionState.value === 'connecting')
 const route = useRoute()
 // Startup happens once. Retrying a lost backend must preserve the live page.
-const mainStarted = ref(!isConnecting.value)
 const entryReady = ref(isChildWindow)
-watch(isConnecting, (connecting) => {
-  if (!connecting) mainStarted.value = true
-})
+
+// The gate starts empty, and an empty gate reads as "no host has refused anything yet" — every
+// business read would then go out before the host was verified. Publishing "checking" here (App's
+// setup runs before the routed page's) keeps those reads closed until useConnection reports the real
+// state, and it is what makes HostAvailabilityBanner visible during startup. A preview renderer
+// already published "preview" before mount, so it keeps its own reason.
+const { status: hostAccessStatus } = useHostAccess()
+if (!isPetWindow && hostAccessStatus.value === null) setHostAccessStatus({ state: 'checking', managed: true })
 
 function onPageReady() {
   entryReady.value = true
@@ -131,7 +140,6 @@ onBeforeUnmount(() => {
        which would make the background slide with the page (see comment below).
        This div is the stable, static foundation of the entire window. -->
   <div
-    v-if="mainStarted"
     class="background-layer"
     :class="{ 'background-layer--none': backgroundSettings.type === 'none' }"
   >
@@ -179,7 +187,7 @@ onBeforeUnmount(() => {
        页面入场动画由各页面（如 HomePage）内部触发，
        而非在此处包裹 RouterView —— 因为路由组件是懒加载的，外层 Transition
        会在子元素挂载前就移除 enter-active 类，导致动画失效。 -->
-  <div v-if="mainStarted" class="main-content">
+  <div class="main-content">
     <!-- No Transition wrapper around RouterView: TinadecUIE owns the main
          window layout and the stable card-frame material root. A transition
          would unload the page host on route change, breaking backdrop-filter
@@ -188,7 +196,7 @@ onBeforeUnmount(() => {
       <component :is="Component" @ready="onPageReady" @vue:mounted="onRouteMounted" />
     </RouterView>
   </div>
-  <HostAvailabilityBanner v-if="mainStarted && !isChildWindow" />
+  <HostAvailabilityBanner v-if="!isChildWindow" />
   <NotificationIslandHost v-if="entryReady" />
   <NotificationDetailDialog v-if="entryReady" />
   <SelectionContextMenu />

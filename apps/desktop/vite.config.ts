@@ -4,9 +4,14 @@ import { VueMcp } from 'vite-plugin-vue-mcp';
 import { defineConfig } from 'vite';
 import path from 'path';
 
+// Vite 插件顺序即执行顺序；vue-mcp 只为浏览器端 MCP 调试服务，默认关闭：
+// 它给每次启动加一个本地 SSE 服务，并往 index.html 注入一个 overlay 模块（会拉起
+// @vue/devtools-kit 一整套）。日常开发不需要它，TINADEC_VUE_MCP=1 时再开。
+const vueMcpEnabled = ['1', 'true', 'yes'].includes((process.env.TINADEC_VUE_MCP ?? '').trim().toLowerCase());
+
 export default defineConfig({
   base: './',
-  plugins: [vue(), tailwindcss(), VueMcp()],
+  plugins: [vue(), tailwindcss(), ...(vueMcpEnabled ? [VueMcp()] : [])],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -30,13 +35,23 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
-    strictPort: true
+    strictPort: true,
+    watch: {
+      // release/（约 2.8GB）与 runtime/（约 419MB，内含 PortableGit）都是打包产物，不是源。
+      // 它们默认落在 project root 之内，chokidar 启动时会把 36467 个文件全爬一遍，
+      // 和首次依赖扫描抢同一块 IO：实测冷启动时仅这一步就占 30-110s（见
+      // .tinadec_dev/evidence/2026-10-18-perf-dev/README.zh-CN.md）。
+      ignored: ['**/release/**', '**/runtime/**', '**/dist/**'],
+    },
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true
   },
   optimizeDeps: {
+    // 默认 entry 是 **/*.html，会把 release/、runtime/ 里的 1483 个文档页也当成入口去扫描。
+    // 本应用只有一个入口。
+    entries: ['index.html'],
     include: [
       '@xterm/xterm',
       '@xterm/addon-fit',

@@ -48,14 +48,21 @@ viteProcess.stderr.on("data", (data) => {
 });
 
 function waitForVite() {
-  return new Promise((resolve, reject) => {
-    const maxAttempts = 30;
-    let attempts = 0;
+  // 依赖缓存为空时 Vite 要先做一次依赖预构建：本机实测首次启动 9–120s，视 release/、
+  // runtime/ 是否被一起扫描而定（见 .tinadec_dev/evidence/2026-10-18-perf-dev/）。
+  // 原来的 30s 上限在这段时间里就会超时，把一个还在正常启动的 Vite 当失败处理。
+  // 真正的“起不来”仍然立刻报错：子进程退出后 exitCode 在几十毫秒内就变成非 null
+  // （实测 82ms），这里每秒检查一次，所以放宽上限不会变成 180s 才报错。
+  const deadline = Date.now() + 180_000;
 
+  return new Promise((resolve, reject) => {
     const check = () => {
-      attempts++;
-      if (attempts > maxAttempts) {
-        reject(new Error("Vite dev server did not start within 30 seconds"));
+      if (viteProcess.exitCode !== null) {
+        reject(new Error(`Vite dev server exited before it started listening (exit code ${viteProcess.exitCode})`));
+        return;
+      }
+      if (Date.now() > deadline) {
+        reject(new Error("Vite dev server did not start within 180 seconds"));
         return;
       }
 

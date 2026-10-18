@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +7,16 @@ import zhTW from './zh-TW'
 import en from './en'
 import ja from './ja'
 import ru from './ru'
-import i18n, { russianPluralRule, SUPPORTED_LOCALES } from '../i18n'
+import i18n, { loadLocale, russianPluralRule, SUPPORTED_LOCALES, type SupportedLocale } from '../i18n'
+
+// The app imports only zh-CN eagerly; the other four bundles are separate chunks fetched on demand.
+// This suite grades the bundles on disk, and the plural case below reads them through the running
+// instance, so it loads all of them once here — the same call a language switch makes.
+beforeAll(async () => {
+  await Promise.all(SUPPORTED_LOCALES
+    .filter((locale): locale is SupportedLocale => locale !== 'zh-CN')
+    .map((locale) => loadLocale(locale)))
+})
 
 // ── helpers ──────────────────────────────────────────────────────────
 type Bundle = Record<string, unknown>

@@ -557,10 +557,12 @@ app.whenReady().then(async () => {
       return verifyManagedHost(hostControl.serviceToken, { signal });
     },
   });
-  // A temporary startup failure remains recoverable after the page opens.
-  const initialHost = await hostConnection.start();
-  if (shuttingDown) return;
-  if (initialHost.error) console.error('[tinadec] local host unavailable:', initialHost.error.code);
+  // Start host verification now but never block the first paint on it. Packaged startup may
+  // spend a full bounded wait bringing Core and Gateway up (measured 11-13 s locally), and
+  // awaiting it here left the user looking at nothing for that whole time. The renderer
+  // already models "not verified yet" as connecting (useConnection + HostAvailabilityBanner)
+  // and refuses business work until trustedHostReady, so painting the shell first is safe.
+  const hostStartup = hostConnection.start();
 
   registerAppBundleProtocol({ protocol, distDir: DIST_DIR });
   registerLocalMediaProtocol({ protocol });
@@ -584,6 +586,11 @@ app.whenReady().then(async () => {
     }
   });
   await createWindow();
+  // Report the settled result after the page is on screen; startup failures stay recoverable
+  // through the banner's retry, exactly as they were when this await came before the window.
+  hostStartup.then((initialHost) => {
+    if (initialHost?.error) console.error('[tinadec] local host unavailable:', initialHost.error.code);
+  }, (error) => console.error('[tinadec] local host verification failed:', error?.message ?? error));
   const downloadedPets = await listDownloaded().catch(() => []);
   await Promise.all(downloadedPets.filter((pet) => pet.enabled).map((pet) => createPetWindow(pet.slug).catch(() => undefined)));
 

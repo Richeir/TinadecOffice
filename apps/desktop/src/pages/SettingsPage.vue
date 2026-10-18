@@ -151,6 +151,7 @@ import { useNotifications } from '@/composables/useNotifications'
 import { useHostAccess } from '@/lib/hostAccess'
 import { useRecoverableRead, type ReadContext } from '@/composables/useRecoverableRead'
 import { toErrorState, type ErrorState } from '@/composables/useErrorState'
+import { isAbortError } from '@/lib/isAbortError'
 import { graphSeedPackManifest } from '@/agentPacks/GraphSeedPack'
 
 type SettingsSection = 'personal' | 'general' | 'storage' | 'model' | 'agentCenter' | 'tools' | 'tinachat' | 'archive' | 'appearance' | 'pets' | 'apiDocs' | 'about'
@@ -342,6 +343,9 @@ const modelProviderListRef = ref<HTMLElement | null>(null)
 const modelDiagnosticsRef = ref<HTMLDetailsElement | null>(null)
 const busy = ref(false)
 const agentDefinitionFailures = ref<Record<string, ErrorState>>({})
+/** Definitions already read for this render; anything else is fetched when its agent is opened. */
+const agentDefinitionLoadedIds = ref<Set<string>>(new Set())
+const agentDefinitionLoadingId = ref('')
 const agentReadDiagnostics = ref<Array<{ source: string; error: ErrorState }>>([])
 const modelCenterBusy = ref(false)
 const agentRuntimeBusy = ref(false)
@@ -1206,25 +1210,16 @@ async function loadAgentCenterData(context: ReadContext) {
           .filter((resource) => resource.kind === 'agent' && resource.logical_entity_id)
           .map((resource) => resource.logical_entity_id!),
       )
-      // Full definitions power the editor (prompt/tools/capabilities); the directory
-      // projection carries source/usage/preview/invocation evidence.
-      const definitionById = new Map<string, AgentDefinitionDto>()
+      // The directory *is* the list: source, usage, preview and invocation evidence all ride
+      // on it, so the rail is painted from this read alone. A full definition (prompt, tools,
+      // capabilities) is the inspector's business and is read on demand — pulling every
+      // definition in waves of four before the first row could render was the whole cost.
       const failures: Record<string, ErrorState> = {}
-      const live = directory.filter((item) => item.source_kind !== 'missing_reference')
-      // Bound the fan-out; one failed definition cannot erase the directory or
-      // provide an empty prompt/tools configuration to the editor.
-      for (let start = 0; start < live.length && isCurrent(); start += 4) {
-        await Promise.all(live.slice(start, start + 4).map(async item => {
-          try { definitionById.set(item.id, await api.getAgent(item.id, { signal })) }
-          catch (error) {
-            if (!isCurrent()) return
-            failures[item.id] = toErrorState(error)
-            partial.push({ source: item.display_name ?? item.slug, error: failures[item.id]! })
-          }
-        }))
-      }
-      if (!isCurrent()) return
       const preserveDraft = agentEditorBaseline !== '' && agentEditorSnapshot() !== agentEditorBaseline
+      // A dirty editor keeps the definition it was seeded from: dropping its provenance would
+      // unmount the very editor the user is typing in.
+      if (!preserveDraft) agentDefinitionLoadedIds.value = new Set()
+      agentDefinitionLoadingId.value = ''
       const previousAgents = new Map(agents.value.map(agent => [agent.id, agent]))
       if (preserveDraft && !directory.some(item => item.id === configuringAgentId.value)) {
         failures[configuringAgentId.value] = toErrorState(new Error(t('settings.agentDraftSourceMissing')))
@@ -1234,8 +1229,10 @@ async function loadAgentCenterData(context: ReadContext) {
       agentCenterOverview.value = null
       agentModes.value = modes
       agentDirectory.value = directory
+      // Rows carry the directory projection plus whatever definition was already read for that
+      // agent; the inspector fills the rest in when it opens. Until then the card shows its
+      // source kind as the secondary line instead of an invented empty description.
       agents.value = directory.map((item) => {
-        const definition = definitionById.get(item.id)
         const previous = previousAgents.get(item.id)
         return {
           id: item.id,
@@ -1246,11 +1243,11 @@ async function loadAgentCenterData(context: ReadContext) {
           role: item.role,
           agent_type: item.role,
           mode: '',
-          description: definition?.description ?? previous?.description ?? '',
+          description: previous?.description ?? '',
           model_route_purpose: item.configured_strategy?.route_purpose ?? '',
-          allowed_tools: definition ? (Array.isArray(definition.tool_scope) ? definition.tool_scope as string[] : []) : previous?.allowed_tools ?? [],
-          capabilities: definition?.capabilities ?? previous?.capabilities ?? [],
-          system_prompt: definition?.system_prompt ?? previous?.system_prompt ?? null,
+          allowed_tools: previous?.allowed_tools ?? [],
+          capabilities: previous?.capabilities ?? [],
+          system_prompt: previous?.system_prompt ?? null,
           enabled: item.enabled,
           is_built_in: item.managed || item.source_kind !== 'custom' || managedAgentIds.has(item.id),
           model_strategy: item.configured_strategy as unknown as Record<string, unknown>,
@@ -1271,12 +1268,14 @@ async function loadAgentCenterData(context: ReadContext) {
           ?? agents.value.find((agent) => agent.id === selectedAgentId.value)
           ?? agents.value[0]
       if (activeAgent && !preserveDraft) {
-        openAgentConfig(activeAgent)
+        await openAgentConfigFromDirectory(activeAgent.id)
       }
-      agentReadDiagnostics.value = partial.slice()
-      // Auxiliary tools do not determine whether the agent directory is usable.
-      // Keep the last successful values on failure and guard late completions.
-      await Promise.all([
+      // Keep the definition failure this read just produced (if any) instead of replacing it.
+      const readSources = new Set(partial.map(item => item.source))
+      agentReadDiagnostics.value = [...partial, ...agentReadDiagnostics.value.filter(item => !readSources.has(item.source))]
+      // The directory is already on screen; auxiliary catalog reads only feed the inspector's
+      // tool picker, so they are settled in the background instead of holding up this read.
+      const auxiliary = Promise.all([
         (async () => {
           try {
             const manifest = await api.getHarnessManifest({ signal })
@@ -1297,8 +1296,14 @@ async function loadAgentCenterData(context: ReadContext) {
           if (isCurrent()) projectTemplates.value = projectTemplatesFromResult(result)
         }).catch(preserve('project-templates', null)),
       ])
-      if (isCurrent()) agentReadDiagnostics.value = partial
-      if (isCurrent()) await loadToolDiscovery(context)
+      // The rail is already painted and the inspector resolves on its own; these only feed
+      // secondary catalogs, so the read finishes here instead of waiting on them.
+      void auxiliary.then(() => {
+        if (!isCurrent()) return
+        const known = new Set(partial.map(item => item.source))
+        agentReadDiagnostics.value = [...partial, ...agentReadDiagnostics.value.filter(item => !known.has(item.source))]
+      })
+      if (isCurrent()) void loadToolDiscovery(context)
 }
 
 async function loadToolDiscovery(context?: ReadContext) {
@@ -1520,10 +1525,65 @@ function agentEditorSnapshot(): string {
     agentEditSystemPrompt.value, agentEditDescription.value, agentRuntimeSelection.value,
     agentRuntimeModelKey.value, agentRuntimeRoutePurpose.value])
 }
+/**
+ * The one place a definition is read. The editor is seeded from the merge in
+ * `mergeAgentDefinition`, and only then does the panel open — a failed read leaves the panel
+ * closed with a retry, never an invented empty prompt/tool list.
+ */
+async function ensureAgentDefinition(agentId: string): Promise<AgentViewDto | null> {
+  if (agentDefinitionLoadedIds.value.has(agentId)) return agents.value.find((item) => item.id === agentId) ?? null
+  if (agentDefinitionLoadingId.value === agentId) return null
+  agentDefinitionLoadingId.value = agentId
+  try {
+    const definition = await api.getAgent(agentId)
+    const index = agents.value.findIndex((item) => item.id === agentId)
+    // The directory may have been replaced while this was out; a row that is gone stays gone.
+    if (index < 0) return null
+    agents.value = agents.value.map((item, position) => position === index ? mergeAgentDefinition(item, definition) : item)
+    agentDefinitionLoadedIds.value = new Set([...agentDefinitionLoadedIds.value, agentId])
+    const failures = { ...agentDefinitionFailures.value }
+    if (failures[agentId]) { delete failures[agentId]; agentDefinitionFailures.value = failures }
+    return agents.value[index] ?? null
+  } catch (error) {
+    if (isAbortError(error)) return null
+    agentDefinitionFailures.value = { ...agentDefinitionFailures.value, [agentId]: toErrorState(error) }
+    agentReadDiagnostics.value = [...agentReadDiagnostics.value.filter(item => item.source !== agentId),
+      { source: agents.value.find(item => item.id === agentId)?.name ?? agentId, error: toErrorState(error) }]
+    return null
+  } finally {
+    if (agentDefinitionLoadingId.value === agentId) agentDefinitionLoadingId.value = ''
+  }
+}
+
+/** Application fields the directory cannot supply; the directory keeps ownership of the rest. */
+function mergeAgentDefinition(row: AgentViewDto, definition: AgentDefinitionDto): AgentViewDto {
+  return {
+    ...row,
+    description: definition.description ?? row.description ?? '',
+    allowed_tools: Array.isArray(definition.tool_scope) ? definition.tool_scope as string[] : row.allowed_tools ?? [],
+    capabilities: definition.capabilities ?? row.capabilities ?? [],
+    system_prompt: definition.system_prompt ?? null,
+    revision: definition.revision ?? row.revision ?? null,
+    version: definition.version ?? row.version ?? null,
+    status: definition.status ?? row.status,
+  }
+}
+
+/** Open an agent by id from the directory, reading its definition first when needed. */
+async function openAgentConfigFromDirectory(agentId: string): Promise<void> {
+  selectedAgentId.value = agentId
+  const loaded = await ensureAgentDefinition(agentId)
+  // A failed read leaves the failure (and its retry) in the inspector; never open an empty editor.
+  if (loaded) openAgentConfig(loaded)
+  else if (agentDefinitionFailures.value[agentId]) configuringAgentId.value = agentId
+}
+
 function openAgentConfig(agent: AgentViewDto) {
   selectedAgentId.value = agent.id
+  if (agentDefinitionFailures.value[agent.id]) { configuringAgentId.value = agent.id; return }
+  // The rail is painted before any definition exists; opening one is what reads it.
+  if (!agentDefinitionLoadedIds.value.has(agent.id)) { void openAgentConfigFromDirectory(agent.id); return }
   configuringAgentId.value = agent.id
-  if (agentDefinitionFailures.value[agent.id]) return
   agentEditTools.value = [...(agent.allowed_tools ?? [])]
   agentEditCapabilities.value = [...(agent.capabilities ?? [])]
   agentEditSystemPrompt.value = agent.system_prompt ?? ''

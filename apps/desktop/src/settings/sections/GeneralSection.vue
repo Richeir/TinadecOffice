@@ -8,7 +8,7 @@ import { scopedApi } from '@/lib/storageScope'
 const api = scopedApi(baseApi, () => 'user')
 import { useNotifications } from '@/composables/useNotifications'
 import { getDispatchPref, setDispatchPref, type DispatchPref } from '@/lib/dispatchPref'
-import { SUPPORTED_LOCALES, type SupportedLocale } from '@/i18n'
+import { SUPPORTED_LOCALES, setInterfaceLocale, type SupportedLocale } from '@/i18n'
 
 /**
  * General section extracted from SettingsPage (D7.2).
@@ -22,8 +22,14 @@ const { t, locale } = useI18n()
 const { items: notificationItems, notify, banner, status, confirm: dismissConfirm, dismiss: dismissNotification, dismissByKey } =
   useNotifications()
 
-function setLocale(lang: SupportedLocale): void {
-  locale.value = lang
+/**
+ * Switch the interface language. Every non-default bundle is a separate chunk now, so the switch waits
+ * for it: setting `locale` first would repaint the window in a language whose bundle is still in flight.
+ * The stored key is written only after the bundle arrives, so another window never switches to a
+ * language this one could not load either.
+ */
+async function setLocale(lang: SupportedLocale): Promise<void> {
+  if (!(await setInterfaceLocale(lang))) return
   localStorage.setItem('tinadec-locale', lang)
 }
 

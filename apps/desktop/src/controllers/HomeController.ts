@@ -106,7 +106,6 @@ const queuedMessages = ref<Array<{ id: string; content: string; interactionId?: 
 const runStreams = new Map<string, RunStreamHandle>()
 let runStreamsSuspended = false
 const runText = new Map<string, string>()
-const provisionalReplies = new Set<string>()
 // 运行指示（问题 3 修复）：是否有活跃的 run 流。runStreams 是非响应式 Map，computed
 // 无法追踪，故用显式 ref 并在每次 set/delete/clear 后 syncWorking()。用流数量而非
 // activeRuns.length：activeRuns 含 lane_waiting/gate_review 等长驻态，会让指示永久
@@ -523,13 +522,16 @@ async function readMessagesAndApprovals() {
     created_at: r.created_at ?? null,
     updated_at: r.updated_at ?? null,
   }))
-  // 状态源统一（问题 3 修复）：ChatHeader 的 run-pills 读 Pinia runStore.runs，而
-  // runStore.fetchRuns 此前只在无入口的 WorkbenchPage 调用 → Home 页 pills 恒空。
-  // 把 Home 已拉取的 run 列表（含 session_id，WorkbenchPage.control 依赖）同步进 store。
-  // HomeController 是模块级单例，可能早于 Pinia 安装被求值，故惰性获取 + 兜底。
+  // Keep Pinia's run list in step with what Home fetched: WorkbenchPage and the composer's
+  // run picker read runStore.runs, and runStore.fetchRuns only ever ran from WorkbenchPage,
+  // which has no entry point — so those readers stayed empty on Home. The list carries
+  // session_id, which WorkbenchPage.control depends on. (This used to feed ChatHeader's run
+  // pills; those are gone — status lives in the conversation flow — but the store sync is
+  // still what the remaining readers need.) HomeController is a module singleton that may be
+  // evaluated before Pinia is installed, hence the lazy lookup and the fallback.
   try {
     useRunStore().runs = (Array.isArray(runList) ? runList : []) as never
-  } catch { /* Pinia 尚未安装：pills 退回空态，不阻断聊天 */ }
+  } catch { /* Pinia not installed yet: readers fall back to empty, chat still works */ }
   attachActiveRuns()
   if (sessionLoadAbort === loadAbort) sessionLoadAbort = null
 }
@@ -563,16 +565,13 @@ function attachRun(runId: string) {
     },
     onChunk: (chunk) => {
       if (session !== selectedSessionId.value || storage !== selectedStorageId()) return
-      const reply = projectRunReply({ text: runText.get(runId) ?? '', provisional: provisionalReplies.has(runId) }, chunk)
-      if (reply) {
-        if (reply.provisional) provisionalReplies.add(runId)
-        else provisionalReplies.delete(runId)
-        runText.set(runId, reply.text)
-        streamingText.value = new Map(streamingText.value).set(runId, reply.text)
+      const reply = projectRunReply(runText.get(runId) ?? '', chunk)
+      if (reply !== null) {
+        runText.set(runId, reply)
+        streamingText.value = new Map(streamingText.value).set(runId, reply)
         return
       }
       if (chunk.kind === 'done' || chunk.kind === 'error') {
-        provisionalReplies.delete(runId)
         if (chunk.kind === 'error') {
           const payload = chunk.payload as Record<string, unknown>
           const message = errorCategoryMessage(payload.error_category) ?? payload.safe_error_message ?? payload.message ?? payload.error_category
@@ -599,7 +598,7 @@ function attachActiveRuns() {
   if (runStreamsSuspended) {
     const active = new Set(activeRuns.value.map(run => run.id))
     for (const [id, stream] of runStreams) if (!active.has(id)) {
-      stream.disconnect(); runStreams.delete(id); runText.delete(id); provisionalReplies.delete(id)
+      stream.disconnect(); runStreams.delete(id); runText.delete(id)
       const text = new Map(streamingText.value); text.delete(id); streamingText.value = text
     }
   }
@@ -1296,7 +1295,7 @@ watch([selectedSessionId, selectedStorage], ([, storageId], [, previousStorage])
   runStreams.clear()
   syncWorking()
   runText.clear()
-  provisionalReplies.clear()
+
   streamingText.value = new Map()
   void loadMessagesAndApprovals().catch(error => { if (!isAbortError(error)) notify.error(error, { title: t('home.sessionLoadFailed') }) })
   followSession(currentSession.value ? selectionKey(currentSession.value) : selectedSessionId.value)

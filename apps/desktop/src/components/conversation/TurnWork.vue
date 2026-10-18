@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { ChevronRight } from '@lucide/vue'
+import { Brain, ChevronRight, ListChecks, PenLine, ShieldAlert, Wrench } from '@lucide/vue'
 import { computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Spinner } from '@/components/ui/spinner'
 import { useAutoDisclosure } from '@/composables/useAutoDisclosure'
 import { useJustSettled } from '@/composables/useJustSettled'
 import { useElapsed } from '@/composables/useElapsed'
 import { formatDuration } from '@/lib/conversation/format'
 import type { FeedNode } from '@/lib/conversation/grouping'
 import { latestReasoningTitle } from '@/lib/conversation/reasoning'
-import type { FeedEntry, RunActivity, ToolEntry } from '@/lib/conversation/reducer'
+import type { FeedEntry, PlanEntry, ReasoningEntry, RunActivity, ToolEntry } from '@/lib/conversation/reducer'
 import { entrySentence, verbKey } from '@/lib/conversation/toolSentence'
 import TurnActivity from './TurnActivity.vue'
 
@@ -24,18 +23,31 @@ import TurnActivity from './TurnActivity.vue'
 const props = defineProps<{
   activity: RunActivity
   nodes: FeedNode[]
-  live: boolean
+  /**
+   * Producing work right now: drives the spinner, the live step line and the timer. A run
+   * parked on a person is NOT working — nothing is arriving, so claiming a step is in
+   * progress would read as "still busy" forever.
+   */
+  working: boolean
+  /**
+   * Still in flight, parked or not: decides whether the fold starts open. Kept apart from
+   * `working` because a parked run must stay open (the work, and any decision, is what the
+   * reader came for) while it must not pretend to be running.
+   */
+  openByDefault: boolean
   runId: string
+  /** Core's current run phase, used while the first durable step is still in flight. */
+  runStatus: string
   /** Bumped when the feed publishes; activity is mutable. */
   revision: number
   workspaceRoot?: string | null
 }>()
 const { t } = useI18n()
 
-const { open } = useAutoDisclosure(toRef(() => props.live))
+const { open } = useAutoDisclosure(toRef(() => props.openByDefault))
 // The summary that replaces the status line sweeps once, only when this run finished in view.
-const justSettled = useJustSettled(toRef(() => props.live))
-const elapsed = useElapsed(toRef(() => props.activity.firstAt), toRef(() => (props.live ? null : props.activity.lastAt)))
+const justSettled = useJustSettled(toRef(() => props.openByDefault))
+const elapsed = useElapsed(toRef(() => props.activity.firstAt), toRef(() => (props.openByDefault ? null : props.activity.lastAt)))
 
 function isLive(entry: FeedEntry): boolean {
   if (entry.kind === 'tool') return entry.status === 'requested' || entry.status === 'running'
@@ -43,17 +55,66 @@ function isLive(entry: FeedEntry): boolean {
   return false
 }
 
-const status = computed(() => {
+type StatusKind = 'drafting' | 'planning' | 'thinking' | 'tool'
+
+interface StatusStep {
+  kind: StatusKind
+  label: string
+}
+
+const statusIcons = {
+  drafting: PenLine,
+  planning: ListChecks,
+  thinking: Brain,
+  tool: Wrench,
+} as const
+
+function latest(entries: readonly FeedEntry[], kind: 'plan' | 'reasoning'): PlanEntry | ReasoningEntry | null {
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i]!
+    if (entry.kind === kind) return entry
+  }
+  return null
+}
+
+const statusStep = computed<StatusStep>(() => {
   void props.revision
   const current = [...props.activity.entries].reverse().find(isLive)
   if (current?.kind === 'tool') {
     const sentence = entrySentence(current, props.workspaceRoot)
-    return t(verbKey(sentence.verb, 'active'), { subject: sentence.subject ?? current.toolId })
+    return { kind: 'tool', label: t(verbKey(sentence.verb, 'active'), { subject: sentence.subject ?? current.toolId }) }
   }
-  if (current?.kind === 'reasoning') return latestReasoningTitle(current.text)
-    ?? t(current.output && !current.text ? 'conversation.reasoning.drafting' : 'conversation.reasoning.thinking')
-  return t('conversation.reasoning.thinking')
+  if (current?.kind === 'reasoning') {
+    const title = latestReasoningTitle(current.text)
+    if (title) return { kind: 'thinking', label: title }
+    return current.output && !current.text
+      ? { kind: 'drafting', label: t('conversation.reasoning.drafting') }
+      : { kind: 'thinking', label: t('conversation.reasoning.thinking') }
+  }
+
+  // The live event may already have settled, but the phase remains the best explanation
+  // of what the run is doing while the next event is in flight. Keep the latest durable
+  // step visible instead of falling back to a generic "thinking" label.
+  const plan = latest(props.activity.entries, 'plan') as PlanEntry | null
+  if (plan) {
+    const active = plan.steps.find((step) => step.status === 'in_progress')
+    return { kind: 'planning', label: active?.step ?? t('conversation.reasoning.planning') }
+  }
+  const reasoning = latest(props.activity.entries, 'reasoning') as ReasoningEntry | null
+  if (reasoning) {
+    const title = latestReasoningTitle(reasoning.text)
+    if (title) return { kind: 'thinking', label: title }
+    return reasoning.output && !reasoning.text
+      ? { kind: 'drafting', label: t('conversation.reasoning.drafting') }
+      : { kind: 'thinking', label: t('conversation.reasoning.thinking') }
+  }
+  if (props.runStatus === 'planning' || props.runStatus === 'understanding' || props.runStatus === 'replanning') {
+    return { kind: 'planning', label: t('conversation.reasoning.planning') }
+  }
+  return { kind: 'thinking', label: t('conversation.reasoning.thinking') }
 })
+
+const statusIcon = computed(() => statusIcons[statusStep.value.kind])
 
 const summary = computed(() => {
   void props.revision
@@ -71,12 +132,18 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <Collapsible v-model:open="open" class="conversation-work" :data-live="live ? 'true' : undefined" data-testid="turn-work">
+  <Collapsible v-model:open="open" class="conversation-work" :data-live="working ? 'true' : undefined" data-testid="turn-work">
     <CollapsibleTrigger class="conversation-fold-trigger conversation-work-trigger">
-      <template v-if="live">
-        <Spinner decorative class="conversation-glyph" />
-        <span class="shimmer" role="status" data-testid="turn-status">{{ status }}</span>
+      <template v-if="working">
+        <component :is="statusIcon" class="conversation-glyph" data-testid="turn-status-icon" aria-hidden="true" />
+        <span class="shimmer" role="status" data-testid="turn-status">{{ statusStep.label }}</span>
         <span v-if="elapsed !== null" class="conversation-fold-meta">{{ formatDuration(elapsed, t) }}</span>
+      </template>
+      <!-- Parked on a person: no spinner, no timer, just why it stopped. The gate below the
+           fold carries the decision itself; this line only keeps the fold honest. -->
+      <template v-else-if="openByDefault">
+        <ShieldAlert class="conversation-glyph conversation-glyph--waiting" aria-hidden="true" />
+        <span class="conversation-fold-waiting" role="status" data-testid="turn-waiting-fold">{{ t('conversation.turn.awaiting.generic') }}</span>
       </template>
       <span v-else :class="{ 'shimmer-once': justSettled }" data-testid="turn-summary">{{ summary }}</span>
       <ChevronRight class="conversation-fold-chevron" aria-hidden="true" />
@@ -89,4 +156,6 @@ const summary = computed(() => {
 
 <style scoped>
 .conversation-work-trigger { color: var(--text-secondary); }
+.conversation-glyph--waiting { color: var(--accent-warning, #e3b341); }
+.conversation-fold-waiting { color: var(--accent-warning, #e3b341); font-size: 12px; }
 </style>

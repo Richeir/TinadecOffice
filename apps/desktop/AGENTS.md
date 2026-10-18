@@ -1,5 +1,32 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-18 真实 Electron：监督裁决送达 + 阶段步骤 + SSE 根因
+
+**业务事件流此前在 Electron 里实际是断的。** `ScopedEventSource` 以 `this.fetchImpl(...)` 调用原生 fetch，绑定到了事件源实例，Electron 抛 `TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`；重连 catch 吞掉错误，所以心跳看起来正常、`model.*`/`tool.*`/`supervision.*` 一条都进不了对话流。修法是取局部 `const fetchImpl = this.fetchImpl` 后无绑定调用；`scopedEventSource.test.ts` 用普通 `function`（调用时 `this === source` 会失败）钉住真实原生语义。真实旧会话 `B4B56D9A…` 重开后，`supervision.user_review.requested` 的原因和 continue/correct/cancel 三个按钮都出现并可操作。
+
+**实时状态是对话流里的步骤，不是会消失的标题。** `TurnWork` 每个阶段都有 Lucide 图标：起草 `PenLine`、规划 `ListChecks`、思考 `Brain`、工具 `Wrench`；当前 live 事件落定后仍回退到最近的 `plan`/`reasoning`，避免下一事件到达前退回泛化的“正在思考”。`ConversationTurn` 的答案占位同样按 run phase 显示“正在规划”或“正在起草”，并带对应图标。`TurnWork` 新增必需的 `runStatus`；`working` 仍只表示真正在产出，不把 parked 当工作。
+
+**Vite 冷启动优化器会卡在 UIE 的循环 barrel 上。** `vite.config.ts` 改为 `optimizeDeps.noDiscovery: true` + 显式首屏依赖清单；Monaco、Mermaid、Recharts、图标静态包等重依赖走 lazy/按需，不参与首屏预构建。新增 eager 的裸包 import 必须同步加入 `include`；`highlight.js/lib/core` 必须单列，否则原生 ESM 路径没有 default interop。不要退回默认全源图扫描，否则清空 `.vite` 后启动会停在“正在生成”且 `main.ts` 请求不返回。
+
+**验证**：`vue-tsc --noEmit` 通过；SSE/监督/阶段/国际化定向 **34/34**；`vite build` 成功（6m38s，既有大 chunk 警告仍在）。真实 Electron 用用户数据根复测：监督卡可见可答，真实模型 run 依次显示“正在规划 → 正在思考 → 正在起草”，完成后答案 `状态步骤图标已显示。` 入流。不要把无头组件测试当作这条链路的验收；IPC trust、原生 fetch 和真实 SSE 都必须在 Electron 里复验。
+
+## 2026-10-18 平面模式：状态进对话流，表头只剩标题
+
+**对话流是平面模式下状态的唯一去处。** 删掉了两处在流外的状态投影：`ChatHeader.vue` 的 run 胶囊（标题下一排「规划中/执行中/等待」，最多 4 个、可点选 run）与 `ChatPanel.vue` 的浮动 `AgentTodosStatus` 计划胶囊（输入框上方，组件已整体删除）。理由是同一条事实在对话流里已有真实表达——`TurnWork` 的 live 状态行（阶段图标 + 白话步骤 + 计时）、`TurnActivity` 的 `plan` 节点（`AgentTodos`）、`SupervisionGate`——流外那两处不携带新信息却用独立词汇，且位于读者视线之外。Codex / Qoder / Claude Desktop 都只有一套。
+
+**计划不另建入口**：`plan` 节点本就在 `TurnActivity` 里与思维块、工具行同层渲染，浮动胶囊读的是同一个 `PlanEntry`，属于重复投影。删掉后计划随这一轮沉淀。
+
+**`useRunStore.selectedRunId` 在对话里不再有 UI**，但语义未改：`WorkbenchPage` 仍在用，`fetchRuns` 的清理与回退逻辑保持不变。对话内没有 run 切换器是有意的——同会话并行 run 由对话流按 turn 分行，不需要手动选。
+
+### `working` vs `parked`（修掉一个自引入缺陷）
+
+2026-10-18 流式重构第 7 步加的「正在起草…」占位判据是 `run.live`，而 `isLiveRunStatus` 把 `awaiting_user`/`awaiting_approval`/`awaiting_delegate` 也算 live，于是**等待人裁决的 run 会永久显示闪烁占位**——这正是「一直在规划中」的观感来源之一。`lib/conversation/turns.ts` 现新增 `isParkedRunStatus`（= AWAITING 集合），`ConversationTurn` 据此分：`working`（RUNNING）显示闪烁占位，代表真在产出；`parked` 显示静态等待行 `conversation.turn.awaiting.*`，无动画。等待行只在**没有** `SupervisionReview` 时显示——有 review 时由 `SupervisionGate` 给出可操作选项，不重复。
+
+### 验证与边界
+
+`vue-tsc` 通过；conversation 组件套件 + ChatHeader + ChatPanel + locales + HomeController + runReply **121/121**；全量 desktop 1379 通过 / 1 失败（`message-scroller` 的 follows-new-rows 用例）。**该失败与本轮无关，已在干净树上复现**：`git stash` 我的改动后单独连跑三次，结果为通过/失败/通过，失败点在两条断言之间移动，属既有的 happy-dom 时序抖动，不是回归。
+
+**未做真实 Electron 视觉验收**；删掉胶囊后的观感、等待行的颜色与位置需真机确认。**侧边栏详情入口本轮未新建**：现有右栏 `AgentActivityPanel`（含 `SubAgentsPanel` 名册）已是详情去处，是否在左栏再加需要先看删除效果，避免又造一处重复。证据 `.tinadec_dev/evidence/2026-10-18-flat-flow-status/`。
 ## 2026-10-18 启动性能：窗口不再等后端
 
 `electron/main.cjs` 的 `app.whenReady()` 原本 `await hostConnection.start()` **之后**才 `createWindow()`。`hostConnection.start()` 内部跑 `ensureLocalServices()`：探测健康、校验 HMAC 身份、启动缺失子进程并轮询等就绪（`startupTimeoutMs = 90_000`，打包态 `verificationTimeoutMs = 200_000`）。也就是说窗口创建被排在整条后端启动链之后——**在窗口存在之前用户看到的是桌面而不是应用**，连 splash 都没有，因为渲染进程还没启动。本机实测 Core 单进程到 `/health` 200 就要 11.7–13.0 s。

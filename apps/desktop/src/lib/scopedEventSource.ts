@@ -48,7 +48,12 @@ export class ScopedEventSource {
     try {
       await assertHostAccess(this.url, request.signal)
       if (this.closed || request.signal.aborted) return
-      const response = await this.fetchImpl(this.url, { signal: request.signal, headers: {
+      // Native fetch is a Window method in Electron. Calling it as `this.fetchImpl(...)`
+      // binds `this` to ScopedEventSource and throws "Illegal invocation", which the
+      // reconnect catch below then swallowed forever. Keep the injected function, but
+      // invoke it unbound so both the browser implementation and test doubles work.
+      const fetchImpl = this.fetchImpl
+      const response = await fetchImpl(this.url, { signal: request.signal, headers: {
         accept: 'text/event-stream', 'x-tinadec-storage-id': this.storageId,
         ...(this.cursor ? { 'last-event-id': this.cursor } : {}),
       } })

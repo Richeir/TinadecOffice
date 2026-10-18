@@ -2,14 +2,12 @@
 import { computed, ref, nextTick, watch } from 'vue'
 import ChatHeader from './ChatHeader.vue'
 import ConversationView from './conversation/ConversationView.vue'
-import AgentTodosStatus from './conversation/AgentTodosStatus.vue'
 import ComposerBar from './ComposerBar.vue'
 import WelcomeScreen from './WelcomeScreen.vue'
 import { useChatResponsiveMode } from '@/composables/useElementSize'
 import type { ComposerSubmitOptions, SessionSettingsUpdate, MessageDto, SessionDto, ProjectDto, OrchestrationSnapshotDto } from '../api'
 import type { ComposerSettings } from '@/lib/composerSettings'
 import type { PermissionLevel } from '@/types/mode'
-import type { SupervisionReview } from '@/composables/useAgentActivity'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import type { ApprovalDto } from '../api'
 import type { TurnRunInput } from '@/lib/conversation/turns'
@@ -50,7 +48,6 @@ const props = defineProps<{
     runs: readonly TurnRunInput[]
     streamingReplies?: Readonly<Record<string, string>>
     approvals?: readonly ApprovalDto[]
-    supervisionReviews?: Readonly<Record<string, SupervisionReview | null | undefined>>
     workspaceRoot?: string | null
   }
 }>()
@@ -148,12 +145,10 @@ watch(hero, async () => {
           :feed="conversation.feed"
           :streaming-replies="conversation.streamingReplies"
           :approvals="conversation.approvals"
-          :supervision-reviews="conversation.supervisionReviews"
           :workspace-root="conversation.workspaceRoot"
           :loading="loading"
           @edit="emit('edit-message', $event)"
         />
-        <AgentTodosStatus :feed="conversation.feed" :runs="conversation.runs" />
       </div>
     </Transition>
 

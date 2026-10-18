@@ -69,6 +69,12 @@ export interface GroupedRun {
   /** Sub-agents of this run, in dispatch order (the right-column roster reads this). */
   agents: SubAgentNode[]
   running: number
+  /**
+   * A supervision escalation this run is parked on, carried through grouping so the
+   * renderer reads it from the feed instead of rebuilding it out of a per-run activity
+   * map that only exists for the run the user happens to have selected.
+   */
+  review: { reasons: string[]; options: string[]; at: string } | null
 }
 
 type QuietEntry = ReasoningEntry | ToolEntry | WaitEntry
@@ -227,7 +233,7 @@ export function groupRun(record: RunActivity, live: boolean): GroupedRun {
   const context: Context = { record, byScope, approvals: [], agents: [], live }
   const nodes = build(context, null, null)
   const running = context.agents.filter((node) => node.status === 'running' || node.status === 'awaiting_approval').length
-  return { nodes, approvals: context.approvals, agents: context.agents, running }
+  return { nodes, approvals: context.approvals, agents: context.agents, running, review: record.review }
 }
 
 /** Longest interim answer that still reads as a note between steps (Qoder's groupText). */

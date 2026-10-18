@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { RotateCcw } from '@lucide/vue'
+import { ListChecks, PenLine, RotateCcw } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { approvalSummary } from '@/userToolAction'
 import type { ApprovalDto } from '@/api'
-import type { SupervisionReview } from '@/composables/useAgentActivity'
+import type { SupervisionDecisionOption, SupervisionReview } from '@/composables/useAgentActivity'
 import { groupRun, isCompactAnswer, type GroupedRun } from '@/lib/conversation/grouping'
 import type { RunActivity, ToolEntry } from '@/lib/conversation/reducer'
-import { isLiveRunStatus, type ConversationTurn } from '@/lib/conversation/turns'
+import { isLiveRunStatus, isParkedRunStatus, type ConversationTurn } from '@/lib/conversation/turns'
 import { elapsedMs } from '@/lib/conversation/format'
 import UserMessage from './UserMessage.vue'
 import TurnWork from './TurnWork.vue'
@@ -36,14 +36,36 @@ interface RunView {
   id: string
   status: string
   live: boolean
+  /** Producing work right now (not parked on a person): the drafting placeholder is for this. */
+  working: boolean
+  /** Live but waiting on a person. */
+  parked: boolean
   activity: RunActivity | null
   grouped: GroupedRun | null
   /** Approvals Core lists for this run that the feed has not seen (yet): still shown. */
   orphanApprovals: ApprovalDto[]
+  /** A supervision escalation this run is parked on, ready for the gate. */
+  review: SupervisionReview | null
   streamingText: string | null
 }
 
 const approvalsById = computed(() => new Map(props.approvals.map((approval) => [approval.id, approval])))
+
+/**
+ * The gate's input. The feed keeps an escalation as plain event strings; the gate wants
+ * Core's decision vocabulary narrowed to the three it can send. An unrecognised option must
+ * not become a button, and nothing recognised (a payload predating the vocabulary) falls
+ * back to the documented trio.
+ */
+function gateReview(runId: string, reasons: readonly string[], options: readonly string[]): SupervisionReview {
+  const recognised = options.filter((option): option is SupervisionDecisionOption =>
+    option === 'continue' || option === 'correct' || option === 'cancel')
+  return {
+    runId,
+    reasons: [...reasons],
+    options: recognised.length > 0 ? recognised : ['continue', 'correct', 'cancel'],
+  }
+}
 
 const runs = computed<RunView[]>(() => {
   void props.revision
@@ -52,7 +74,14 @@ const runs = computed<RunView[]>(() => {
     const known = new Set(grouped?.approvals.map((approval) => approval.entry.approvalId).filter(Boolean))
     const orphanApprovals = props.approvals.filter((approval) =>
       approval.run_id === run.id && approval.status === 'pending' && !known.has(approval.id))
-    return { id: run.id, status: run.status, live: isLiveRunStatus(run.status), activity, grouped, orphanApprovals, streamingText }
+    const live = isLiveRunStatus(run.status)
+    const parked = isParkedRunStatus(run.status)
+    // The feed's own review wins: the reducer maintains it, so it survives a reload and does
+    // not depend on this run being the one the activity store last selected.
+    const review = grouped?.review
+      ? gateReview(run.id, grouped.review.reasons, grouped.review.options)
+      : props.supervisionReviews?.[run.id] ?? null
+    return { id: run.id, status: run.status, live, parked, working: live && !parked, activity, grouped, orphanApprovals, review, streamingText }
   })
 })
 
@@ -92,6 +121,9 @@ function retry() {
   const user = props.turn.user
   if (user) emit('edit', { id: user.id, content: user.content })
 }
+function planningPhase(status: string): boolean {
+  return status === 'planning' || status === 'understanding' || status === 'replanning'
+}
 const toolCount = computed(() => {
   void props.revision
   return props.turn.runs.reduce((sum, { activity }) => sum + (activity?.entries.filter((entry) => entry.kind === 'tool').length ?? 0), 0)
@@ -108,8 +140,10 @@ const toolCount = computed(() => {
         v-if="run.activity && run.grouped?.nodes.length"
         :activity="run.activity"
         :nodes="run.grouped.nodes"
-        :live="run.live"
+        :working="run.working"
+        :open-by-default="run.live"
         :run-id="run.id"
+        :run-status="run.status"
         :revision="revision"
         :workspace-root="workspaceRoot"
       />
@@ -132,11 +166,32 @@ const toolCount = computed(() => {
           :workspace-root="workspaceRoot"
         />
       </div>
-      <SupervisionGate :review="supervisionReviews?.[run.id]" />
+      <SupervisionGate :review="run.review" />
       <!-- Why a run stopped is never folded away with its work. -->
       <TurnMarker v-if="run.activity?.failure" type="run_failed" :data="{ category: run.activity.failure.category, message: run.activity.failure.message }" />
       <TurnMarker v-if="run.status === 'cancelled'" type="run_cancelled" />
       <AssistantAnswer v-if="run.streamingText && !answers.some((answer) => answer.run_id === run.id)" :content="run.streamingText" streaming />
+      <!-- A live run with no answer text yet. Measured on real runs the gap before the first
+           answer frame is 69-86% of the run; without a body here the panel just looks idle. -->
+      <p
+        v-else-if="run.working"
+        class="conversation-answer-drafting"
+        role="status"
+        data-testid="answer-drafting"
+      >
+        <component :is="planningPhase(run.status) ? ListChecks : PenLine" :size="12" aria-hidden="true" />
+        <span>{{ t(planningPhase(run.status) ? 'conversation.reasoning.planning' : 'conversation.reasoning.drafting') }}</span>
+      </p>
+      <!-- Parked on a person. The header used to carry this as a "waiting" pill outside the
+           flow; with the pills gone, the turn itself must say it, or an escalated run is
+           indistinguishable from one still thinking. A supervision gate already names the
+           decision when Core sent one, so this line only covers the case without it. -->
+      <p
+        v-else-if="run.parked && !run.review"
+        class="conversation-turn-waiting"
+        role="status"
+        data-testid="turn-waiting"
+      >{{ t(`conversation.turn.awaiting.${run.status}`, { fallback: t('conversation.turn.awaiting.generic') }) }}</p>
     </template>
 
     <AssistantAnswer
@@ -163,4 +218,20 @@ const toolCount = computed(() => {
 .conversation-retry { display: flex; }
 .conversation-retry .conversation-text-button { display: inline-flex; align-items: center; gap: 4px; }
 .conversation-sending { margin: 0; align-self: flex-end; font-size: 11px; color: var(--text-muted); }
+/* Occupies the answer's place while the run works, so the panel is not blank for the
+   69-86% of a run that precedes its first answer frame. It reuses the shimmer the feed
+   already uses for live labels rather than inventing a second pulse. */
+.conversation-answer-drafting { display: flex; align-items: center; gap: 5px; margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-muted); }
+/* Parked on a person: static, warning-coloured, no shimmer — it is not working, and motion
+   here would re-create the "still going" impression the drafting placeholder got wrong. */
+.conversation-turn-waiting { margin: 0; font-size: 13px; line-height: 1.6; color: var(--accent-warning, #e3b341); }
+.conversation-answer-drafting {
+  background: linear-gradient(90deg, var(--text-muted) 0%, var(--text-primary) 50%, var(--text-muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: conversation-drafting-shimmer 1.8s linear infinite;
+}
+@keyframes conversation-drafting-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .conversation-answer-drafting { animation: none; -webkit-text-fill-color: currentColor; color: var(--text-muted); background: none; } }
 </style>

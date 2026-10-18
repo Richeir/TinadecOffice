@@ -988,7 +988,6 @@ export default {
     },
   },
   chat: {
-    latestRun: "最新",
     title: "Tinadec 會話",
     noProject: "未開啟專案",
     placeholder: "預設與會議智能體對話，讓它拆解任務、規劃執行並排程其他智能體...",
@@ -4418,6 +4417,7 @@ export default {
     },
     reasoning: {
       drafting: "正在起草…",
+      planning: "正在規劃",
       thinking: "正在思考",
       thoughtFor: "思考了 {duration}",
       showAll: "展開全部",
@@ -4443,7 +4443,6 @@ export default {
       resolved: "已收到 {names} 的結果",
     },
     plan: {
-      capsule: "計畫 {done}/{total}",
       updated: "更新了計畫 · {done}/{total}",
       more: "還有 {count} 項",
       status: {
@@ -4494,6 +4493,7 @@ export default {
       retry: "重試",
       retryHint: "把這條訊息放回輸入框",
       newTurns: "{count} 條新訊息",
+      awaiting: { awaiting_user: "等待你的裁決", awaiting_approval: "等待你批准", awaiting_delegate: "等待你授權委派", generic: "等待你的操作" },
     },
     tool: {
       terminalTitle: "智能體終端",

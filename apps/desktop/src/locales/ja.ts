@@ -988,7 +988,6 @@ export default {
     },
   },
   chat: {
-    latestRun: "最新",
     title: "Tinadec セッション",
     noProject: "プロジェクトが開かれていません",
     placeholder: "既定ではミーティングエージェントと会話します。タスクを分解し、実行を計画して、他のエージェントに振り分けます。",
@@ -4418,6 +4417,7 @@ export default {
     },
     reasoning: {
       drafting: "下書き中…",
+      planning: "計画中",
       thinking: "考え中",
       thoughtFor: "{duration} 考えました",
       showAll: "すべて表示",
@@ -4443,7 +4443,6 @@ export default {
       resolved: "{names} から結果を受け取りました",
     },
     plan: {
-      capsule: "計画 {done}/{total}",
       updated: "計画を更新 · {done}/{total}",
       more: "ほか {count} 件",
       status: {
@@ -4494,6 +4493,7 @@ export default {
       retry: "再試行",
       retryHint: "このメッセージを入力欄に戻す",
       newTurns: "新着 {count} 件",
+      awaiting: { awaiting_user: "あなたの判断待ち", awaiting_approval: "あなたの承認待ち", awaiting_delegate: "あなたの委任待ち", generic: "あなたの操作待ち" },
     },
     tool: {
       terminalTitle: "エージェントのターミナル",

@@ -988,7 +988,6 @@ export default {
     },
   },
   chat: {
-    latestRun: "последний",
     title: "Сеанс Tinadec",
     noProject: "Проект не открыт",
     placeholder: "По умолчанию вы общаетесь с агентом совещания. Он разделит задачу, спланирует выполнение и распределит работу между другими агентами.",
@@ -4418,6 +4417,7 @@ export default {
     },
     reasoning: {
       drafting: "Набросок…",
+      planning: "Планирование",
       thinking: "Думает",
       thoughtFor: "Время рассуждения: {duration}",
       showAll: "Показать всё",
@@ -4443,7 +4443,6 @@ export default {
       resolved: "Получены результаты: {names}",
     },
     plan: {
-      capsule: "План {done}/{total}",
       updated: "План обновлён · {done}/{total}",
       more: "Ещё {count}",
       status: {
@@ -4494,6 +4493,7 @@ export default {
       retry: "Повторить",
       retryHint: "Вернуть это сообщение в поле ввода",
       newTurns: "Новых: {count}",
+      awaiting: { awaiting_user: "Ждёт вашего решения", awaiting_approval: "Ждёт вашего одобрения", awaiting_delegate: "Ждёт вашего делегирования", generic: "Ждёт вашего действия" },
     },
     tool: {
       terminalTitle: "Терминал агента",

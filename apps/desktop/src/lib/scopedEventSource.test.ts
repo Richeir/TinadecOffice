@@ -114,6 +114,21 @@ it('dispatches CRLF frames whose delimiter is split across reads', async () => {
   source.close()
   expect(received).toEqual(['{"message":"hello"}'])
 })
+it('calls the injected fetch without binding it to the event source', async () => {
+  Object.defineProperty(window, 'tinadec', { configurable: true, value: { getHostStatus: async () => ready } })
+  let receiver: unknown
+  const fakeFetch = function (this: unknown) {
+    receiver = this
+    return Promise.resolve(new Response('id: 1\nevent: worker.completed\ndata: {"ok":true}\n\n'))
+  } as unknown as typeof fetch
+  const source = new ScopedEventSource('http://gateway.local/api/v1/events', 'scope', fakeFetch)
+  const received = vi.fn()
+  source.addEventListener('worker.completed', received)
+  for (let i = 0; i < 12; i++) await Promise.resolve()
+  source.close()
+  expect(receiver).not.toBe(source)
+  expect(received).toHaveBeenCalledOnce()
+})
 it('drops a silent half-open stream after the idle timeout and resumes from its cursor', async () => {
   vi.useFakeTimers()
   Object.defineProperty(window, 'tinadec', { configurable: true, value: { getHostStatus: vi.fn(async () => ready) } })

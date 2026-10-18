@@ -46,6 +46,16 @@ export function isLiveRunStatus(status: string): boolean {
   return RUNNING.has(status) || AWAITING.has(status)
 }
 
+/**
+ * Live but not producing: the run is parked until a person decides. A parked run has no
+ * work arriving, so "is working" indicators (spinners, drafting placeholders, elapsed
+ * timers) must not claim it is still going — it showed a permanent "drafting" shimmer on
+ * an escalated run that was waiting for a decision.
+ */
+export function isParkedRunStatus(status: string): boolean {
+  return AWAITING.has(status)
+}
+
 function time(value: string | null | undefined): number {
   const parsed = value ? Date.parse(value) : Number.NaN
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY

@@ -5,14 +5,15 @@ import { homeController } from '@/controllers/HomeController'
 
 const c = homeController
 
-// Supervision escalations are still read from the activity composable that space mode
-// keeps using; the flat feed renders them through the shared SupervisionGate.
+// Supervision escalations reach the flat feed through its own reducer (they are run state
+// there), so this card no longer rebuilds them from the activity store. That map only ever
+// held runs the activity composable had last selected, which is why an escalation on any
+// other run had no visible gate. Space mode still reads the composable directly.
 const conversation = computed(() => ({
   feed: c.conversationFeed,
   runs: c.runs.value,
   streamingReplies: c.streamingReplies.value,
   approvals: c.approvals.value,
-  supervisionReviews: Object.fromEntries(Object.entries(c.agentTurnActivities.value).map(([runId, turn]) => [runId, turn.supervisionReview ?? null])),
   workspaceRoot: c.currentProject.value?.path ?? null,
 }))
 </script>

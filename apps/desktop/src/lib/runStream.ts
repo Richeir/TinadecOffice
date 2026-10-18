@@ -93,7 +93,11 @@ export function parseRunSseBlock(block: string, fallbackRunId?: string): SseChun
     const payload = asRecord(root.payload)
     const seqValue = root.seq ?? payload.seq ?? id
     const runId = String(root.run_id ?? root.runId ?? payload.run_id ?? payload.runId ?? fallbackRunId ?? '')
-    const kind = String(root.kind ?? root.event ?? payload.kind ?? event ?? 'delta')
+    // No default: a frame whose kind cannot be named is not guessed into one. Guessing
+    // 'delta' here used to be harmless because Core wrote that kind; now nothing does, so a
+    // guess would render as a silently dropped frame instead of a visible contract break.
+    const kind = String(root.kind ?? root.event ?? payload.kind ?? event ?? '')
+    if (!kind) return null
     const chunk: SseChunk = {
       run_id: runId,
       turn_id: (root.turn_id ?? root.turnId ?? payload.turn_id ?? payload.turnId ?? null) as string | null,

@@ -832,7 +832,7 @@ describe('HomeController independent storage scopes', () => {
     try {
       homeController.setSelectedSession('live-scope::live-session')
       await flushPromises()
-      const chunk = { run_id: 'live-run', turn_id: null, message_id: null, seq: 7, kind: 'delta', occurred_at: '', payload: { delta: 'hello' } }
+      const chunk = { run_id: 'live-run', turn_id: null, message_id: null, seq: 7, kind: 'answer.delta', occurred_at: '', payload: { delta: 'hello' } }
       handle.pushChunkForTest(chunk)
       expect(homeController.streamingText.value.get('live-run')).toBe('hello')
       setHostAccessStatus({ state: 'unavailable', managed: true })

@@ -49,13 +49,47 @@ export default defineConfig({
     emptyOutDir: true
   },
   optimizeDeps: {
-    // 默认 entry 是 **/*.html，会把 release/、runtime/ 里的 1483 个文档页也当成入口去扫描。
-    // 本应用只有一个入口。
-    entries: ['index.html'],
+    // The source graph contains intentional cyclic barrel exports (UIE components ↔
+    // components/index) that can wedge the cold-start dependency crawler. Declare the
+    // initial browser dependencies instead of crawling every source file. New eager
+    // bare imports must be added here; lazy-heavy libraries stay excluded below and
+    // are optimized on first use.
+    noDiscovery: true,
+    holdUntilCrawlEnd: false,
+    ignoreOutdatedRequests: true,
     include: [
+      '@lucide/vue',
+      '@material/material-color-utilities',
+      '@monaco-editor/loader',
+      '@vue-flow/background',
+      '@vue-flow/core',
+      '@vue-flow/node-resizer',
+      '@vueuse/core',
       '@xterm/xterm',
       '@xterm/addon-fit',
       '@xterm/addon-web-links',
+      'class-variance-authority',
+      'clsx',
+      'dompurify',
+      'highlight.js',
+      'highlight.js/lib/core',
+      'katex',
+      'marked',
+      'marked-footnote',
+      'marked-katex-extension',
+      'pinia',
+      'reka-ui',
+      'tailwind-merge',
+      'vue',
+      'vue-i18n',
+      'vue-router',
+    ],
+    exclude: [
+      '@lobehub/icons-static-svg',
+      'mermaid',
+      'monaco-editor',
+      'recharts',
+      'simple-icons',
     ],
   },
   test: {

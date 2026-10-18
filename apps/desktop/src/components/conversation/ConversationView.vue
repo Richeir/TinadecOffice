@@ -5,7 +5,6 @@ import { usePreferredReducedMotion } from '@vueuse/core'
 import { useDelayedLoading } from '@/composables/useDelayedLoading'
 import { useI18n } from 'vue-i18n'
 import type { ApprovalDto, MessageDto } from '@/api'
-import type { SupervisionReview } from '@/composables/useAgentActivity'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import { buildTurns, type TurnRunInput } from '@/lib/conversation/turns'
 import { crossesDay, dayLabel } from '@/lib/conversation/format'
@@ -26,7 +25,6 @@ const props = defineProps<{
   feed: ConversationFeed
   streamingReplies?: Readonly<Record<string, string>>
   approvals?: readonly ApprovalDto[]
-  supervisionReviews?: Readonly<Record<string, SupervisionReview | null | undefined>>
   workspaceRoot?: string | null
   /** The transcript is still loading: after 200ms a skeleton stands in, for at least 500ms. */
   loading?: boolean
@@ -82,7 +80,6 @@ const dayBreaks = computed(() => {
               :turn="turn"
               :revision="feed.revision.value"
               :approvals="approvals ?? []"
-              :supervision-reviews="supervisionReviews"
               :workspace-root="workspaceRoot"
               :last="index === turns.length - 1"
               @edit="emit('edit', $event)"

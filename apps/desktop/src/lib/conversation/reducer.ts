@@ -182,6 +182,13 @@ export interface RunActivity {
   firstAt: string | null
   lastAt: string | null
   failure: { category: string | null; message: string | null } | null
+  /**
+   * A supervision escalation Core is waiting on. This is run state, not a log line: it is
+   * why the run stopped, and it stays true until the person decides (or a decision event
+   * clears it), so it survives regrouping, folding and a reload — a reader who reopens the
+   * session must still find the gate.
+   */
+  review: { reasons: string[]; options: string[]; at: string } | null
   /** Internal indexes. */
   byId: Map<string, FeedEntry>
   seen: Set<string>
@@ -209,6 +216,7 @@ function run(state: FeedState, runId: string): RunActivity {
       firstAt: null,
       lastAt: null,
       failure: null,
+      review: null,
       byId: new Map(),
       seen: new Set(),
       executionByApproval: new Map(),
@@ -666,6 +674,21 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       add(record, { kind: 'supervision', id: `supervision:${event.seq}`, seq: event.seq, taskId: null, decision, reasons, at: event.ts })
       return true
     }
+    case 'supervision.user_review.requested': {
+      // Core is parked on a person. Held as run state rather than a log node so the gate
+      // survives refolding and reopening the session — an escalation the reader cannot find
+      // again is an escalation they cannot answer.
+      const reasons = Array.isArray(payload.reasons) ? payload.reasons.filter((r): r is string => typeof r === 'string') : []
+      const options = Array.isArray(payload.options) ? payload.options.filter((o): o is string => typeof o === 'string') : []
+      record.review = { reasons, options, at: event.ts }
+      return true
+    }
+    case 'supervision.user_decision':
+    case 'context.goal_adjusted':
+      // Answered, or superseded by an accepted correction: the gate must stop asking.
+      if (!record.review) return false
+      record.review = null
+      return true
     case 'context.compacted':
       marker(record, event, 'compacted', { agent: scalar(payload.agent_slug) })
       return true

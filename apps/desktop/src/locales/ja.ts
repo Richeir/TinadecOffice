@@ -4454,6 +4454,25 @@ export default {
     supervision: {
       revise: "監督が修正を求めました",
       escalate: "監督があなたの判断を求めています",
+      brief: {
+        title: "続行方法を決めてください",
+        tasks: "{total} 件中 {completed} 件完了",
+        blocked: "{count} 件がブロックされています",
+        failed: "{count} 件が失敗しました",
+        pending: "{count} 件が未完了です",
+        criteria: "{count} 件の成功条件に証拠がありません",
+        noSupervisor: "利用できる監督モデルがなく、自動レビューを完了できませんでした。",
+        budget: "自動修正の上限に達しました：{current}/{max}",
+        details: "詳しい理由",
+        recommendNoCompleted: "完了したタスクはありません。受け入れるより、依頼を修正するかキャンセルする方が安全です。",
+        recommendCriteria: "証拠が不足している成功条件があります。続行すると不足を承認し、修正すると再計画します。",
+        recommendPartial: "完了した作業は保持できます。続行すると残りの不足を承認し、修正すると追加指示で再計画します。",
+        option: {
+          continue: "現在の証拠を保持し、不完全な結果を承認して終了します。",
+          correct: "指示を追加し、終了前に再計画します。",
+          cancel: "この run を停止し、記録済みの証拠を保持します。",
+        },
+      },
     },
     marker: {
       compacted: "コンテキストを圧縮しました",

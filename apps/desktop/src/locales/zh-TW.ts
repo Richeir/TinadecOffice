@@ -4454,6 +4454,25 @@ export default {
     supervision: {
       revise: "監督要求修改",
       escalate: "監督需要你決定",
+      brief: {
+        title: "需要你決定如何繼續",
+        tasks: "已完成 {completed}/{total} 個任務",
+        blocked: "{count} 個任務受阻",
+        failed: "{count} 個任務失敗",
+        pending: "{count} 個任務仍未完成",
+        criteria: "{count} 項成功標準缺少證據",
+        noSupervisor: "這個 run 沒有可用的監督模型，自動審查未能完成。",
+        budget: "自動修訂預算已用完：{current}/{max}",
+        details: "詳細原因",
+        recommendNoCompleted: "沒有任何任務完成。相比接受結果，糾正要求或取消通常更安全。",
+        recommendCriteria: "仍有成功標準缺少證據。繼續會接受這些缺口；糾正會讓智能體據此重新規劃。",
+        recommendPartial: "已完成的工作可以保留。繼續會接受剩餘缺口；糾正會帶著你的補充重新規劃。",
+        option: {
+          continue: "保留目前證據，按已接受的不完整結果結束。",
+          correct: "補充要求，讓智能體重新規劃後再結束。",
+          cancel: "停止這個 run，並保留已經記錄的證據。",
+        },
+      },
     },
     marker: {
       compacted: "上下文已壓縮",

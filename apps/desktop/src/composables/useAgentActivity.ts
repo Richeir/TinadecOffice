@@ -8,6 +8,13 @@ import {
 import { subscribeToSessionEvents } from '@/lib/sessionEventBus'
 import i18n from '@/i18n'
 import { errorCategoryMessage } from '@/lib/apiError'
+import {
+  readSupervisionReviewBrief,
+  type SupervisionDecisionOption,
+  type SupervisionReview,
+} from '@/lib/conversation/supervision'
+
+export type { SupervisionDecisionOption, SupervisionReview } from '@/lib/conversation/supervision'
 
 export type AgentRunStatus =
   | 'idle'
@@ -98,14 +105,6 @@ export interface TurnActivity {
   thinkingSteps?: ThinkingStep[]
   toolCalls?: ToolCall[]
   supervisionReview?: SupervisionReview | null
-}
-
-export type SupervisionDecisionOption = 'continue' | 'correct' | 'cancel'
-
-export interface SupervisionReview {
-  runId: string
-  reasons: string[]
-  options: SupervisionDecisionOption[]
 }
 
 export interface AgentState {
@@ -474,6 +473,7 @@ export function useAgentActivity(
     if (!runId) return
     const reasons = extractStringArray(event.payload, 'reasons')
     const options = extractStringArray(event.payload, 'options')
+    const brief = readSupervisionReviewBrief(event.payload?.brief)
     // Keep only the options this UI can act on; an unrecognised vocabulary must not
     // produce a button whose click has no defined meaning. Nothing recognised means
     // the payload predates the vocabulary, so fall back to the documented trio.
@@ -483,6 +483,7 @@ export function useAgentActivity(
       runId,
       reasons,
       options: recognised.length > 0 ? recognised : ['continue', 'correct', 'cancel'],
+      brief,
     })
     if (activity.value.runId === runId) supervisionReview.value = supervisionReviews.value.get(runId) ?? null
   }
@@ -491,7 +492,7 @@ export function useAgentActivity(
     if (!runId) return
     // Overwrite instead of delete: the entry is the "this gate was answered" marker,
     // and a live binding to it must re-evaluate rather than vanish from the map.
-    supervisionReviews.value.set(runId, { runId, reasons: [], options: [] })
+    supervisionReviews.value.set(runId, { runId, reasons: [], options: [], brief: null })
     if (activity.value.runId === runId) supervisionReview.value = supervisionReviews.value.get(runId) ?? null
   }
 

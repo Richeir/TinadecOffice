@@ -10,6 +10,7 @@ import type {
   ToolEntry,
   WaitEntry,
 } from './reducer'
+import type { SupervisionReviewBrief } from './supervision'
 import { entrySentence } from './toolSentence'
 
 /**
@@ -74,7 +75,7 @@ export interface GroupedRun {
    * renderer reads it from the feed instead of rebuilding it out of a per-run activity
    * map that only exists for the run the user happens to have selected.
    */
-  review: { reasons: string[]; options: string[]; at: string } | null
+  review: { reasons: string[]; options: string[]; brief: SupervisionReviewBrief | null; at: string } | null
 }
 
 type QuietEntry = ReasoningEntry | ToolEntry | WaitEntry

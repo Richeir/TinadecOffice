@@ -4,7 +4,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { approvalSummary } from '@/userToolAction'
 import type { ApprovalDto } from '@/api'
-import type { SupervisionDecisionOption, SupervisionReview } from '@/composables/useAgentActivity'
+import type { SupervisionDecisionOption, SupervisionReview, SupervisionReviewBrief } from '@/lib/conversation/supervision'
 import { groupRun, isCompactAnswer, type GroupedRun } from '@/lib/conversation/grouping'
 import type { RunActivity, ToolEntry } from '@/lib/conversation/reducer'
 import { isLiveRunStatus, isParkedRunStatus, type ConversationTurn } from '@/lib/conversation/turns'
@@ -57,13 +57,19 @@ const approvalsById = computed(() => new Map(props.approvals.map((approval) => [
  * not become a button, and nothing recognised (a payload predating the vocabulary) falls
  * back to the documented trio.
  */
-function gateReview(runId: string, reasons: readonly string[], options: readonly string[]): SupervisionReview {
+function gateReview(
+  runId: string,
+  reasons: readonly string[],
+  options: readonly string[],
+  brief: SupervisionReviewBrief | null,
+): SupervisionReview {
   const recognised = options.filter((option): option is SupervisionDecisionOption =>
     option === 'continue' || option === 'correct' || option === 'cancel')
   return {
     runId,
     reasons: [...reasons],
     options: recognised.length > 0 ? recognised : ['continue', 'correct', 'cancel'],
+    brief,
   }
 }
 
@@ -79,7 +85,7 @@ const runs = computed<RunView[]>(() => {
     // The feed's own review wins: the reducer maintains it, so it survives a reload and does
     // not depend on this run being the one the activity store last selected.
     const review = grouped?.review
-      ? gateReview(run.id, grouped.review.reasons, grouped.review.options)
+      ? gateReview(run.id, grouped.review.reasons, grouped.review.options, grouped.review.brief)
       : props.supervisionReviews?.[run.id] ?? null
     return { id: run.id, status: run.status, live, parked, working: live && !parked, activity, grouped, orphanApprovals, review, streamingText }
   })

@@ -18,11 +18,35 @@ describe('supervision escalation', () => {
       decision: 'escalate',
       reasons: ['no supervisor in the frozen roster', 'task_outcome:research:blocked'],
       options: ['continue', 'correct', 'cancel'],
+      brief: {
+        total_tasks: 4,
+        completed_tasks: 2,
+        blocked_tasks: 1,
+        failed_tasks: 0,
+        pending_tasks: 1,
+        unmet_criteria: 2,
+        revision_round: 2,
+        max_revision_rounds: 2,
+        supervisor_required: true,
+        supervisor_available: false,
+      },
     }))
     const record = state.runs.get('run-1')!
     expect(record.review).not.toBeNull()
     expect(record.review!.reasons).toEqual(['no supervisor in the frozen roster', 'task_outcome:research:blocked'])
     expect(record.review!.options).toEqual(['continue', 'correct', 'cancel'])
+    expect(record.review!.brief).toEqual({
+      totalTasks: 4,
+      completedTasks: 2,
+      blockedTasks: 1,
+      failedTasks: 0,
+      pendingTasks: 1,
+      unmetCriteria: 2,
+      revisionRound: 2,
+      maxRevisionRounds: 2,
+      supervisorRequired: true,
+      supervisorAvailable: false,
+    })
   })
 
   it('is not lost when the escalation frame is replayed', () => {
@@ -61,5 +85,6 @@ describe('supervision escalation', () => {
     expect(record.review).not.toBeNull()
     expect(record.review!.reasons).toEqual([])
     expect(record.review!.options).toEqual([])
+    expect(record.review!.brief).toBeNull()
   })
 })

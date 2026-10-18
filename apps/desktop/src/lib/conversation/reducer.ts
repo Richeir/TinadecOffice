@@ -1,4 +1,5 @@
 import type { EventEnvelope } from '@/api'
+import { readSupervisionReviewBrief, type SupervisionReviewBrief } from './supervision'
 
 /**
  * Event-sourced model of what each run in a session did, built only from the session
@@ -188,7 +189,7 @@ export interface RunActivity {
    * clears it), so it survives regrouping, folding and a reload — a reader who reopens the
    * session must still find the gate.
    */
-  review: { reasons: string[]; options: string[]; at: string } | null
+  review: { reasons: string[]; options: string[]; brief: SupervisionReviewBrief | null; at: string } | null
   /** Internal indexes. */
   byId: Map<string, FeedEntry>
   seen: Set<string>
@@ -680,7 +681,7 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       // again is an escalation they cannot answer.
       const reasons = Array.isArray(payload.reasons) ? payload.reasons.filter((r): r is string => typeof r === 'string') : []
       const options = Array.isArray(payload.options) ? payload.options.filter((o): o is string => typeof o === 'string') : []
-      record.review = { reasons, options, at: event.ts }
+      record.review = { reasons, options, brief: readSupervisionReviewBrief(payload.brief), at: event.ts }
       return true
     }
     case 'supervision.user_decision':

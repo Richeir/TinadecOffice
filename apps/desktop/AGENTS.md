@@ -1,5 +1,13 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-18 启动性能：窗口不再等后端
+
+`electron/main.cjs` 的 `app.whenReady()` 原本 `await hostConnection.start()` **之后**才 `createWindow()`。`hostConnection.start()` 内部跑 `ensureLocalServices()`：探测健康、校验 HMAC 身份、启动缺失子进程并轮询等就绪（`startupTimeoutMs = 90_000`，打包态 `verificationTimeoutMs = 200_000`）。也就是说窗口创建被排在整条后端启动链之后——**在窗口存在之前用户看到的是桌面而不是应用**，连 splash 都没有，因为渲染进程还没启动。本机实测 Core 单进程到 `/health` 200 就要 11.7–13.0 s。
+
+现在 `hostStartup` 只保留 promise，`createWindow()` 立刻执行，结果在窗口之后通过 `hostStartup.then(...)` 报告（失败仍是 `console.error` + Banner 重试，与原来一致）。**为什么安全**：业务授权看的是 `trustedHostReady`，它只在 `publishHostStatus()` 里随 `snapshot.state === 'ready'` 翻转，`trustedHostRequests.cjs` 的 `isManagedHost()` 每个请求实时读它——提前出现的窗口拿不到任何业务授权；渲染层本来就建模了"尚未验证"（`useConnection` 初始 `connecting`、`App.vue` 的 `isConnecting` 让 splash 停住主界面、`HostAvailabilityBanner` 显示原因与重试），这条路径是已存在且已测试的降级路径。
+
+守卫 `electron/mainStartup.test.cjs`（已加入 `package.json` 的 `node --test` 清单）钉住四件事：`hostConnection.start()` 不被内联 await、验证在窗口创建**之前**启动、延迟结果仍被报告、业务授权仍跟随已验证状态。它读源码而不是跑真流程——真流程要 20 个 require 桩加 BrowserWindow 替身，而这里要防的纯粹是顺序。**别把它改成 `await`**；要测真实的"可见窗口"必须用打包产物，见 `.tinadec_dev/evidence/2026-10-18-perf-boot-main/README.zh-CN.md`。
+
 ## 2026-10-13 Flat conversation follow-up (APP-HOME-108)
 
 The P7 report overstated completion; six plan details were added afterwards. Retry on the last failed/stopped turn emits the same `edit` payload as edit-and-resend (original id + text; revert and refill, no resend). `ConversationView` draws a `Marker variant="separator"` date line where consecutive turns cross a local day (not above the first). `JumpToLatest` (inside the scroller provider) counts turns appended while `scrollable.end` is true and ignores first loads, a different first turn id, `pending-` sends and id swaps. `homeController.transcriptLoading` is set on a session switch with no cached messages and cleared only by the newest read; `ChatPanel` keeps the docked layout while it is true and `ConversationView` overlays a 200/500 delayed skeleton — overlays, because the scroller content fills the viewport height and anything after it lands below the fold. `isCompactAnswer` (grouping.ts) clamps non-last answers ≤150 chars; style `.markdown-body` directly, it sets its own size and colour. `useJustSettled` drives `.shimmer-once` only on a live→done transition, never for history.

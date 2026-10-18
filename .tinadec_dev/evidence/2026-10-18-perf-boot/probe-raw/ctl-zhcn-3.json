@@ -1,0 +1,206 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "stubHost": false,
+  "locale": null,
+  "wallMs": 2355,
+  "result": {
+    "splashAppearedMs": 838,
+    "splashGoneMs": 1133,
+    "mainContentMs": 838,
+    "shellVisibleMs": 1114,
+    "routePageMs": 1114,
+    "bannerVisibleMs": 838,
+    "domContentLoaded": 792,
+    "loadEvent": 858,
+    "responseEnd": 483,
+    "domInteractive": 671,
+    "paint": {
+      "first-paint": 840,
+      "first-contentful-paint": 840
+    },
+    "lcp": {
+      "t": 840,
+      "size": 6135,
+      "el": "P."
+    },
+    "longTasks": [
+      {
+        "start": 672.2000000029802,
+        "dur": 152
+      },
+      {
+        "start": 864.2000000029802,
+        "dur": 244
+      }
+    ],
+    "longTaskTotal": 396,
+    "resourceCount": 31,
+    "resourceBytes": 2918229,
+    "resourceByExt": {
+      "js": {
+        "n": 24,
+        "bytes": 2464035
+      },
+      "css": {
+        "n": 5,
+        "bytes": 416425
+      },
+      "woff2": {
+        "n": 1,
+        "bytes": 29400
+      },
+      "ico": {
+        "n": 1,
+        "bytes": 8369
+      }
+    },
+    "slowest": [
+      {
+        "name": "geist-latin-wght-normal-BgDaEnEv.woff2",
+        "type": "css",
+        "dur": 33,
+        "bytes": 29400
+      },
+      {
+        "name": "runtimeCenterView-DRWzoY87.js",
+        "type": "script",
+        "dur": 22,
+        "bytes": 25913
+      },
+      {
+        "name": "layout-grid-9ZiUhGKu.js",
+        "type": "script",
+        "dur": 21,
+        "bytes": 348
+      },
+      {
+        "name": "toggle-left-xqZe7HYD.js",
+        "type": "script",
+        "dur": 21,
+        "bytes": 201
+      },
+      {
+        "name": "panel-right-open-ChQ4vnUK.js",
+        "type": "script",
+        "dur": 21,
+        "bytes": 239
+      },
+      {
+        "name": "HomePage-n8-TLVIc.css",
+        "type": "link",
+        "dur": 20,
+        "bytes": 96
+      },
+      {
+        "name": "eye-kgWbTH9S.js",
+        "type": "script",
+        "dur": 20,
+        "bytes": 258
+      },
+      {
+        "name": "input.vue_vue_type_script_setup_true_lang-BA_VC1jA.js",
+        "type": "script",
+        "dur": 20,
+        "bytes": 930
+      },
+      {
+        "name": "index-BYb_FVji.js",
+        "type": "script",
+        "dur": 20,
+        "bytes": 219661
+      },
+      {
+        "name": "lightbulb-BrlWYJb9.js",
+        "type": "script",
+        "dur": 20,
+        "bytes": 288
+      },
+      {
+        "name": "list-todo-BAG51qHk.js",
+        "type": "script",
+        "dur": 19,
+        "bytes": 302
+      },
+      {
+        "name": "shield-check-CMVR1wVw.js",
+        "type": "script",
+        "dur": 17,
+        "bytes": 322
+      }
+    ],
+    "errors": []
+  },
+  "metrics": {
+    "Nodes": 1004,
+    "LayoutDuration": 0.092,
+    "RecalcStyleDuration": 0.042,
+    "ScriptDuration": 0.342,
+    "TaskDuration": 0.705,
+    "JSHeapUsedSize": 9919896
+  },
+  "totalEncodedBytes": 2928572,
+  "requestCount": 32,
+  "topRequests": [
+    {
+      "u": "assets/MarketDetailCard.vue_vue_type_style_index_0_scoped_d9123ed5_lang-BYLIE5ha.js",
+      "t": "Script",
+      "b": 1079417
+    },
+    {
+      "u": "assets/index-YQZfJESZ.js",
+      "t": "Script",
+      "b": 814233
+    },
+    {
+      "u": "assets/MarketDetailCard-CKvefFbb.css",
+      "t": "Stylesheet",
+      "b": 225928
+    },
+    {
+      "u": "assets/index-BYb_FVji.js",
+      "t": "Script",
+      "b": 219844
+    },
+    {
+      "u": "assets/readinessText-B5x-KxO0.js",
+      "t": "Script",
+      "b": 217297
+    },
+    {
+      "u": "assets/index-xNOUsNJT.css",
+      "t": "Stylesheet",
+      "b": 186124
+    },
+    {
+      "u": "assets/uiEngine-DY0V5IpM.js",
+      "t": "Script",
+      "b": 68945
+    },
+    {
+      "u": "assets/geist-latin-wght-normal-BgDaEnEv.woff2",
+      "t": "Font",
+      "b": 29577
+    },
+    {
+      "u": "assets/runtimeCenterView-DRWzoY87.js",
+      "t": "Script",
+      "b": 26095
+    },
+    {
+      "u": "assets/DiffViewer-DbxYumNO.js",
+      "t": "Script",
+      "b": 12566
+    },
+    {
+      "u": "assets/monaco.config-DCZv0oTV.js",
+      "t": "Script",
+      "b": 9408
+    },
+    {
+      "u": "127.0.0.1:5202/tinadec.ico",
+      "t": "Other",
+      "b": 8547
+    }
+  ],
+  "consoleErrors": []
+}

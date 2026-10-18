@@ -1,0 +1,59 @@
+import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
+import { VueMcp } from 'vite-plugin-vue-mcp';
+import { defineConfig } from 'vite';
+import path from 'path';
+
+export default defineConfig({
+  base: './',
+  plugins: [vue(), tailwindcss(), VueMcp()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      // TinadecUI — the UI engineering suite (Engine = layout). Points at the package
+      // barrel so consumers import '@tinadec/ui' regardless of the file's physical home.
+      '@tinadec/ui': path.resolve(__dirname, '../TinadecUI/src/index.ts'),
+      // Vapor SFCs compile to `import { defineVaporComponent } from 'vue'`, which the
+      // CJS `vue` entry used under Node (vitest) does not export. Point `vue` at a
+      // shim re-exporting both runtime-dom and runtime-vapor so the emitted import
+      // resolves under both build and vitest.
+      vue: path.resolve(__dirname, './src/lib/vue-shim.ts'),
+      // ponytail: dedupe vue reactivity — desktop nested 3.5.41 vs root 3.6.0-rc.7 caused
+      // dual @vue/reactivity Ref brands (TS2345). Force all @vue/* to the single
+      // root install so vue-tsc sees one Ref identity.
+      '@vue/reactivity': path.resolve(__dirname, '../../node_modules/@vue/reactivity/dist/reactivity.esm-bundler.js'),
+      '@vue/runtime-dom': path.resolve(__dirname, '../../node_modules/@vue/runtime-dom/dist/runtime-dom.esm-bundler.js'),
+      '@vue/runtime-vapor': path.resolve(__dirname, '../../node_modules/@vue/runtime-vapor/dist/runtime-vapor.esm-bundler.js'),
+    },
+    dedupe: ['vue', '@vue/reactivity', '@vue/runtime-dom', '@vue/runtime-vapor'],
+  },
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true
+  },
+  optimizeDeps: {
+    include: [
+      '@xterm/xterm',
+      '@xterm/addon-fit',
+      '@xterm/addon-web-links',
+    ],
+  },
+  test: {
+    css: true,
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
+    setupFiles: ['./src/testSetup.ts'],
+    // The 5s default is vitest's guess, not a measurement of this suite: it has claimed a
+    // different victim almost every run (SettingsPage.agentPack, AppearanceSection, and on
+    // 2026-09-22 the source-tree scan in toolPresentation plus a ChatroomPanel mount, both
+    // while a dotnet solution gate shared the machine). Those tests do real filesystem walks
+    // and happy-dom mounts, so their cost tracks machine load, and a red that depends on what
+    // else is running is noise that trains people to rerun the gate.
+    testTimeout: 20_000,
+  }
+});

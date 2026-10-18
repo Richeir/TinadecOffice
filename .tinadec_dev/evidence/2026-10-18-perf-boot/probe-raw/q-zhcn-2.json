@@ -1,0 +1,9 @@
+file:///C:/git/agent/TinadecOffice/tmp/perf/boot-perf/probe-boot.mjs:41
+  throw new Error('chrome did not start')
+        ^
+
+Error: chrome did not start
+    at waitChrome (file:///C:/git/agent/TinadecOffice/tmp/perf/boot-perf/probe-boot.mjs:41:9)
+    at async file:///C:/git/agent/TinadecOffice/tmp/perf/boot-perf/probe-boot.mjs:62:1
+
+Node.js v26.5.0

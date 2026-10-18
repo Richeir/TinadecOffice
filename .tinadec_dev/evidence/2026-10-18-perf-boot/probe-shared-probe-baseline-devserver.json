@@ -1,0 +1,330 @@
+{
+  "url": "http://127.0.0.1:5173/",
+  "wallMs": 7722,
+  "result": {
+    "splashGone": {
+      "ok": true,
+      "at": 399.3999999910593,
+      "value": true
+    },
+    "main": {
+      "ok": true,
+      "at": 4264.5,
+      "value": {}
+    },
+    "shell": {
+      "ok": true,
+      "at": 6192.79999999702,
+      "value": {}
+    },
+    "domContentLoaded": 4196.70000000298,
+    "loadEvent": 4410,
+    "responseEnd": 374.3999999910593,
+    "domInteractive": 393.20000000298023,
+    "paint": {
+      "first-paint": 412,
+      "first-contentful-paint": 412
+    },
+    "lcp": {
+      "t": 4276,
+      "size": 6135,
+      "el": "P."
+    },
+    "longTasks": [
+      {
+        "start": 4024.7999999970198,
+        "dur": 236
+      },
+      {
+        "start": 5823.0999999940395,
+        "dur": 357
+      }
+    ],
+    "longTaskTotal": 593,
+    "resourceCount": 250,
+    "resourceBytes": 14796624,
+    "resourceByExt": {
+      "js": {
+        "n": 23,
+        "bytes": 5885509,
+        "dur": 23956.90000000596
+      },
+      "other": {
+        "n": 4,
+        "bytes": 538563,
+        "dur": 2698.3999999910593
+      },
+      "ts": {
+        "n": 95,
+        "bytes": 5751670,
+        "dur": 85886.10000005364
+      },
+      "vue": {
+        "n": 118,
+        "bytes": 2223087,
+        "dur": 42115.70000001788
+      },
+      "css": {
+        "n": 1,
+        "bytes": 187314,
+        "dur": 253.8999999910593
+      },
+      "mjs": {
+        "n": 6,
+        "bytes": 125090,
+        "dur": 7945.100000023842
+      },
+      "json": {
+        "n": 1,
+        "bytes": 47622,
+        "dur": 390.5
+      },
+      "woff2": {
+        "n": 1,
+        "bytes": 29400,
+        "dur": 71.29999999701977
+      },
+      "ico": {
+        "n": 1,
+        "bytes": 8369,
+        "dur": 240.59999999403954
+      }
+    },
+    "errors": [],
+    "slowest": [
+      {
+        "name": "lib/storageScope.ts",
+        "type": "script",
+        "dur": 2509,
+        "bytes": 20740
+      },
+      {
+        "name": "stores/run.ts",
+        "type": "script",
+        "dur": 2495,
+        "bytes": 7060
+      },
+      {
+        "name": "generated/client.ts",
+        "type": "script",
+        "dur": 2482,
+        "bytes": 28576
+      },
+      {
+        "name": "lib/runStream.ts",
+        "type": "script",
+        "dur": 2323,
+        "bytes": 30934
+      },
+      {
+        "name": "userToolAction.ts",
+        "type": "script",
+        "dur": 2305,
+        "bytes": 21790
+      },
+      {
+        "name": "lib/composerSettings.ts",
+        "type": "script",
+        "dur": 2294,
+        "bytes": 4851
+      },
+      {
+        "name": "lib/runReply.ts",
+        "type": "script",
+        "dur": 2287,
+        "bytes": 2053
+      },
+      {
+        "name": "composables/useConversationFeed.ts",
+        "type": "script",
+        "dur": 2286,
+        "bytes": 8968
+      },
+      {
+        "name": "composables/useAgentActivity.ts",
+        "type": "script",
+        "dur": 2270,
+        "bytes": 138111
+      },
+      {
+        "name": "lib/isAbortError.ts",
+        "type": "script",
+        "dur": 2225,
+        "bytes": 870
+      },
+      {
+        "name": "lib/sessionEventBus.ts",
+        "type": "script",
+        "dur": 2221,
+        "bytes": 12616
+      },
+      {
+        "name": "lib/pendingAttachments.ts",
+        "type": "script",
+        "dur": 2207,
+        "bytes": 26884
+      },
+      {
+        "name": "api.ts",
+        "type": "script",
+        "dur": 2198,
+        "bytes": 328487
+      },
+      {
+        "name": "lib/dispatchPref.ts",
+        "type": "script",
+        "dur": 2193,
+        "bytes": 1214
+      },
+      {
+        "name": "lib/monetExtract.ts",
+        "type": "script",
+        "dur": 2168,
+        "bytes": 43967
+      }
+    ],
+    "now": 6195.399999991059
+  },
+  "metrics": [
+    {
+      "name": "Documents",
+      "value": 2
+    },
+    {
+      "name": "Frames",
+      "value": 1
+    },
+    {
+      "name": "JSEventListeners",
+      "value": 182
+    },
+    {
+      "name": "LayoutObjects",
+      "value": 384
+    },
+    {
+      "name": "Nodes",
+      "value": 1142
+    },
+    {
+      "name": "DetachedScriptStates",
+      "value": 0
+    },
+    {
+      "name": "LayoutCount",
+      "value": 9
+    },
+    {
+      "name": "RecalcStyleCount",
+      "value": 188
+    },
+    {
+      "name": "LayoutDuration",
+      "value": 0.151018
+    },
+    {
+      "name": "RecalcStyleDuration",
+      "value": 0.079152
+    },
+    {
+      "name": "ScriptDuration",
+      "value": 0.297505
+    },
+    {
+      "name": "TaskDuration",
+      "value": 1.349452
+    },
+    {
+      "name": "TaskOtherDuration",
+      "value": 0.820582
+    },
+    {
+      "name": "JSHeapUsedSize",
+      "value": 24533872
+    },
+    {
+      "name": "JSHeapTotalSize",
+      "value": 35049472
+    }
+  ],
+  "totalEncodedBytes": 19571667,
+  "requestCount": 492,
+  "topRequests": [
+    {
+      "u": "deps/reka-ui.js?v=464f7ee2",
+      "t": "Script",
+      "b": 1743127
+    },
+    {
+      "u": "dist/index.js?v=2ddcfd85",
+      "t": "Script",
+      "b": 1187543
+    },
+    {
+      "u": "deps/@lucide_vue.js?v=2cc574a8",
+      "t": "Script",
+      "b": 1002736
+    },
+    {
+      "u": "locales/ru.ts",
+      "t": "Script",
+      "b": 921455
+    },
+    {
+      "u": "locales/ja.ts",
+      "t": "Script",
+      "b": 784975
+    },
+    {
+      "u": "locales/zh-TW.ts",
+      "t": "Script",
+      "b": 615002
+    },
+    {
+      "u": "locales/en.ts",
+      "t": "Script",
+      "b": 603825
+    },
+    {
+      "u": "locales/zh-CN.ts",
+      "t": "Script",
+      "b": 588275
+    },
+    {
+      "u": "deps/marked-katex-extension.js?v=df2714a7",
+      "t": "Script",
+      "b": 487841
+    },
+    {
+      "u": "deps/@xterm_xterm.js?v=e6982d7c",
+      "t": "Script",
+      "b": 414504
+    },
+    {
+      "u": "deps/chunk-ZM6IVEIC.js?v=2ddcfd85",
+      "t": "Script",
+      "b": 377782
+    },
+    {
+      "u": "deps/chunk-JYR5FKPZ.js?v=2ddcfd85",
+      "t": "Script",
+      "b": 345145
+    },
+    {
+      "u": "deps/chunk-F6H7DICM.js?v=2ddcfd85",
+      "t": "Script",
+      "b": 344820
+    },
+    {
+      "u": "src/api.ts",
+      "t": "Script",
+      "b": 328780
+    },
+    {
+      "u": "deps/chunk-DR3EISXN.js?v=2ddcfd85",
+      "t": "Script",
+      "b": 305470
+    }
+  ],
+  "consoleErrors": []
+}

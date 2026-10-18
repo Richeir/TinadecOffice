@@ -1,0 +1,656 @@
+{
+  "generated": "2026-10-17T22:12:42.421Z",
+  "machineNote": "shared dev machine: 3 teammates (builds + dev servers) running concurrently, so wall-clock timings below are NOT a controlled A/B",
+  "groups": {
+    "zhCN": {
+      "runs": [
+        {
+          "file": "after-prod-2.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 1796,
+          "splashAppearedMs": 30,
+          "splashGoneMs": 574,
+          "mainContentMs": 258,
+          "shellVisibleMs": 531,
+          "bannerVisibleMs": 258,
+          "fcp": 44,
+          "lcp": 260,
+          "longTaskTotal": 372,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-zhcn.json",
+          "locale": "zh-CN",
+          "wallMs": 1715,
+          "splashAppearedMs": 32,
+          "splashGoneMs": 491,
+          "mainContentMs": 234,
+          "shellVisibleMs": 475,
+          "bannerVisibleMs": 234,
+          "fcp": 40,
+          "lcp": 236,
+          "longTaskTotal": 349,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-zhcn2.json",
+          "locale": "zh-CN",
+          "wallMs": 1999,
+          "splashAppearedMs": 177,
+          "splashGoneMs": 748,
+          "mainContentMs": 423,
+          "shellVisibleMs": 695,
+          "bannerVisibleMs": 423,
+          "fcp": 220,
+          "lcp": 424,
+          "longTaskTotal": 410,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-zhcn-1.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 1967,
+          "splashAppearedMs": 468,
+          "splashGoneMs": 742,
+          "mainContentMs": 468,
+          "shellVisibleMs": 724,
+          "bannerVisibleMs": 468,
+          "fcp": 468,
+          "lcp": 468,
+          "longTaskTotal": 381,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-zhcn-2.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 2081,
+          "splashAppearedMs": 562,
+          "splashGoneMs": 860,
+          "mainContentMs": 562,
+          "shellVisibleMs": 841,
+          "bannerVisibleMs": 562,
+          "fcp": 564,
+          "lcp": 564,
+          "longTaskTotal": 374,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-zhcn-3.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 2355,
+          "splashAppearedMs": 838,
+          "splashGoneMs": 1133,
+          "mainContentMs": 838,
+          "shellVisibleMs": 1114,
+          "bannerVisibleMs": 838,
+          "fcp": 840,
+          "lcp": 840,
+          "longTaskTotal": 396,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-zhcn-1.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 3379,
+          "splashAppearedMs": 1724,
+          "splashGoneMs": 2094,
+          "mainContentMs": 1724,
+          "shellVisibleMs": 2029,
+          "bannerVisibleMs": 1724,
+          "fcp": 1740,
+          "lcp": 1740,
+          "longTaskTotal": 1122,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-zhcn-3.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 2075,
+          "splashAppearedMs": 210,
+          "splashGoneMs": 739,
+          "mainContentMs": 387,
+          "shellVisibleMs": 683,
+          "bannerVisibleMs": 388,
+          "fcp": 200,
+          "lcp": 400,
+          "longTaskTotal": 382,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-zhcn-4.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 3892,
+          "splashAppearedMs": 2274,
+          "splashGoneMs": 2645,
+          "mainContentMs": 2274,
+          "shellVisibleMs": 2595,
+          "bannerVisibleMs": 2274,
+          "fcp": 2276,
+          "lcp": 2276,
+          "longTaskTotal": 392,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        }
+      ],
+      "stat": {
+        "splashAppearedMs": {
+          "n": 9,
+          "min": 30,
+          "med": 468,
+          "max": 2274
+        },
+        "splashGoneMs": {
+          "n": 9,
+          "min": 491,
+          "med": 748,
+          "max": 2645
+        },
+        "mainContentMs": {
+          "n": 9,
+          "min": 234,
+          "med": 468,
+          "max": 2274
+        },
+        "shellVisibleMs": {
+          "n": 9,
+          "min": 475,
+          "med": 724,
+          "max": 2595
+        },
+        "fcp": {
+          "n": 9,
+          "min": 40,
+          "med": 468,
+          "max": 2276
+        },
+        "lcp": {
+          "n": 9,
+          "min": 236,
+          "med": 468,
+          "max": 2276
+        },
+        "longTaskTotal": {
+          "n": 9,
+          "min": 349,
+          "med": 382,
+          "max": 1122
+        }
+      }
+    },
+    "en": {
+      "runs": [
+        {
+          "file": "after-prod-en.json",
+          "locale": "en",
+          "wallMs": 2025,
+          "splashAppearedMs": 399,
+          "splashGoneMs": 810,
+          "mainContentMs": 491,
+          "shellVisibleMs": 727,
+          "bannerVisibleMs": 492,
+          "fcp": 416,
+          "lcp": 492,
+          "longTaskTotal": 224,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-en2.json",
+          "locale": "en",
+          "wallMs": 2015,
+          "splashAppearedMs": 421,
+          "splashGoneMs": 793,
+          "mainContentMs": 524,
+          "shellVisibleMs": 750,
+          "bannerVisibleMs": 524,
+          "fcp": 400,
+          "lcp": 524,
+          "longTaskTotal": 200,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-en3.json",
+          "locale": "en",
+          "wallMs": 1716,
+          "splashAppearedMs": 25,
+          "splashGoneMs": 461,
+          "mainContentMs": 196,
+          "shellVisibleMs": 408,
+          "bannerVisibleMs": 196,
+          "fcp": 36,
+          "lcp": 196,
+          "longTaskTotal": 201,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-en4.json",
+          "locale": "en",
+          "wallMs": 1952,
+          "splashAppearedMs": 37,
+          "splashGoneMs": 728,
+          "mainContentMs": 336,
+          "shellVisibleMs": 650,
+          "bannerVisibleMs": 336,
+          "fcp": 56,
+          "lcp": 340,
+          "longTaskTotal": 418,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-en5.json",
+          "locale": "en",
+          "wallMs": 1808,
+          "splashAppearedMs": 111,
+          "splashGoneMs": 582,
+          "mainContentMs": 293,
+          "shellVisibleMs": 522,
+          "bannerVisibleMs": 293,
+          "fcp": 128,
+          "lcp": 296,
+          "longTaskTotal": 217,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "after-prod-en6.json",
+          "locale": "en",
+          "wallMs": 1816,
+          "splashAppearedMs": 37,
+          "splashGoneMs": 577,
+          "mainContentMs": 262,
+          "shellVisibleMs": 507,
+          "bannerVisibleMs": 262,
+          "fcp": 52,
+          "lcp": 264,
+          "longTaskTotal": 233,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-en-1.json",
+          "locale": "en",
+          "wallMs": 1892,
+          "splashAppearedMs": 192,
+          "splashGoneMs": 665,
+          "mainContentMs": 384,
+          "shellVisibleMs": 600,
+          "bannerVisibleMs": 384,
+          "fcp": 196,
+          "lcp": 388,
+          "longTaskTotal": 205,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-en-2.json",
+          "locale": "en",
+          "wallMs": 1827,
+          "splashAppearedMs": 122,
+          "splashGoneMs": 585,
+          "mainContentMs": 302,
+          "shellVisibleMs": 513,
+          "bannerVisibleMs": 302,
+          "fcp": 132,
+          "lcp": 304,
+          "longTaskTotal": 250,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "ctl-en-3.json",
+          "locale": "en",
+          "wallMs": 1983,
+          "splashAppearedMs": 349,
+          "splashGoneMs": 765,
+          "mainContentMs": 475,
+          "shellVisibleMs": 702,
+          "bannerVisibleMs": 475,
+          "fcp": 352,
+          "lcp": 476,
+          "longTaskTotal": 215,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-en-1.json",
+          "locale": "en",
+          "wallMs": 1976,
+          "splashAppearedMs": 350,
+          "splashGoneMs": 744,
+          "mainContentMs": 453,
+          "shellVisibleMs": 678,
+          "bannerVisibleMs": 453,
+          "fcp": 316,
+          "lcp": 452,
+          "longTaskTotal": 215,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-en-2.json",
+          "locale": "en",
+          "wallMs": 1995,
+          "splashAppearedMs": 304,
+          "splashGoneMs": 784,
+          "mainContentMs": 484,
+          "shellVisibleMs": 717,
+          "bannerVisibleMs": 484,
+          "fcp": 316,
+          "lcp": 488,
+          "longTaskTotal": 222,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        },
+        {
+          "file": "q-en-3.json",
+          "locale": "en",
+          "wallMs": 1866,
+          "splashAppearedMs": 159,
+          "splashGoneMs": 639,
+          "mainContentMs": 352,
+          "shellVisibleMs": 576,
+          "bannerVisibleMs": 353,
+          "fcp": 164,
+          "lcp": 352,
+          "longTaskTotal": 212,
+          "requestCount": 33,
+          "totalEncodedBytes": 3113188,
+          "consoleErrors": 0
+        }
+      ],
+      "stat": {
+        "splashAppearedMs": {
+          "n": 12,
+          "min": 25,
+          "med": 192,
+          "max": 421
+        },
+        "splashGoneMs": {
+          "n": 12,
+          "min": 461,
+          "med": 728,
+          "max": 810
+        },
+        "mainContentMs": {
+          "n": 12,
+          "min": 196,
+          "med": 384,
+          "max": 524
+        },
+        "shellVisibleMs": {
+          "n": 12,
+          "min": 408,
+          "med": 650,
+          "max": 750
+        },
+        "fcp": {
+          "n": 12,
+          "min": 36,
+          "med": 196,
+          "max": 416
+        },
+        "lcp": {
+          "n": 12,
+          "min": 196,
+          "med": 388,
+          "max": 524
+        },
+        "longTaskTotal": {
+          "n": 12,
+          "min": 200,
+          "med": 217,
+          "max": 418
+        }
+      }
+    },
+    "zhTW": {
+      "runs": [
+        {
+          "file": "after-prod-zhtw.json",
+          "locale": "zh-TW",
+          "wallMs": 2155,
+          "splashAppearedMs": 438,
+          "splashGoneMs": 935,
+          "mainContentMs": 587,
+          "shellVisibleMs": 884,
+          "bannerVisibleMs": 587,
+          "fcp": 452,
+          "lcp": 588,
+          "longTaskTotal": 337,
+          "requestCount": 33,
+          "totalEncodedBytes": 3107315,
+          "consoleErrors": 0
+        }
+      ],
+      "stat": {
+        "splashAppearedMs": {
+          "n": 1,
+          "min": 438,
+          "med": 438,
+          "max": 438
+        },
+        "splashGoneMs": {
+          "n": 1,
+          "min": 935,
+          "med": 935,
+          "max": 935
+        },
+        "mainContentMs": {
+          "n": 1,
+          "min": 587,
+          "med": 587,
+          "max": 587
+        },
+        "shellVisibleMs": {
+          "n": 1,
+          "min": 884,
+          "med": 884,
+          "max": 884
+        },
+        "fcp": {
+          "n": 1,
+          "min": 452,
+          "med": 452,
+          "max": 452
+        },
+        "lcp": {
+          "n": 1,
+          "min": 588,
+          "med": 588,
+          "max": 588
+        },
+        "longTaskTotal": {
+          "n": 1,
+          "min": 337,
+          "med": 337,
+          "max": 337
+        }
+      }
+    },
+    "stubHost": {
+      "runs": [
+        {
+          "file": "after-stubhost.json",
+          "locale": "zh-CN(default)",
+          "wallMs": 2008,
+          "splashAppearedMs": 263,
+          "splashGoneMs": 788,
+          "mainContentMs": 490,
+          "shellVisibleMs": 768,
+          "bannerVisibleMs": 491,
+          "fcp": 276,
+          "lcp": 496,
+          "longTaskTotal": 383,
+          "requestCount": 32,
+          "totalEncodedBytes": 2928572,
+          "consoleErrors": 0
+        }
+      ],
+      "stat": {
+        "splashAppearedMs": {
+          "n": 1,
+          "min": 263,
+          "med": 263,
+          "max": 263
+        },
+        "splashGoneMs": {
+          "n": 1,
+          "min": 788,
+          "med": 788,
+          "max": 788
+        },
+        "mainContentMs": {
+          "n": 1,
+          "min": 490,
+          "med": 490,
+          "max": 490
+        },
+        "shellVisibleMs": {
+          "n": 1,
+          "min": 768,
+          "med": 768,
+          "max": 768
+        },
+        "fcp": {
+          "n": 1,
+          "min": 276,
+          "med": 276,
+          "max": 276
+        },
+        "lcp": {
+          "n": 1,
+          "min": 496,
+          "med": 496,
+          "max": 496
+        },
+        "longTaskTotal": {
+          "n": 1,
+          "min": 383,
+          "med": 383,
+          "max": 383
+        }
+      }
+    },
+    "baseline": {
+      "runs": [
+        {
+          "file": "before-prod.json",
+          "url": "http://127.0.0.1:5199/",
+          "note": "shared probe schema (splash gone / main / shell only)",
+          "splashGoneMs": 56,
+          "mainContentMs": 445,
+          "shellVisibleMs": 775,
+          "fcp": 148,
+          "lcp": null,
+          "longTaskTotal": 539,
+          "requestCount": 32,
+          "totalEncodedBytes": 3850881
+        }
+      ],
+      "stat": {
+        "splashAppearedMs": null,
+        "splashGoneMs": {
+          "n": 1,
+          "min": 56,
+          "med": 56,
+          "max": 56
+        },
+        "mainContentMs": {
+          "n": 1,
+          "min": 445,
+          "med": 445,
+          "max": 445
+        },
+        "shellVisibleMs": {
+          "n": 1,
+          "min": 775,
+          "med": 775,
+          "max": 775
+        },
+        "fcp": {
+          "n": 1,
+          "min": 148,
+          "med": 148,
+          "max": 148
+        },
+        "lcp": null,
+        "longTaskTotal": {
+          "n": 1,
+          "min": 539,
+          "med": 539,
+          "max": 539
+        }
+      }
+    }
+  },
+  "bytes": {
+    "baselineEntry": {
+      "file": "index-Fjeluni6.js",
+      "raw": 1735908,
+      "fromBuildLog": "tmp/perf/build.log: index-Fjeluni6.js 1,735.91 kB | gzip 545.01 kB"
+    },
+    "afterEntry": {
+      "file": "index-YQZfJESZ.js",
+      "raw": 814050,
+      "gzip": 275120,
+      "measured": "gzipSync of the built file"
+    },
+    "localeChunks": {
+      "en": [
+        184433,
+        59074
+      ],
+      "zh-TW": [
+        178560,
+        64568
+      ],
+      "ja": [
+        251425,
+        70534
+      ],
+      "ru": [
+        309917,
+        78741
+      ]
+    },
+    "transferredBaseline": {
+      "total": 3850881,
+      "js": 3385893
+    },
+    "transferredAfter": {
+      "total": 2928572,
+      "js": 2464035
+    }
+  }
+}

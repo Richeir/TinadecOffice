@@ -1,0 +1,202 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "stubHost": false,
+  "locale": "en",
+  "wallMs": 1716,
+  "result": {
+    "splashAppearedMs": 25,
+    "splashGoneMs": 461,
+    "mainContentMs": 196,
+    "shellVisibleMs": 408,
+    "routePageMs": 408,
+    "bannerVisibleMs": 196,
+    "domContentLoaded": 107,
+    "loadEvent": 415,
+    "responseEnd": 6,
+    "domInteractive": 20,
+    "paint": {
+      "first-paint": 36,
+      "first-contentful-paint": 36
+    },
+    "lcp": {
+      "t": 196,
+      "size": 20493,
+      "el": "P."
+    },
+    "longTasks": [
+      {
+        "start": 200.40000000596046,
+        "dur": 201
+      }
+    ],
+    "longTaskTotal": 201,
+    "resourceCount": 32,
+    "resourceBytes": 3102662,
+    "resourceByExt": {
+      "js": {
+        "n": 25,
+        "bytes": 2648468
+      },
+      "css": {
+        "n": 5,
+        "bytes": 416425
+      },
+      "woff2": {
+        "n": 1,
+        "bytes": 29400
+      },
+      "ico": {
+        "n": 1,
+        "bytes": 8369
+      }
+    },
+    "slowest": [
+      {
+        "name": "index-BYb_FVji.js",
+        "type": "script",
+        "dur": 33,
+        "bytes": 219661
+      },
+      {
+        "name": "panel-right-open-ChQ4vnUK.js",
+        "type": "script",
+        "dur": 32,
+        "bytes": 239
+      },
+      {
+        "name": "eye-kgWbTH9S.js",
+        "type": "script",
+        "dur": 32,
+        "bytes": 258
+      },
+      {
+        "name": "toggle-left-xqZe7HYD.js",
+        "type": "script",
+        "dur": 32,
+        "bytes": 201
+      },
+      {
+        "name": "geist-latin-wght-normal-BgDaEnEv.woff2",
+        "type": "css",
+        "dur": 32,
+        "bytes": 29400
+      },
+      {
+        "name": "runtimeCenterView-DRWzoY87.js",
+        "type": "script",
+        "dur": 32,
+        "bytes": 25913
+      },
+      {
+        "name": "layout-grid-9ZiUhGKu.js",
+        "type": "script",
+        "dur": 31,
+        "bytes": 348
+      },
+      {
+        "name": "list-todo-BAG51qHk.js",
+        "type": "script",
+        "dur": 30,
+        "bytes": 302
+      },
+      {
+        "name": "lightbulb-BrlWYJb9.js",
+        "type": "script",
+        "dur": 29,
+        "bytes": 288
+      },
+      {
+        "name": "input.vue_vue_type_script_setup_true_lang-BA_VC1jA.js",
+        "type": "script",
+        "dur": 29,
+        "bytes": 930
+      },
+      {
+        "name": "HomePage-n8-TLVIc.css",
+        "type": "link",
+        "dur": 29,
+        "bytes": 96
+      },
+      {
+        "name": "scroll-area.vue_vue_type_script_setup_true_lang-Dg41ho9l.js",
+        "type": "script",
+        "dur": 29,
+        "bytes": 1268
+      }
+    ],
+    "errors": []
+  },
+  "metrics": {
+    "Nodes": 1004,
+    "LayoutDuration": 0.082,
+    "RecalcStyleDuration": 0.043,
+    "ScriptDuration": 0.089,
+    "TaskDuration": 0.487,
+    "JSHeapUsedSize": 10112520
+  },
+  "totalEncodedBytes": 3113188,
+  "requestCount": 33,
+  "topRequests": [
+    {
+      "u": "assets/MarketDetailCard.vue_vue_type_style_index_0_scoped_d9123ed5_lang-BYLIE5ha.js",
+      "t": "Script",
+      "b": 1079417
+    },
+    {
+      "u": "assets/index-YQZfJESZ.js",
+      "t": "Script",
+      "b": 814233
+    },
+    {
+      "u": "assets/MarketDetailCard-CKvefFbb.css",
+      "t": "Stylesheet",
+      "b": 225928
+    },
+    {
+      "u": "assets/index-BYb_FVji.js",
+      "t": "Script",
+      "b": 219844
+    },
+    {
+      "u": "assets/readinessText-B5x-KxO0.js",
+      "t": "Script",
+      "b": 217297
+    },
+    {
+      "u": "assets/index-xNOUsNJT.css",
+      "t": "Stylesheet",
+      "b": 186124
+    },
+    {
+      "u": "assets/en-BKzQRaKW.js",
+      "t": "Script",
+      "b": 184616
+    },
+    {
+      "u": "assets/uiEngine-DY0V5IpM.js",
+      "t": "Script",
+      "b": 68945
+    },
+    {
+      "u": "assets/geist-latin-wght-normal-BgDaEnEv.woff2",
+      "t": "Font",
+      "b": 29577
+    },
+    {
+      "u": "assets/runtimeCenterView-DRWzoY87.js",
+      "t": "Script",
+      "b": 26095
+    },
+    {
+      "u": "assets/DiffViewer-DbxYumNO.js",
+      "t": "Script",
+      "b": 12566
+    },
+    {
+      "u": "assets/monaco.config-DCZv0oTV.js",
+      "t": "Script",
+      "b": 9408
+    }
+  ],
+  "consoleErrors": []
+}

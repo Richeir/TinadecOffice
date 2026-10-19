@@ -1741,6 +1741,8 @@ public sealed partial class ToolChainEndpointTests : IAsyncLifetime
             .ToList();
         var tierEvent = Assert.Single(runEvents, e => e.EventType == "orchestration.mode_tier_decided");
         Assert.Equal("free_form", ((JsonElement)tierEvent.Payload["payload"]!).GetProperty("tier").GetString());
+        var assignment = Assert.Single(runEvents, e => e.EventType == "worker.assigned");
+        Assert.Equal("写探针", ((JsonElement)assignment.Payload["payload"]!).GetProperty("title").GetString());
 
         var lineage = await client.GetFromJsonAsync<JsonElement[]>($"/api/v1/runs/{runId}/agent-lineage").ConfigureAwait(false);
         var workers = lineage!.Where(instance => instance.GetProperty("layer").GetString() == "execution").ToArray();
@@ -2353,7 +2355,9 @@ public sealed partial class ToolChainEndpointTests : IAsyncLifetime
         + "[spawn]\nmax_depth = 2\nmax_agents_per_run = 16\nmax_parallel_workers = 4\n\n"
         + "[scheduling]\nmax_active_runs_per_session = 2\nworker_retry_limit = 2\npreserve_partial_results = true\n\n"
         + "[supervision]\nrequired_before_final = true\nmax_revision_rounds = 2\n\n"
-        + $"[context]\ndefault_token_budget = {taskTokenBudget}\nrecent_message_limit = 24\noptimistic_revision = true\n\n"
+        + "[context]\ndefault_token_budget = 8192\n"
+        + $"task_token_budget = {taskTokenBudget}\nrun_token_budget = 0\n"
+        + "recent_message_limit = 24\noptimistic_revision = true\n\n"
         + "[memory]\ncandidate_only = true\nretrieval_limit = 8\n"
         + "allowed_scopes = [\"principal\", \"workspace\", \"project\", \"agent\"]\n"
         + "allowed_kinds = [\"fact\", \"preference\", \"decision\", \"success_pattern\", \"failure_pattern\", \"task_template\", \"supervision_rule\"]\n\n"

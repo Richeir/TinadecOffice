@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TinadecCore.Abstractions.Ports;
 using TinadecCore.AgentConfiguration;
+using TinadecCore.Contracts.Dtos;
 
 namespace TinadecCore.Runtime;
 
@@ -12,15 +13,18 @@ internal sealed class FormalModeResolver : IFormalModeResolver
 {
     private readonly ISessionLocator _sessions;
     private readonly IDbContextFactory<AgentConfigurationDbContext> _cfgFactory;
+    private readonly GlobalAgentConfiguration _globalConfiguration;
     private readonly ILogger<FormalModeResolver> _logger;
 
     public FormalModeResolver(
         ISessionLocator sessions,
         IDbContextFactory<AgentConfigurationDbContext> cfgFactory,
+        GlobalAgentConfiguration globalConfiguration,
         ILogger<FormalModeResolver> logger)
     {
         _sessions = sessions;
         _cfgFactory = cfgFactory;
+        _globalConfiguration = globalConfiguration;
         _logger = logger;
     }
 
@@ -46,7 +50,10 @@ internal sealed class FormalModeResolver : IFormalModeResolver
             if (session is null) return null;
             effectiveModeVersionId = modeVersionIdOverride ?? session.ModeVersionId;
             if (effectiveModeVersionId is null) return null;
-            await using var cfg = await _cfgFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var factory = await AgentConfigurationLookup.SelectModeFactoryAsync(
+                _cfgFactory, _globalConfiguration, session.TenantId, session.WorkspaceId,
+                effectiveModeVersionId.Value, ct).ConfigureAwait(false);
+            await using var cfg = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var mv = await cfg.ModeVersions.AsNoTracking().FirstOrDefaultAsync(x =>
                 x.Id == effectiveModeVersionId.Value
                 && x.TenantId == session.TenantId
@@ -86,7 +93,9 @@ internal sealed class FormalModeResolver : IFormalModeResolver
     {
         var session = await _sessions.FindAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session is null) return null;
-        await using var cfg = await _cfgFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var factory = await AgentConfigurationLookup.SelectCatalogFactoryAsync(
+            _cfgFactory, _globalConfiguration, session.TenantId, session.WorkspaceId, cancellationToken).ConfigureAwait(false);
+        await using var cfg = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var candidates = await (from mode in cfg.AgentModes.AsNoTracking()
                                 join version in cfg.ModeVersions.AsNoTracking() on mode.Id equals version.AgentModeId
                                 where mode.TenantId == session.TenantId && mode.WorkspaceId == session.WorkspaceId
@@ -124,7 +133,10 @@ internal sealed class FormalModeResolver : IFormalModeResolver
         if (modeVersionId is null) return null;
         try
         {
-            await using var cfg = await _cfgFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var factory = await AgentConfigurationLookup.SelectModeFactoryAsync(
+                _cfgFactory, _globalConfiguration, sess.TenantId, sess.WorkspaceId,
+                modeVersionId.Value, ct).ConfigureAwait(false);
+            await using var cfg = await factory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var mv = await cfg.ModeVersions.AsNoTracking().FirstOrDefaultAsync(x =>
                 x.Id == modeVersionId.Value
                 && x.TenantId == sess.TenantId
@@ -134,6 +146,10 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                 throw new InvalidDataException($"Agent mode version '{modeVersionId}' is not published.");
             var nodes = ParseModeSnapshot(mv);
             var envelopes = ParseBindingEnvelopes(mv);
+            var runtimePolicy = ParseRuntimePolicy(mv);
+            var policyTools = CorrectionRuntimePolicy.IsStructuredInvestigation(runtimePolicy)
+                ? new[] { CoreVirtualToolPolicy.CorrectionTraceToolId }
+                : [];
             // 用户级运行时绑定（配置体验改造 A）：per-agent 的覆盖记录，优先级
             // user_binding > mode_node_override > agent_version.model_strategy。
             var bindings = await cfg.AgentRuntimeBindings.AsNoTracking()
@@ -272,6 +288,16 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                     _ when edgeTargetNodeKeys.Contains(item.Node.NodeKey) => "on_demand",
                     _ => "persistent"
                 };
+                // The conversation identity plans; execution identities perform the
+                // actual reads, writes and tests. A correction proposal tool that is
+                // only visible to the planner can never record the causal state that
+                // the planner is describing, so every executable holder receives it.
+                // It remains a proposal-only virtual tool: Core still owns verified
+                // and resolved facts.
+                var effectiveTools = item.EffectiveTools
+                    .Concat(policyTools)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
                 var entry = new RuntimeAgentRosterEntry(
                     item.Slug,
                     item.Layer,
@@ -280,7 +306,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                     EffectiveCapabilities(envelopes, item),
                     isConversation,
                     isConversation ? "manage" : "read",
-                    item.EffectiveTools,
+                    effectiveTools,
                     item.Slug,
                     item.Node.AgentDefinitionId,
                     item.Node.AgentVersionId,
@@ -315,7 +341,18 @@ internal sealed class FormalModeResolver : IFormalModeResolver
             var graphNodes = resolved
                 .Select(item => new DeclaredGraphNode(item.Node.NodeKey, item.Slug, item.Layer))
                 .ToArray();
-            var spawnable = await ResolveSpawnableTemplatesAsync(cfg, mv, nodes, sess.TenantId, sess.WorkspaceId, envelopes, ct).ConfigureAwait(false);
+            var spawnable = (await ResolveSpawnableTemplatesAsync(
+                    cfg, mv, nodes, sess.TenantId, sess.WorkspaceId, envelopes, ct).ConfigureAwait(false))
+                .Select(template => policyTools.Length == 0
+                    ? template
+                    : template with
+                    {
+                        ToolScope = template.ToolScope
+                            .Concat(policyTools)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray()
+                    })
+                .ToArray();
 
             return new FormalModeRoster(operation, execution, mv.Id, mv.Version, mv.TopologyHash, $"mode:{mv.AgentModeId}:{mv.Version}")
             {
@@ -325,7 +362,8 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                 GraphNodes = graphNodes,
                 ConversationNodeKey = conversationNodeKey,
                 ConversationTemplateSlug = conversationSlug,
-                SpawnableTemplates = spawnable
+                SpawnableTemplates = spawnable,
+                RuntimePolicy = runtimePolicy
             };
         }
         catch (Exception ex)
@@ -499,6 +537,27 @@ internal sealed class FormalModeResolver : IFormalModeResolver
             }
         }
         return new BindingEnvelopes(nodeGrants, nodeCapabilities, templateGrants, templateToolFaces);
+    }
+
+    private static CorrectionRuntimePolicyDto? ParseRuntimePolicy(ModeVersionRecord version)
+    {
+        if (string.IsNullOrWhiteSpace(version.SnapshotJson)) return null;
+        using var document = JsonDocument.Parse(version.SnapshotJson);
+        if (!document.RootElement.TryGetProperty("runtime_policy", out var element)
+            || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        CorrectionRuntimePolicyDto? policy;
+        try
+        {
+            policy = element.Deserialize<CorrectionRuntimePolicyDto>();
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("Mode runtime_policy is invalid.", exception);
+        }
+        if (CorrectionRuntimePolicy.Validate(policy) is { } error)
+            throw new InvalidDataException(error);
+        return policy;
     }
 
     private static bool TryBindingKey(JsonElement binding, string property, out string value)

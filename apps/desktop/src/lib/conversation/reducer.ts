@@ -1,4 +1,5 @@
 import type { EventEnvelope } from '@/api'
+import { readCorrectionTrace, type CorrectionTrace } from './correction'
 import { readSupervisionReviewBrief, type SupervisionReviewBrief } from './supervision'
 
 /**
@@ -120,6 +121,15 @@ export interface PlanEntry {
   at: string
 }
 
+export interface CorrectionEntry {
+  kind: 'correction'
+  id: string
+  seq: number
+  taskId: null
+  trace: CorrectionTrace
+  at: string
+}
+
 export type MarkerType =
   | 'compacted'
   | 'interrupted'
@@ -153,7 +163,7 @@ export interface SupervisionEntry {
   at: string
 }
 
-export type FeedEntry = ToolEntry | ReasoningEntry | DispatchEntry | WaitEntry | PlanEntry | MarkerEntry | SupervisionEntry
+export type FeedEntry = ToolEntry | ReasoningEntry | DispatchEntry | WaitEntry | PlanEntry | CorrectionEntry | MarkerEntry | SupervisionEntry
 
 export type SubAgentStatus = 'waiting' | 'running' | 'completed' | 'failed' | 'blocked' | 'cancelled'
 
@@ -190,6 +200,7 @@ export interface RunActivity {
    * session must still find the gate.
    */
   review: { reasons: string[]; options: string[]; brief: SupervisionReviewBrief | null; at: string } | null
+  correction: CorrectionTrace | null
   /** Internal indexes. */
   byId: Map<string, FeedEntry>
   seen: Set<string>
@@ -218,6 +229,7 @@ function run(state: FeedState, runId: string): RunActivity {
       lastAt: null,
       failure: null,
       review: null,
+      correction: null,
       byId: new Map(),
       seen: new Set(),
       executionByApproval: new Map(),
@@ -583,6 +595,7 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       const taskKey = str(payload, 'task_key')
       const agent = record.tasks.get(taskId) ?? adoptDispatch(record, taskId, taskKey) ?? task(record, taskId)
       agent.taskKey = taskKey ?? agent.taskKey
+      agent.title = str(payload, 'title') ?? agent.title
       agent.handle = str(payload, 'handle') ?? agent.handle
       agent.agentSlug = str(payload, 'agent_slug') ?? agent.agentSlug
       agent.reason = str(payload, 'reason')
@@ -667,6 +680,40 @@ function reduce(record: RunActivity, event: EventEnvelope, payload: Payload): bo
       }
       return true
     }
+
+    case 'correction.trace.updated':
+    case 'correction.feedback.received':
+    case 'correction.question.answered': {
+      const trace = readCorrectionTrace(payload)
+      if (!trace) return false
+      record.correction = trace
+      const id = `correction:${trace.episodeId}`
+      const existing = find(record, id, 'correction')
+      if (existing) {
+        existing.trace = trace
+        existing.at = event.ts
+      } else {
+        add(record, {
+          kind: 'correction',
+          id,
+          seq: event.seq,
+          taskId: null,
+          trace,
+          at: event.ts,
+        })
+      }
+      return true
+    }
+    case 'correction.question.requested': {
+      const trace = readCorrectionTrace(payload)
+      if (trace) {
+        record.correction = trace
+        return true
+      }
+      return false
+    }
+    case 'correction.episode.reopened':
+      return Boolean(record.correction)
 
     case 'supervision.completed': {
       const decision = str(payload, 'decision')

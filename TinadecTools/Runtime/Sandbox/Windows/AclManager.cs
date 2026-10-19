@@ -30,18 +30,27 @@ internal sealed class AclManager : IDisposable
     {
         lock (Gate)
         {
-            var directory = new DirectoryInfo(path);
-            var security = directory.GetAccessControl();
-            if (ExceptionReferences.TryGetValue(path, out var existing)) ExceptionReferences[path] = (existing.Sddl, existing.Count + 1);
-            else
+            try
             {
-                ExceptionReferences[path] = (security.GetSecurityDescriptorSddlForm(AccessControlSections.Access), 1);
-                security.SetAccessRuleProtection(true, true);
+                var directory = new DirectoryInfo(path);
+                var security = directory.GetAccessControl();
+                if (ExceptionReferences.TryGetValue(path, out var existing)) ExceptionReferences[path] = (existing.Sddl, existing.Count + 1);
+                else
+                {
+                    ExceptionReferences[path] = (security.GetSecurityDescriptorSddlForm(AccessControlSections.Access), 1);
+                }
+                foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(NTAccount)))
+                    if (!rule.IsInherited
+                        && rule.AccessControlType == AccessControlType.Deny
+                        && rule.IdentityReference.Value.EndsWith("\\" + _accountName, StringComparison.OrdinalIgnoreCase))
+                        security.RemoveAccessRuleSpecific(rule);
+                directory.SetAccessControl(security);
             }
-            foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(NTAccount)))
-                if (rule.AccessControlType == AccessControlType.Deny && rule.IdentityReference.Value.EndsWith("\\" + _accountName, StringComparison.OrdinalIgnoreCase))
-                    security.RemoveAccessRuleSpecific(rule);
-            directory.SetAccessControl(security);
+            catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException or SystemException)
+            {
+                throw new InvalidOperationException(
+                    $"Failed to allow the sandbox account to read '{path}': {ex.Message}", ex);
+            }
             _readExceptions.Add(path);
         }
         GrantRead(path);
@@ -69,19 +78,27 @@ internal sealed class AclManager : IDisposable
             if (References.TryGetValue(key, out var count)) References[key] = count + 1;
             else
             {
-                if (Directory.Exists(path))
+                try
                 {
-                    var directory = new DirectoryInfo(path);
-                    var security = directory.GetAccessControl();
-                    security.ModifyAccessRule(AccessControlModification.Add, rule, out _);
-                    directory.SetAccessControl(security);
+                    if (Directory.Exists(path))
+                    {
+                        var directory = new DirectoryInfo(path);
+                        var security = directory.GetAccessControl();
+                        security.ModifyAccessRule(AccessControlModification.Add, rule, out _);
+                        directory.SetAccessControl(security);
+                    }
+                    else
+                    {
+                        var file = new FileInfo(path);
+                        var security = file.GetAccessControl();
+                        security.ModifyAccessRule(AccessControlModification.Add, rule, out _);
+                        file.SetAccessControl(security);
+                    }
                 }
-                else
+                catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException or SystemException)
                 {
-                    var file = new FileInfo(path);
-                    var security = file.GetAccessControl();
-                    security.ModifyAccessRule(AccessControlModification.Add, rule, out _);
-                    file.SetAccessControl(security);
+                    throw new InvalidOperationException(
+                        $"Failed to apply sandbox ACL '{rights}' ({type}) to '{path}': {ex.Message}", ex);
                 }
                 References[key] = 1;
             }
@@ -124,6 +141,27 @@ internal sealed class AclManager : IDisposable
             }
         }
         _rules.Clear();
+    }
+
+    /// <summary>
+    /// Revokes the temporary grants off the command's critical path. The static
+    /// reference counts keep a rule alive if the next command re-applies it
+    /// before this timer fires.
+    /// </summary>
+    internal void RevokeAllAfter(TimeSpan delay)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay).ConfigureAwait(false);
+                RevokeAll();
+            }
+            catch
+            {
+                // Best effort: the next sandbox reset retries cleanup.
+            }
+        });
     }
 
     private void RestoreReadExceptions()

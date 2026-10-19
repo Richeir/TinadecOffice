@@ -51,8 +51,18 @@ public static class CoreVirtualToolPolicy
     public const string CorrectionTraceToolId = "update_correction_trace";
     public static bool IsCorrectionTrace(string? toolId) => string.Equals(toolId, CorrectionTraceToolId, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Upper bound on plan_update steps: a longer plan is a task list for the planner, not a working plan.</summary>
-    public const int PlanUpdateMaxSteps = 20;
+    /// <summary>
+    /// Upper bound on plan_update steps.
+    ///
+    /// <para>
+    /// It exists to reject a step list that is really a backlog, not to cap how big a legitimate
+    /// plan may be: a migration, a spec-driven build or a cross-module change routinely has more
+    /// than twenty steps, and a limit that small makes a normal task fail its own plan call. The
+    /// real failure modes are caught elsewhere — one in_progress step at a time, the empty-plan
+    /// refusal, and the loop guard. Keep this and the spec checklist ceiling in step.
+    /// </para>
+    /// </summary>
+    public const int PlanUpdateMaxSteps = 64;
 
     /// <summary>
     /// Reads a page of a file the user attached to a message in this session.

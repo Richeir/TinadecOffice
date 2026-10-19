@@ -103,6 +103,10 @@ export interface paths {
     /** List agent runtime instances */
     get: operations["getApiV1Agent-runtime-instances"];
   };
+  "/api/v1/agent-runtime-policy": {
+    /** Get effective runtime policy ceilings */
+    get: operations["getApiV1Agent-runtime-policy"];
+  };
   "/api/v1/agents": {
     /** List agents */
     get: operations["getApiV1Agents"];
@@ -3314,6 +3318,14 @@ export interface operations {
   };
   /** List agent runtime instances */
   "getApiV1Agent-runtime-instances": {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Get effective runtime policy ceilings */
+  "getApiV1Agent-runtime-policy": {
     responses: {
       200: {
         content: never;

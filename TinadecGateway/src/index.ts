@@ -2073,6 +2073,16 @@ const app = new Elysia()
     setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
     return result.data;
   }, { detail: { summary: 'List agent runtime instances', tags: ['Agents'] } })
+  // The policy ceilings that can stop a legitimate run were only readable inside runtime.toml.
+  // Read-only: the document stays the editing authority.
+  .get('/api/v1/agent-runtime-policy', async ({ set, request }) => {
+    const headers = forwardHeaders(request);
+    const result = await proxyJson('/api/v1/agent-runtime-policy', { headers });
+    setStatus(set, result.status);
+    if (result.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(result.status, result.data, '/api/v1/agent-runtime-policy'); }
+    setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
+    return result.data;
+  }, { detail: { summary: 'Get effective runtime policy ceilings', tags: ['Agents'] } })
   // --- interactions thin proxy (dispatch_mode queued|insert|parallel, insert requires target_run_id) ---
   .post('/api/v1/sessions/:sessionId/interactions', async ({ params, body, set, request }) => {
     const headers = forwardHeaders(request);

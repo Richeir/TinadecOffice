@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Info, Search } from '@lucide/vue'
+import { Info, Search, Shield } from '@lucide/vue'
 import { UiBadge, UiButton, UiInput, UiLabel, UiSheet } from '@/components/ui'
-import { api as baseApi, type AgentRuntimeInstanceDto } from '@/api'
+import { api as baseApi, type AgentRuntimeInstanceDto, type AgentRuntimePolicyDto } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
 const api = scopedApi(baseApi, () => 'user')
 import { generatedApi as baseGeneratedApi } from '@/generated/client'
@@ -25,6 +25,56 @@ const runtimeTimer: ReturnType<typeof setInterval> | null = null
 const runtimeControlBusy = ref<string | null>(null)
 const showReassignSheet = ref(false)
 const reassignForm = ref({ session_id: '', interaction_id: '', target_run_id: '' })
+
+/**
+ * The policy ceilings that decide whether a legitimate run may continue: nesting depth, agents
+ * per run, parallel runs per session, retries, revision rounds, context window and the call
+ * fuse. All of them live in runtime.toml only, so a run that stopped because one of them was
+ * reached left the user with nothing to look at. This is that surface — read-only, because the
+ * document is the editing authority, and marked where a value was changed from the shipped one.
+ */
+const runtimePolicy = ref<AgentRuntimePolicyDto | null>(null)
+const runtimePolicyLoaded = ref(false)
+const runtimePolicyFailed = ref(false)
+
+interface PolicyRow { key: string; label: string; value: string; help: string; changed: boolean }
+
+const runtimePolicyRows = computed<PolicyRow[]>(() => {
+  const policy = runtimePolicy.value
+  // The proxy-based API doubles answer `{}`; anything that is not the full shape is "no data".
+  if (!policy?.spawn || !policy?.scheduling || !policy?.supervision || !policy?.context || !policy?.tools) return []
+  const deviations = new Set(policy.deviations ?? [])
+  const disabled = t('settings.runtimeCeilings.disabled')
+  const rows: Omit<PolicyRow, 'changed'>[] = [
+    { key: 'spawn.max_depth', label: t('settings.runtimeCeilings.depth'), value: String(policy.spawn.max_depth), help: t('settings.runtimeCeilings.depthHint') },
+    { key: 'spawn.max_agents_per_run', label: t('settings.runtimeCeilings.agentsPerRun'), value: String(policy.spawn.max_agents_per_run), help: t('settings.runtimeCeilings.agentsPerRunHint') },
+    { key: 'spawn.max_parallel_workers', label: t('settings.runtimeCeilings.parallelWorkers'), value: String(policy.spawn.max_parallel_workers), help: t('settings.runtimeCeilings.parallelWorkersHint') },
+    { key: 'scheduling.max_active_runs_per_session', label: t('settings.runtimeCeilings.activeRuns'), value: String(policy.scheduling.max_active_runs_per_session), help: t('settings.runtimeCeilings.activeRunsHint') },
+    { key: 'scheduling.worker_retry_limit', label: t('settings.runtimeCeilings.workerRetries'), value: String(policy.scheduling.worker_retry_limit), help: t('settings.runtimeCeilings.workerRetriesHint') },
+    { key: 'supervision.max_revision_rounds', label: t('settings.runtimeCeilings.revisionRounds'), value: String(policy.supervision.max_revision_rounds), help: t('settings.runtimeCeilings.revisionRoundsHint') },
+    { key: 'context.default_token_budget', label: t('settings.runtimeCeilings.contextWindow'), value: String(policy.context.default_token_budget), help: t('settings.runtimeCeilings.contextWindowHint') },
+    {
+      key: 'context.run_token_budget',
+      label: t('settings.runtimeCeilings.runBudget'),
+      value: policy.context.run_token_budget > 0 ? String(policy.context.run_token_budget) : disabled,
+      help: t('settings.runtimeCeilings.runBudgetHint'),
+    },
+    { key: 'tools.max_tool_calls', label: t('settings.runtimeCeilings.toolCalls'), value: String(policy.tools.max_tool_calls), help: t('settings.runtimeCeilings.toolCallsHint') },
+  ]
+  return rows.map((row) => ({ ...row, changed: deviations.has(row.key) }))
+})
+
+async function loadRuntimePolicy() {
+  try {
+    runtimePolicy.value = await api.getAgentRuntimePolicy()
+    runtimePolicyFailed.value = false
+  } catch {
+    // The instance list stays useful without the ceilings; a failed report must not blank it.
+    runtimePolicyFailed.value = true
+  } finally {
+    runtimePolicyLoaded.value = true
+  }
+}
 
 const runtimeStatusOptions = computed(() => ['all', ...Array.from(new Set(runtimeInstances.value.map((r) => String(r.status ?? '')).filter(Boolean)))])
 const filteredRuntimeInstances = computed(() => {
@@ -54,6 +104,9 @@ function readinessVariant(status?: string): 'default' | 'secondary' | 'destructi
 }
 
 async function loadRuntimeInstances() {
+  // Both halves are independent reads: a policy failure must not blank the instance list,
+  // and the ceilings are worth showing even when the list query fails.
+  void loadRuntimePolicy()
   try {
     runtimeInstances.value = await api.listRuntimeInstances()
     runtimeLoaded.value = true
@@ -111,6 +164,29 @@ defineExpose({ loadRuntimeInstances })
         <p>{{ t('settings.runtimePanelHint') }}</p>
       </div>
       <UiBadge variant="outline">{{ runtimeInstances.length }}</UiBadge>
+    </div>
+
+    <!-- Policy ceilings: the numbers that can stop a legitimate run. Read-only here because
+         runtime.toml stays the editing authority; a changed value is marked, not clipped. -->
+    <div class="ac-policy-card">
+      <div class="ac-policy-head">
+        <Shield :size="14" />
+        <strong>{{ t('settings.runtimeCeilings.title') }}</strong>
+        <UiBadge v-if="runtimePolicy" variant="outline">{{ t('settings.runtimeCeilings.revision', { revision: runtimePolicy.revision }) }}</UiBadge>
+      </div>
+      <p class="ac-policy-hint">{{ t('settings.runtimeCeilings.hint') }}</p>
+      <p v-if="runtimePolicyFailed" class="ac-policy-empty">{{ t('settings.runtimeCeilings.unavailable') }}</p>
+      <p v-else-if="runtimePolicyLoaded && runtimePolicyRows.length === 0" class="ac-policy-empty">{{ t('settings.runtimeCeilings.unavailable') }}</p>
+      <div v-else class="ac-policy-grid">
+        <div v-for="row in runtimePolicyRows" :key="row.key" class="ac-policy-row">
+          <span class="ac-policy-label" :title="row.help">{{ row.label }}</span>
+          <strong class="ac-policy-value">{{ row.value }}</strong>
+          <UiBadge v-if="row.changed" variant="secondary">{{ t('settings.runtimeCeilings.changed') }}</UiBadge>
+        </div>
+      </div>
+      <p v-if="runtimePolicy && runtimePolicyRows.length > 0" class="ac-policy-source">
+        {{ t('settings.runtimeCeilings.editHint') }} <code>{{ runtimePolicy.source_path }}</code>
+      </p>
     </div>
 
     <div class="model-provider-toolbar ac-runtime-toolbar">
@@ -186,6 +262,58 @@ defineExpose({ loadRuntimeInstances })
 .agent-runtime-panel {
   display: grid;
   gap: 12px;
+}
+.ac-policy-card {
+  border: 1px solid var(--border-muted);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: var(--surface-section);
+}
+.ac-policy-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ac-policy-hint,
+.ac-policy-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.ac-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 16px;
+}
+.ac-policy-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  min-width: 0;
+}
+.ac-policy-label {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+.ac-policy-value {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-left: auto;
+}
+.ac-policy-source {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.ac-policy-source code {
+  font-family: var(--font-mono);
 }
 .ac-runtime-list {
   display: grid;

@@ -177,6 +177,10 @@ public sealed class StorageScopeInitializer
     {
         var bundled = Path.Combine(AppContext.BaseDirectory, "Configuration", "default-agent-runtime.toml");
         ScopeConfigurationInitialization.Ensure(scope, "runtime", () => File.ReadAllText(bundled));
+        // Seeding only covers a scope that has no document yet. An established one keeps the
+        // policy it was created with, so the shipped numbers reach it through the idempotent
+        // upgrade (values still equal to the old defaults only).
+        RuntimeConfigurationMigration.Apply(scope);
     }
 
     private static void WriteMissing(string path, string text)

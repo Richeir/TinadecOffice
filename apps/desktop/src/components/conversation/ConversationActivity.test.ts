@@ -252,4 +252,23 @@ describe('AgentTodos', () => {
     expect(wrapper.findAll('.conversation-todo.is-new').map((row) => row.text())).toEqual([expect.stringContaining('Step 3')])
     expect(wrapper.text()).toContain('Added a test step')
   })
+
+  it('carries a plan far longer than twenty steps, and folds it back', async () => {
+    // plan_update accepts up to 64 steps: a migration or spec build is structurally long, so the
+    // plan area has to render all of them and give the turn back when the list is closed again.
+    const wrapper = track(mount(AgentTodos, { props: { entry: plan(64) }, global }))
+    expect(wrapper.findAll('.conversation-todo')).toHaveLength(6)
+    expect(wrapper.text()).toContain('64')
+    await wrapper.get('.conversation-link-button').trigger('click')
+    expect(wrapper.findAll('.conversation-todo')).toHaveLength(64)
+    await wrapper.get('.conversation-link-button').trigger('click')
+    expect(wrapper.findAll('.conversation-todo')).toHaveLength(6)
+  })
+
+  it('renders every row when two steps share the same wording', () => {
+    const repeated = Array.from({ length: 8 }, () => ({ step: 'Update the call sites', status: 'pending' as const }))
+    const wrapper = track(mount(AgentTodos, { props: { entry: { ...plan(0), steps: repeated } }, global }))
+    expect(wrapper.findAll('.conversation-todo')).toHaveLength(6)
+    expect(wrapper.findAll('.conversation-todo').every((row) => row.text().includes('Update the call sites'))).toBe(true)
+  })
 })

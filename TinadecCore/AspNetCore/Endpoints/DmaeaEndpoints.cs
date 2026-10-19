@@ -638,6 +638,64 @@ public static class DmaeaEndpoints
             catch (ArgumentException ex) { return Results.BadRequest(new { code = "INVALID_SPAWN", message = ex.Message }); }
         });
 
+        // The policy ceilings are editable only inside runtime.toml, which means the number that
+        // stopped a legitimate run (two active runs, a nested spawn, a revision budget) was
+        // invisible in the product. This read-only surface reports the effective values, the
+        // installed baseline and which keys an operator changed, so "it is the default" and
+        // "somebody lowered it" are distinguishable without opening a TOML file.
+        app.MapGet("/api/v1/agent-runtime-policy", (IAgentRuntimeConfiguration configuration) =>
+        {
+            var current = configuration.Current;
+            var diagnostic = configuration.Diagnostic;
+            var comparison = AgentRuntimePolicyReport.Compare(current, AgentRuntimePolicyReport.BundledPath);
+            return Results.Ok(new
+            {
+                revision = current.Version,
+                content_hash = current.ContentHash,
+                loaded_at = current.LoadedAt,
+                source_path = diagnostic.SourcePath,
+                document_id = "runtime",
+                diagnostic = new { state = diagnostic.State, detail = diagnostic.Detail, checked_at = diagnostic.CheckedAt },
+                defaults_available = comparison.DefaultsAvailable,
+                // Dotted keys (`scheduling.max_active_runs_per_session`) whose effective value
+                // differs from the baseline this build ships.
+                deviations = comparison.Deviations,
+                spawn = new
+                {
+                    max_depth = current.Spawn.MaxDepth,
+                    max_agents_per_run = current.Spawn.MaxAgentsPerRun,
+                    max_parallel_workers = current.Spawn.MaxParallelWorkers
+                },
+                scheduling = new
+                {
+                    max_active_runs_per_session = current.Scheduling.MaxActiveRunsPerSession,
+                    worker_retry_limit = current.Scheduling.WorkerRetryLimit,
+                    preserve_partial_results = current.Scheduling.PreservePartialResults
+                },
+                supervision = new
+                {
+                    required_before_final = current.Supervision.RequiredBeforeFinal,
+                    max_revision_rounds = current.Supervision.MaxRevisionRounds
+                },
+                context = new
+                {
+                    default_token_budget = current.Context.DefaultTokenBudget,
+                    // 0 disables the cumulative fuse; the effective value says what a legacy
+                    // document (no task_token_budget key) actually runs with.
+                    task_token_budget = current.Context.TaskTokenBudget,
+                    effective_task_token_budget = current.Context.EffectiveTaskTokenBudget,
+                    run_token_budget = current.Context.RunTokenBudget,
+                    recent_message_limit = current.Context.RecentMessageLimit
+                },
+                tools = new
+                {
+                    max_tool_calls = current.Tools.MaxToolCalls,
+                    max_tool_rounds = current.Tools.MaxToolRounds,
+                    default_timeout_seconds = current.Tools.DefaultTimeoutSeconds
+                }
+            });
+        });
+
         return app;
     }
 

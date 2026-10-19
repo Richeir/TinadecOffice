@@ -79,7 +79,7 @@ internal sealed partial class FullDuplexRunEngine
             if (checkpoint.SpaceSpecDocuments.Count >= SpecStages.Length || stage != SpecStages[checkpoint.SpaceSpecDocuments.Count])
                 return "Propose requirements, design, and tasks in order. Earlier confirmed documents are immutable for this run.";
             if (stage == "tasks" && (SpecPlan(document).Count is 0 or > CoreVirtualToolPolicy.PlanUpdateMaxSteps))
-                return "The tasks document needs a Markdown checklist with 1–20 steps (- [ ] ...), so the complete confirmed specification can be the visible execution plan.";
+                return $"The tasks document needs a Markdown checklist with 1–{CoreVirtualToolPolicy.PlanUpdateMaxSteps} steps (- [ ] ...), so the complete confirmed specification can be the visible execution plan.";
             return null;
         }
         if (options.SpecEnabled && CoreVirtualToolPolicy.IsPlanUpdate(turn.ToolId))

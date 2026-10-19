@@ -8361,6 +8361,18 @@
         ]
       }
     },
+    "/api/v1/agent-runtime-policy": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
     "/api/v1/agents": {
       "get": {
         "responses": {

@@ -1567,6 +1567,28 @@ export interface PromptPipelineVersionDto {
   created_at: string;
 }
 
+/**
+ * Effective runtime policy ceilings (Core `GET /api/v1/agent-runtime-policy`). Every number is
+ * editable only inside the scope's `runtime.toml`; `deviations` names the dotted keys that no
+ * longer match the baseline this build ships, so the settings surface can say which value an
+ * operator changed instead of presenting all of them as fixed facts.
+ */
+export interface AgentRuntimePolicyDto {
+  revision: number;
+  content_hash: string;
+  loaded_at: string;
+  source_path: string;
+  document_id: string;
+  diagnostic: { state: string; detail: string; checked_at: string };
+  defaults_available: boolean;
+  deviations: string[];
+  spawn: { max_depth: number; max_agents_per_run: number; max_parallel_workers: number };
+  scheduling: { max_active_runs_per_session: number; worker_retry_limit: number; preserve_partial_results: boolean };
+  supervision: { required_before_final: boolean; max_revision_rounds: number };
+  context: { default_token_budget: number; task_token_budget: number | null; effective_task_token_budget: number; run_token_budget: number; recent_message_limit: number };
+  tools: { max_tool_calls: number; max_tool_rounds: number; default_timeout_seconds: number };
+}
+
 export interface AgentRuntimeInstanceDto {
   id: string;
   run_id: string;
@@ -3381,6 +3403,8 @@ export const api = {
     const qs = runId ? `?run_id=${encodeURIComponent(runId)}` : '';
     return request<AgentRuntimeInstanceDto[]>(`/api/v1/agent-runtime-instances${qs}`);
   },
+  /** Effective policy ceilings of this scope (read-only; edited through the runtime document). */
+  getAgentRuntimePolicy: () => request<AgentRuntimePolicyDto>('/api/v1/agent-runtime-policy'),
   // interactions (queued/insert/parallel)
   createInteraction: (sessionId: string, body: { content: string; client_message_id: string; mode_version_id?: string | null; permission_mode?: string | null; dispatch_mode: DispatchMode; target_run_id?: string | null; meeting_model_override?: MeetingModelOverrideDto | null; clear_meeting_model_override?: boolean; expected_settings_revision?: number; space_options?: SpaceOptionsDto | null; attachment_ids?: string[]; interrupt?: boolean }) => request<SessionInteractionDto>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/interactions`, { method: 'POST', body: JSON.stringify(body) }),
   getCorrection: (runId: string) => request<Record<string, unknown>>(`/api/v1/runs/${encodeURIComponent(runId)}/correction`),

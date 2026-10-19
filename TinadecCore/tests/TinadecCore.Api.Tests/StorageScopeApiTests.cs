@@ -131,7 +131,7 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
         var installed = await globalPacksResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains(installed.EnumerateArray(), pack =>
             pack.GetProperty("pack_id").GetString() == "tinadec.graph.seed-pack"
-            && pack.GetProperty("active_version").GetString() == "3.1.1");
+            && pack.GetProperty("active_version").GetString() == SeedPackVersion());
     }
 
     [Fact]
@@ -554,6 +554,18 @@ public sealed class StorageScopeApiTests : IAsyncLifetime
             if (File.Exists(candidate)) return candidate;
         }
         throw new FileNotFoundException("Repository test resource was not found: " + Path.Combine(segments));
+    }
+
+    /// <summary>
+    /// The bundled pack's own version, read from the manifest instead of pinned here: every
+    /// manifest edit republishes a new version, and a duplicate literal would only add a second
+    /// place to forget.
+    /// </summary>
+    private static string SeedPackVersion()
+    {
+        var path = FindRepositoryFile("apps", "desktop", "src", "agentPacks", "GraphSeedPack", "manifest.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        return document.RootElement.GetProperty("metadata").GetProperty("version").GetString()!;
     }
 
     private async Task<JsonElement> OpenAsync(HttpClient client, string name)

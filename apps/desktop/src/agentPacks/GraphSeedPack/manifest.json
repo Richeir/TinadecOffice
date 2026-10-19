@@ -6,7 +6,7 @@
     "owner": "tinadec",
     "product_id": "tinadec-core",
     "name": "GraphSeedPack",
-    "version": "3.1.1",
+    "version": "3.1.2",
     "description": "DmaEA 图编排种子包：八种工作模式。Solo 与 Plan 是熟悉的单智能体用法（亲自动手、先出方案），Team、Review、Spec 由协调者带着执行者完成组队、评审与规格驱动开发，Graph 与 Workflow 沿声明好的协作图推进，Correction 用宿主拥有的因果轨迹、验证契约和复现重开完成证据驱动的纠偏。协调者按职责点名执行者（固定 id：search / global_engineering / reviewer），每种模式都绑定独立的提示词管线、角色边界和工具授权；写入与高风险操作继续经过审批。每个会话同时是一个 TinaChat 组织：执行者也是成员，按派发关系互为联系人，在计划室、私聊与公告板里协作；Team 模式常驻一名治理审查智能体，盯住执行者之间的资源冲突。"
   },
   "compatibility": {
@@ -637,7 +637,7 @@
             },
             "envelope": {
               "spawn": {
-                "max_depth": 1,
+                "max_depth": 2,
                 "max_agents_per_run": 8,
                 "max_parallel_workers": 4
               }
@@ -1347,7 +1347,7 @@
             },
             "envelope": {
               "spawn": {
-                "max_depth": 1,
+                "max_depth": 2,
                 "max_agents_per_run": 8,
                 "max_parallel_workers": 4
               }
@@ -1560,7 +1560,7 @@
                 ]
               },
               "spawn": {
-                "max_depth": 1,
+                "max_depth": 2,
                 "max_agents_per_run": 8,
                 "max_parallel_workers": 4
               }

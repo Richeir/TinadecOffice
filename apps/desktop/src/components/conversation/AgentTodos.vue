@@ -32,7 +32,9 @@ const who = computed(() => (props.entry.handle ? displayName(props.entry.handle)
     </p>
     <p v-if="entry.explanation && entry.previous" class="conversation-todos-explanation">{{ entry.explanation }}</p>
     <ol class="conversation-todos-list" role="list">
-      <li v-for="step in visible" :key="step.step" class="conversation-todo" :data-status="step.status" :class="{ 'is-new': isNew(step) }">
+      <!-- Keyed by position, not by text: a 64-step migration plan legitimately repeats wording
+           ("update the call sites") and a duplicate key would silently drop rows. -->
+      <li v-for="(step, index) in visible" :key="index" class="conversation-todo" :data-status="step.status" :class="{ 'is-new': isNew(step) }">
         <CircleCheck v-if="step.status === 'completed'" class="conversation-meta-glyph is-done" aria-hidden="true" />
         <CircleDot v-else-if="step.status === 'in_progress'" class="conversation-meta-glyph is-active" aria-hidden="true" />
         <Circle v-else class="conversation-meta-glyph" aria-hidden="true" />
@@ -40,7 +42,10 @@ const who = computed(() => (props.entry.handle ? displayName(props.entry.handle)
         <span class="sr-only">{{ t(`conversation.plan.status.${step.status}`) }}</span>
       </li>
     </ol>
+    <!-- Long plans fold to six steps; the toggle has to work in both directions, because a
+         fully expanded 64-row list would otherwise own the rest of the turn. -->
     <button v-if="hidden > 0" type="button" class="conversation-link-button" @click="expanded = true">{{ t('conversation.plan.more', { count: hidden }) }}</button>
+    <button v-else-if="expanded" type="button" class="conversation-link-button" @click="expanded = false">{{ t('conversation.plan.less') }}</button>
   </div>
 </template>
 

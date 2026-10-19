@@ -7659,6 +7659,18 @@
         ]
       }
     },
+    "/api/v1/agent-runtime-policy": {
+      "get": {
+        "operationId": "getApiV1Agent-runtime-policy",
+        "responses": {
+          "200": {}
+        },
+        "summary": "Get effective runtime policy ceilings",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
     "/api/v1/agents": {
       "get": {
         "operationId": "getApiV1Agents",

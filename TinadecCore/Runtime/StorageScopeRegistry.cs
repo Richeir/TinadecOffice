@@ -401,6 +401,10 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
         if (manifest.ProjectId != scope.ProjectId || manifest.Backend != scope.Backend
             || manifest.PostgresConnectionReference != scope.PostgresConnectionReference)
             throw new InvalidDataException("The project manifest differs from its host registration. Apply the storage configuration through the trusted host before reopening.");
+        // Opening an existing scope never rewrites its configuration, except for the idempotent
+        // policy upgrade: a project created before a baseline change would otherwise keep the old
+        // context budgets forever. The upgrade only moves values still equal to the old defaults.
+        RuntimeConfigurationMigration.Apply(scope);
         var configValues = new Dictionary<string, string?>
         {
             ["TinadecPersistence:DataRoot"] = scope.Data,

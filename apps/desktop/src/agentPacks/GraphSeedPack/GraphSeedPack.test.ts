@@ -309,6 +309,21 @@ describe('GraphSeedPack', () => {
     expect(fixedBinding.envelope!.spawn!.max_depth).toBe(0)
   })
 
+  it('lets the delegating modes nest one level deeper than a flat dispatch', () => {
+    // Depth is a product decision, not a coincidence. `max_depth = 1` means the coordinator may
+    // dispatch executors that cannot dispatch anything themselves — a flat star. A mode whose
+    // whole point is a team (Team), independent lenses (Review) or delegated investigation
+    // (Correction) needs the second level, or "接近 Qoder 的层级子智能体" is unreachable.
+    // The single-loop modes keep a flat dispatch, and the fixed pipeline stays a declared chain.
+    const depth = (key: string) => {
+      const mode = graphSeedPackManifest.resources.modes.find((row) => row.resource_key === key)!
+      return mode.bindings!.find((binding) => binding.node_key === 'meeting')!.envelope!.spawn!.max_depth
+    }
+    for (const key of ['free_director', 'review', 'correction']) expect(depth(key), `${key} nesting depth`).toBe(2)
+    for (const key of ['vibe_graph', 'solo', 'plan', 'spec']) expect(depth(key), `${key} nesting depth`).toBe(1)
+    expect(depth('fixed_pipeline')).toBe(0)
+  })
+
   it('binds node-less envelopes for spawnable templates and narrows tools where declared', () => {
     const spawnable: Record<string, string[]> = {
       free_director: ['agent:global_engineering', 'agent:search'],

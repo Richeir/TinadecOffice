@@ -147,9 +147,11 @@ describe('createRunStream', () => {
       chunks: [sseEvent(4, 'delta', { delta: 'x' })],
     }, (c) => seen.push(c))
     handle.connect()
-    await new Promise((resolve) => setTimeout(resolve, 30))
+    // The reconnect is scheduled on a timer, so "it came back" is a condition to wait for.
+    // A fixed 30 ms sleep raced the event loop: on a loaded worker the timer had not fired
+    // yet and the count was still 1.
+    await vi.waitFor(() => expect(requestCount()).toBeGreaterThanOrEqual(2), { timeout: 5000 })
     // each reconnect replays from seq 4 and closes again -> at least 2 requests, cursor preserved
-    expect(requestCount()).toBeGreaterThanOrEqual(2)
     expect(seen.every((c) => (c as { seq: number }).seq === 4)).toBe(true)
     handle.disconnect()
   })

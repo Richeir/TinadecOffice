@@ -43,8 +43,18 @@ describe('TurnTimeline supervision review', () => {
       global: { plugins: [i18n] },
     })
     expect(wrapper.get('[data-testid="supervision-reasons"]').text()).toContain('Task budget exhausted')
-    expect(wrapper.findAll('[data-testid="supervision-decision"]').map((button) => button.text()))
-      .toEqual(['继续', '纠正', '取消'])
+    // A decision button is a short label plus the consequence behind it, not one string:
+    // assert the halves separately against the locale bundle, so a copy edit does not look
+    // like a structural change while a missing key still fails.
+    const decisions = wrapper.findAll('[data-testid="supervision-decision"]')
+    expect(decisions.map((button) => button.get('span').text()))
+      .toEqual([zh.agent.supervisionContinue, zh.agent.supervisionCorrect, zh.agent.supervisionCancel])
+    expect(decisions.map((button) => button.get('small').text()))
+      .toEqual([
+        zh.conversation.supervision.brief.option.continue,
+        zh.conversation.supervision.brief.option.correct,
+        zh.conversation.supervision.brief.option.cancel,
+      ])
   })
 
   it('continues or cancels through durable run control', async () => {

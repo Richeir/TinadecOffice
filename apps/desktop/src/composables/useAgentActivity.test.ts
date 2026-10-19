@@ -339,10 +339,12 @@ describe('useAgentActivity event wiring', () => {
       options: ['continue', 'correct', 'cancel'],
     }, 12)
 
+    // A payload older than the brief carries none, and the gate must still open.
     expect(harness.supervisionReview.value).toEqual({
       runId: 'r-1',
       reasons: ['Task budget exhausted after three rounds.'],
       options: ['continue', 'correct', 'cancel'],
+      brief: null,
     })
 
     // The verdict must also be readable in the timeline.
@@ -352,7 +354,44 @@ describe('useAgentActivity event wiring', () => {
     expect(step!.description).toContain('Task budget exhausted after three rounds.')
 
     source.emit('supervision.user_decision', { decision: 'continue' }, 13)
-    expect(harness.supervisionReview.value).toEqual({ runId: 'r-1', reasons: [], options: [] })
+    expect(harness.supervisionReview.value).toEqual({ runId: 'r-1', reasons: [], options: [], brief: null })
+  })
+
+  it('carries the supervision brief into the review so the gate can explain the decision', async () => {
+    const { harness, source } = await mount()
+
+    // Core sends the brief as snake_case on the same event; the gate renders the
+    // task counts, the missing evidence and the exhausted revision budget from it.
+    source.emit('supervision.user_review.requested', {
+      decision: 'escalate',
+      reasons: ['task_outcome:backend:blocked'],
+      options: ['continue', 'correct', 'cancel'],
+      brief: {
+        total_tasks: 4,
+        completed_tasks: 2,
+        blocked_tasks: 1,
+        failed_tasks: 0,
+        pending_tasks: 1,
+        unmet_criteria: 2,
+        revision_round: 2,
+        max_revision_rounds: 2,
+        supervisor_required: true,
+        supervisor_available: false,
+      },
+    }, 12)
+
+    expect(harness.supervisionReview.value?.brief).toEqual({
+      totalTasks: 4,
+      completedTasks: 2,
+      blockedTasks: 1,
+      failedTasks: 0,
+      pendingTasks: 1,
+      unmetCriteria: 2,
+      revisionRound: 2,
+      maxRevisionRounds: 2,
+      supervisorRequired: true,
+      supervisorAvailable: false,
+    })
   })
 
   it('makes the persisted-evidence final-response fallback visible', async () => {

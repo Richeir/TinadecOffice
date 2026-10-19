@@ -55,14 +55,17 @@ describe('MarkdownDiagram', () => {
     })
     const first = render(SOURCE)
     const second = render('graph LR\n  C --> D')
-    await new Promise((resolve) => setTimeout(resolve, 40))
-    await flushPromises()
+    // Renders are queued one at a time, so "both are drawn" is a condition to wait for, not
+    // a duration to sleep: a fixed 40 ms lost the race whenever the worker was busy, and the
+    // second diagram was read before its turn in the queue came.
+    await vi.waitFor(() => {
+      expect(first.find('.markdown-diagram-svg svg').exists()).toBe(true)
+      expect(second.find('.markdown-diagram-svg svg').exists()).toBe(true)
+    }, { timeout: 5000 })
     const ids = diagram.render.mock.calls.map((call) => call[0])
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
     expect(overlapped).toBe(false)
-    expect(first.find('.markdown-diagram-svg svg').exists()).toBe(true)
-    expect(second.find('.markdown-diagram-svg svg').exists()).toBe(true)
     first.unmount()
     second.unmount()
     diagram.render.mockImplementation(async () => ({ svg: '<svg data-testid="diagram"></svg>' }) as never)

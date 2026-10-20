@@ -9,6 +9,14 @@
 
 > The metadata above is advisory and goes stale by design. Never treat an "implemented/current" claim in this file as fact without verifying it against source and tests.
 
+### 2026-10-20 Release 正文由 AI 手写，机械部分折叠
+
+`--generate-notes` 的产物是一串 PR 标题（`Fix/model center unify`、`Feat/flat conversation v2`），回答不了"我为什么要升级"。Release 正文因此改成两段式：**AI 复盘后写 `docs/releases/<tag>.md`**（`## What's new` 3–6 条 + `## What's changed` 分「新能力 / 修复 / 性能 / 升级须知」），机械部分交给模板——`.github/release-header.md` 只出头图，`.github/release-footer.md` 出 Installation 与 Known boundaries 两个 `<details>`，自动 changelog 降级成折叠的 `Full commit log`。排版顺序刻意是「头图 → What's new → What's changed → 三个折叠块」：安装表每版重复，对老用户是噪音。
+
+拼装**只有一份实现** `scripts/release-body.mjs`：`desktop-release.yml` 的 `Compose release notes` 与本地补写都调它。`--out <file>` 只预览；`--update` 重新拼装并 `gh release edit`（只改正文，不动 tag 与资产）。缺 notes 时脚本**不失败**——发版不该被一条文案卡住——只升 `::warning::` 并在 body 留 `<!-- release-notes: ... is missing -->` 供事后 grep。
+
+两个坑：`gh release create` 的 `--notes-file` 与 `--generate-notes` **互斥**；generate-notes 的 body **自带 `## What's Changed` 标题**，拼接时不要再补一个。完整规程见 `docs/release-notes.zh-CN.md`。
+
 ### 2026-10-20 旧工作区预算迁移与四条上限
 
 `ScopeConfigurationInitialization.Ensure` 只在文档缺失时播种，所以**每个历史 scope 都停在旧 65536/1048576**，新基线只对新 scope 生效。`Persistence/Configuration/RuntimeConfigurationMigration.cs` 补幂等迁移：只升级"仍等于旧出厂默认"的键（含 `task_token_budget` 缺键→0，且仅当 `default_token_budget` 仍是 65536 时才插入），文本级替换保留注释与行序，`state/.configuration-migrations/<revision>.applied` 让每 scope 只评估一次（故意改回旧值不会被反复修正）。接线在 `StorageScopeInitializer.EnsureRuntime`（user scope + 新建项目）与 `StorageScopeRegistry.MountAsync`（已存在项目，必须在 DI 构建 runtime store 之前）。**不要把这两处合并成"启动时统一改"**：Mount 是项目 scope 唯一的入口。

@@ -340,6 +340,18 @@ jobs:
             and (([.products[].releases[0].artifacts | length] | min) >= 3)
             and ((([.products[].releases[0].artifacts[].platform] | unique)) | contains(["linux", "macos", "windows"]))' office-channel/catalog.json >/dev/null
 
+      - name: Compose release notes
+        working-directory: release-artifacts
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        # 正文由 scripts/release-body.mjs 组装：头图 → What's new → 自动 changelog → 折叠的
+        # 安装信息。同一个脚本本地也用来补写，所以模板和拼接只有一份实现。
+        #
+        # What's new 来自 docs/releases/<tag>.md。它没有时脚本不会失败——发版不该被一条
+        # 文案卡住——但会升起 ::warning::，提醒这版发出去还没有人话复盘。
+        run: node "$GITHUB_WORKSPACE/scripts/release-body.mjs" "$GITHUB_REF_NAME" --out release-body.md
+
       - name: Create GitHub Release
         working-directory: release-artifacts
         env:
@@ -349,5 +361,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" SHA256SUMS
           $(find . -type f ! -name 'SHA256SUMS' -print | sort)
           --verify-tag
-          --generate-notes
+          --notes-file release-body.md
           --title "TinadecOffice $GITHUB_REF_NAME"

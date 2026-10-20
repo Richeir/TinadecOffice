@@ -383,3 +383,28 @@ describe('AppSidebar lifecycle management', () => {
     expect(freeRows[0]!.text()).toContain('Tinadec session')
   })
 })
+
+describe('AppSidebar footer identity', () => {
+  it('keeps the profile portrait left of the shell actions and opens the personal module', async () => {
+    const wrapper = factory()
+    const children = Array.from(wrapper.get('.sidebar-footer').element.children)
+    expect(children.map((node) => node.className.split(' ')[0])).toEqual([
+      'sidebar-profile',
+      'sidebar-footer-actions',
+    ])
+
+    const profile = wrapper.get('[title="sidebar.personal"]')
+    expect(profile.find('.personal-avatar').exists()).toBe(true)
+    await profile.trigger('click')
+    expect(wrapper.emitted('go-personal')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('keeps the portrait visible above the stacked actions on the collapsed rail', () => {
+    const wrapper = factory({ collapsed: true })
+    const footer = wrapper.get('.sidebar-footer')
+    expect(footer.find('.sidebar-profile').exists()).toBe(true)
+    expect(footer.find('.sidebar-footer-actions-collapsed').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})

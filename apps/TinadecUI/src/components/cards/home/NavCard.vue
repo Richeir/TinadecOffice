@@ -2,6 +2,7 @@
 import AppSidebar from '@/components/AppSidebar.vue'
 import WorkspaceEditorDialog from '@/components/WorkspaceEditorDialog.vue'
 import { homeController } from '@/controllers/HomeController'
+import { requestSettingsSection } from '@/lib/pageRequests'
 import { useUie } from '../../useUie'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -18,6 +19,12 @@ async function openSession(id: string) {
 async function createSession(projectId: string | null) {
   c.startNewConversation(projectId)
   if (route.path !== '/' && route.path !== '/space') await router.push('/')
+}
+
+/** The footer portrait opens the personal module inside Settings, not whatever section was open last. */
+function openPersonal() {
+  requestSettingsSection('personal')
+  void router.push('/settings')
 }
 
 function toggleCollapse() {
@@ -53,6 +60,7 @@ function toggleCollapse() {
   @unregister-workspace="c.unregisterWorkspace($event)"
     @go-market="router.push('/market')"
     @go-settings="router.push('/settings')"
+    @go-personal="openPersonal"
     @change-view="router.push($event === 'space' ? '/space' : '/')"
     @toggle-collapse="toggleCollapse"
     @rename-project="(id, name) => c.renameProject(id, name)"

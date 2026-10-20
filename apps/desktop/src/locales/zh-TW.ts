@@ -675,6 +675,7 @@ export default {
     noThreads: "暫無聊天",
     user: "使用者",
     settings: "設定",
+    personal: "個人資訊",
     justNow: "剛剛",
     newChat: "新聊天",
     workspaces: "工作區",

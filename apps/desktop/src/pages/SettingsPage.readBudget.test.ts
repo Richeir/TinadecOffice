@@ -39,7 +39,6 @@ vi.mock('@/components/ui', () => ({
   UiButton: { inheritAttrs: false, template: '<button v-bind="$attrs"><slot /></button>' },
   UiCard: { template: '<div><slot /></div>' },
   UiInput: { inheritAttrs: false, template: '<input v-bind="$attrs" />' },
-  UiAvatar: { template: '<div><slot /></div>' },
   UiTextarea: { inheritAttrs: false, template: '<textarea v-bind="$attrs" />' },
   UiBadge: { template: '<span><slot /></span>' },
   UiLabel: { template: '<label><slot /></label>' },

@@ -2125,6 +2125,30 @@ button.agent-topology-node:hover,
   padding: 8px 12px;
 }
 
+/* The identity is the footer's only non-action: it sits left, the shell
+   actions keep the right edge. The hover plate is round to match the portrait. */
+.sidebar-profile {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.sidebar-profile:hover {
+  background: var(--surface-hover);
+}
+
+.sidebar-profile:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .sidebar-footer-action {
   display: grid;
   place-items: center;
@@ -2288,6 +2312,10 @@ button.agent-topology-node:hover,
 .sidebar-collapsed .sidebar-footer {
   padding: 8px 4px;
   justify-content: center;
+  /* The rail is one icon wide: the portrait stacks above the action column
+     instead of trying to sit beside it. */
+  flex-direction: column;
+  gap: 4px;
 }
 
 .mode-dropdown-menu {

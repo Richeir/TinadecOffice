@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Briefcase, Check, Pencil, Share2, UserRound, X } from '@lucide/vue'
-import { UiAvatar, UiButton, UiCard, UiInput, UiTextarea } from '@/components/ui'
+import { Briefcase, Check, Pencil, Share2, X } from '@lucide/vue'
+import { UiButton, UiCard, UiInput, UiTextarea } from '@/components/ui'
+import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
 import { useNotifications } from '@/composables/useNotifications'
 import { api as baseApi } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
@@ -54,11 +55,6 @@ const roleDialogOpen = ref(false)
 const shareDialogOpen = ref(false)
 const roleDraft = ref<WorkRole[]>([])
 const customRoleDraft = ref(userProfile.customRole)
-
-const avatarInitial = computed(() => {
-  const name = userProfile.nickname.trim()
-  return name ? name.slice(0, 1).toUpperCase() : ''
-})
 
 // ---- Identity chip (grouped roles + bio, both read straight from the store) ----
 
@@ -255,11 +251,7 @@ onMounted(() => {
     <!-- Identity header: avatar + nickname + role badges, actions on the right. -->
     <section class="personal-hero" aria-labelledby="personal-hero-name">
       <button type="button" class="personal-hero-avatar" :title="t('settings.personalEdit')" @click="openEditDialog">
-        <UiAvatar class="personal-hero-avatar-frame">
-          <img v-if="userProfile.avatar" :src="userProfile.avatar" :alt="t('settings.personalAvatar')" />
-          <span v-else-if="avatarInitial" class="personal-avatar-initial">{{ avatarInitial }}</span>
-          <UserRound v-else :size="30" class="personal-avatar-placeholder" />
-        </UiAvatar>
+        <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" />
         <span class="personal-hero-avatar-edit"><Pencil :size="12" /></span>
       </button>
       <div class="personal-hero-info">
@@ -342,11 +334,7 @@ onMounted(() => {
 
         <div class="personal-dialog-avatar-row">
           <button type="button" class="personal-hero-avatar" :title="t('settings.personalAvatarUpload')" @click="pickAvatar">
-            <UiAvatar class="personal-hero-avatar-frame">
-              <img v-if="userProfile.avatar" :src="userProfile.avatar" :alt="t('settings.personalAvatar')" />
-              <span v-else-if="avatarInitial" class="personal-avatar-initial">{{ avatarInitial }}</span>
-              <UserRound v-else :size="30" class="personal-avatar-placeholder" />
-            </UiAvatar>
+            <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" />
             <span class="personal-hero-avatar-edit"><Pencil :size="12" /></span>
           </button>
           <p class="gateway-config-meta">{{ t('settings.personalAvatarMeta') }}</p>

@@ -675,6 +675,7 @@ export default {
     noThreads: "Бесед пока нет",
     user: "Пользователь",
     settings: "Настройки",
+    personal: "Профиль",
     justNow: "Только что",
     newChat: "Новый чат",
     workspaces: "Рабочие области",

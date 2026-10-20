@@ -459,6 +459,7 @@ export default {
     noThreads: 'No threads yet',
     user: 'User',
     settings: 'Settings',
+    personal: 'Profile',
     justNow: 'Just now',
     newChat: 'New Chat',
     workspaces: 'Workspaces',

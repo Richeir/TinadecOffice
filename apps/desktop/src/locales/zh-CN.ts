@@ -459,6 +459,7 @@ export default {
     noThreads: '暂无聊天',
     user: '用户',
     settings: '设置',
+    personal: '个人信息',
     justNow: '刚刚',
     newChat: '新聊天',
     workspaces: '工作区',

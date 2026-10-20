@@ -675,6 +675,7 @@ export default {
     noThreads: "スレッドはまだありません",
     user: "ユーザー",
     settings: "設定",
+    personal: "プロフィール",
     justNow: "たった今",
     newChat: "新しいチャット",
     workspaces: "ワークスペース",

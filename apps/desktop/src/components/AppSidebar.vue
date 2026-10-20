@@ -29,6 +29,7 @@ import { useI18n } from 'vue-i18n'
 import type { ProjectDto, SessionDto } from '../api'
 import BrandLogo from '@/components/BrandLogo.vue'
 import TinadecCalligraphy from '@/components/TinadecCalligraphy.vue'
+import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
 import InlineRenameInput from '@/components/InlineRenameInput.vue'
 import RowContextMenu, { type RowMenuItem } from '@/components/RowContextMenu.vue'
 import { UiButton, UiSelectField } from '@/components/ui'
@@ -60,6 +61,7 @@ const emit = defineEmits<{
   'create-session': [projectId: string | null]
   'open-project': []
   'go-settings': []
+  'go-personal': []
   'go-market': []
   'change-view': [mode: 'flat' | 'space']
   'toggle-collapse': []
@@ -427,6 +429,16 @@ function openDebugStudio() {
     </div>
 
     <div class="sidebar-footer">
+      <!-- Identity sits at the far left; the three shell actions stay right-aligned. -->
+      <button
+        type="button"
+        class="sidebar-profile"
+        :title="t('sidebar.personal')"
+        :aria-label="t('sidebar.personal')"
+        @click="emit('go-personal')"
+      >
+        <PersonalAvatar :size="26" />
+      </button>
       <div class="sidebar-footer-actions" :class="{ 'sidebar-footer-actions-collapsed': collapsed }">
         <UiButton
           variant="ghost"

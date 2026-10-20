@@ -29,6 +29,16 @@ contextBridge.exposeInMainWorld('tinadec', {
     return () => ipcRenderer.removeListener('tinadec:debug-studio-enabled-changed', handler);
   },
 
+  // --- Window and tray preferences ---
+  saveCloseToTray: (enabled) => ipcRenderer.invoke('tinadec:close-to-tray-save', enabled),
+  onCloseToTrayChanged: (callback) => {
+    const handler = (_event, value) => callback(value);
+    ipcRenderer.on('tinadec:close-to-tray-changed', handler);
+    return () => ipcRenderer.removeListener('tinadec:close-to-tray-changed', handler);
+  },
+  /** Lets the main process draw the tray menu in the interface language this window is showing. */
+  setInterfaceLocale: (locale) => ipcRenderer.send('tinadec:interface-locale', locale),
+
   // --- TinadecUIE layout persistence ---
   layout: {
     load: () => ipcRenderer.invoke('tinadec:layout-load'),

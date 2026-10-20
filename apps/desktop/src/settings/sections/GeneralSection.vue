@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Radar, RefreshCw, Save, ShieldCheck } from '@lucide/vue'
-import { UiBadge, UiButton, UiInput, UiLabel, UiSelectField } from '@/components/ui'
+import { UiBadge, UiButton, UiInput, UiLabel, UiSelectField, UiSwitch } from '@/components/ui'
 import { api as baseApi } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
 const api = scopedApi(baseApi, () => 'user')
@@ -14,8 +14,9 @@ import { SUPPORTED_LOCALES, setInterfaceLocale, type SupportedLocale } from '@/i
  * General section extracted from SettingsPage (D7.2).
  *
  * Owns: Gateway connection config (Electron appConfig IPC), dispatch
- * behavior preferences (localStorage via dispatchPref), and the interface
- * language (localStorage `tinadec-locale`, the key i18n.ts reads on boot).
+ * behavior preferences (localStorage via dispatchPref), the interface
+ * language (localStorage `tinadec-locale`, the key i18n.ts reads on boot), and
+ * the window/tray preference in desktop.toml.
  * Workspace defaults remain Core-owned and are managed from Agent Center.
  */
 const { t, locale } = useI18n()
@@ -41,6 +42,7 @@ interface DesktopAppConfig {
   gateway_url: string
   source: string
   managed: boolean
+  close_to_tray?: boolean
 }
 
 const appConfig = ref<DesktopAppConfig>({ gateway_url: api.gatewayUrl, source: 'default', managed: false })
@@ -49,9 +51,33 @@ const gatewayConfigBusy = ref(false)
 const gatewayConnectionState = ref<'idle' | 'testing' | 'ready' | 'failed'>('idle')
 const enterPrefDraft = ref<DispatchPref>(getDispatchPref())
 
+/** desktop.toml `[window] close_to_tray`: closing the main window hides it to the tray. */
+const closeToTray = ref(false)
+const closeToTrayBusy = ref(false)
+
 async function loadAppConfig(): Promise<void> {
   appConfig.value = await window.tinadec.getAppConfig()
   gatewayUrlDraft.value = appConfig.value.gateway_url
+  closeToTray.value = appConfig.value.close_to_tray === true
+}
+
+/**
+ * The tray checkbox writes the same preference, so a change made there arrives as a broadcast while
+ * this section is mounted. Both sides read the stored value back instead of assuming the write won.
+ */
+async function setCloseToTray(enabled: boolean): Promise<void> {
+  if (closeToTrayBusy.value) return
+  const previous = closeToTray.value
+  closeToTray.value = enabled
+  closeToTrayBusy.value = true
+  try {
+    closeToTray.value = (await window.tinadec.saveCloseToTray(enabled)).close_to_tray === true
+  } catch (error) {
+    closeToTray.value = previous
+    notify.error(error, { title: t('settings.closeToTraySaveFailed') })
+  } finally {
+    closeToTrayBusy.value = false
+  }
 }
 
 /** The same rules the main process enforces, worded in the interface language before the IPC call. */
@@ -185,8 +211,16 @@ function onEnterPrefChange(value: string): void {
   setDispatchPref(value as DispatchPref)
 }
 
+let disposeCloseToTray: (() => void) | undefined
 onMounted(() => {
   void loadAppConfig()
+  disposeCloseToTray = window.tinadec.onCloseToTrayChanged(({ close_to_tray }) => {
+    closeToTray.value = close_to_tray === true
+  })
+})
+onUnmounted(() => {
+  disposeCloseToTray?.()
+  disposeCloseToTray = undefined
 })
 
 // Re-exported for template type inference only.
@@ -332,6 +366,34 @@ void dismissConfirm
         />
         <div class="gateway-config-meta">
           <span>{{ t('settings.enterKeyBehaviorMeta') }}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="general-settings-group" aria-labelledby="window-settings-title">
+      <div class="general-settings-group-heading">
+        <div>
+          <h3 id="window-settings-title">{{ t('settings.windowAndTray') }}</h3>
+          <p>{{ t('settings.windowAndTrayHint') }}</p>
+        </div>
+      </div>
+
+      <div class="gateway-config-field">
+        <div class="setting-switch-row">
+          <div>
+            <UiLabel>{{ t('settings.closeToTray') }}</UiLabel>
+            <div class="gateway-config-meta">
+              <span>{{ t('settings.closeToTrayHint') }}</span>
+            </div>
+          </div>
+          <UiSwitch
+            id="close-to-tray"
+            :model-value="closeToTray"
+            :disabled="closeToTrayBusy"
+            :aria-label="t('settings.closeToTray')"
+            data-testid="close-to-tray-switch"
+            @update:model-value="setCloseToTray"
+          />
         </div>
       </div>
     </section>

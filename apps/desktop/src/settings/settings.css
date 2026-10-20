@@ -282,6 +282,20 @@ overflow: hidden;
   font-size: 11px;
 }
 
+/* A labelled preference and its switch on one line: the hint belongs to the label, not to the
+   control, so it stays left-aligned under the wording rather than under the switch. */
+.setting-switch-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setting-switch-row .gateway-config-meta {
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
 .gateway-config-managed,
 .gateway-config-feedback {
   margin: 12px 0 0;

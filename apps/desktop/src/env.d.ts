@@ -175,9 +175,14 @@ declare global {
       getHostStatus: () => Promise<import('./lib/hostConnection').HostConnectionStatus>;
       retryHostConnection: () => Promise<import('./lib/hostConnection').HostConnectionStatus>;
       onHostStatusChanged: (callback: (status: import('./lib/hostConnection').HostConnectionStatus) => void) => () => void;
-      getAppConfig: () => Promise<{ gateway_url: string; source: 'default' | 'user' | 'environment'; managed: boolean; debug_studio_enabled?: boolean; path?: string; storage?: { root: string; source: 'default' | 'desktop' | 'environment'; bootstrap_config: string; managed: boolean; local_services: boolean } }>;
+      getAppConfig: () => Promise<{ gateway_url: string; source: 'default' | 'user' | 'environment'; managed: boolean; debug_studio_enabled?: boolean; close_to_tray?: boolean; path?: string; storage?: { root: string; source: 'default' | 'desktop' | 'environment'; bootstrap_config: string; managed: boolean; local_services: boolean } }>;
       saveDebugStudioEnabled: (enabled: boolean) => Promise<{ debug_studio_enabled: boolean }>;
       onDebugStudioEnabledChanged: (callback: () => void) => () => void;
+      /** Keep the app running in the tray after the main window is closed. */
+      saveCloseToTray: (enabled: boolean) => Promise<{ close_to_tray: boolean }>;
+      onCloseToTrayChanged: (callback: (value: { close_to_tray: boolean }) => void) => () => void;
+      /** Report the interface language so the main process can draw its tray menu in it. */
+      setInterfaceLocale: (locale: string) => void;
       saveGatewayUrl: (gatewayUrl: string) => Promise<{ gateway_url: string; source: 'user'; managed: false }>;
       resetGatewayUrl: () => Promise<{ gateway_url: string; source: 'default' | 'environment'; managed: boolean }>;
       discoverServices: () => Promise<DiscoveredService[]>;

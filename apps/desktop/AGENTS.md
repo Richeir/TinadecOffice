@@ -1,5 +1,19 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-20 托盘菜单与“关闭后保持运行”
+
+关闭主窗口不再等于退出：`window.close_to_tray` 为真且托盘图标真的创建成功时，`win.on('close')` 只 `preventDefault()` + `hide()`，正在跑的 run 继续执行。判定收敛在 `tray.cjs` 的 `shouldHideOnClose({shuttingDown, closeToTray, trayActive})`，`main.cjs` 的 `keepRunningInTray()` 是唯一调用点——**托盘创建失败（无 StatusNotifier 的桌面）必须回落到“关闭即退出”**，否则窗口会藏起来且没有图标能把它叫回来。`shuttingDown` 由 `before-quit` 与托盘“退出”共同抬升，是放行真正 close 的开关。
+
+`window-all-closed` 只在 `!keepRunningInTray()` 时 `app.quit()`。注意隐藏的主窗口仍是“打开的窗口”，所以正常情况下这个事件根本不触发；它能触发就说明窗口真的被关了。
+
+默认值按打包态区分：`readDesktopConfig()` 传 `{ defaultCloseToTray: app.isPackaged }`，即安装版默认开启、`npm run dev` 默认关闭（dev 留在托盘会占住 Core/Gateway 端口，下一次 `npm run dev` 起不来）。显式写进 `desktop.toml` 的值永远优先。偏好读写沿用 Debug Studio 那套“窄编辑”，只是抽成了 `tableScalarDocumentSource(source, expected, table, key)`。
+
+托盘在偏好为真时才存在（`refresh()` 负责创建/销毁）。菜单：打开主窗口、隐藏窗口（仅可见时）、分离面板子菜单、`close_to_tray` 复选、退出。**取消勾选会销毁图标，所以该路径必须顺带 `showMainWindow()`**，否则用户把自己关在门外。面板开合在 `browser-window-created` 与 detach/close/reattach 的 IPC 分支里刷新菜单，`panelWindow.cjs` 不感知托盘。
+
+打包态启用了 `requestSingleInstanceLock()` + `second-instance → showMainWindow()`：隐藏窗口没有任务栏入口，再次点击快捷方式就是回去的路；没有锁会起第二个 Core/Gateway。dev 故意不加锁，允许它与安装版并存。
+
+托盘文案在主进程，无法复用 `src/locales`：`tray.cjs` 的 `TRAY_STRINGS` 覆盖五种界面语言，渲染层启动和每次切换语言时用 `tinadec:interface-locale`（`main.ts` 的 `applyLocaleText`）告知；首帧之前用 `app.getLocale()` 兜底。新增界面语言要同时补 `TRAY_STRINGS`，`tray.test.cjs` 会校验五套标签键一致。
+
 ## 2026-10-19 Team 子智能体标题与 Electron MCP
 
 Team 的 planner 任务没有 `task.dispatched`，`worker.assigned` 是第一个可渲染任务身份的事件。reducer 必须从该事件接收 `title`；`SubAgentCard` 的任务行不能再只依赖 dispatch 路径，否则真实界面只会显示 `search#1` 和状态，无法告诉用户每个执行者负责什么。Desktop reducer 定向测试覆盖该回放形态。

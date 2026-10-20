@@ -42,6 +42,9 @@ homeController.installErrorRecovery()
 // now and again on every switch.
 function applyLocaleText(): void {
   document.documentElement.lang = i18n.global.locale.value
+  // The tray menu is drawn by the main process, which has no access to these bundles: tell it which
+  // language this window is actually showing so its labels follow a switch made in Settings.
+  window.tinadec?.setInterfaceLocale?.(i18n.global.locale.value)
   setNotificationFallbackText(i18n.global.t('app.unknownError'))
   setErrorActionLabels({
     retry: i18n.global.t('errors.actions.retry'),

@@ -11,6 +11,7 @@ const {
   normalizeGatewayUrl,
   resetGatewayUrl,
   saveGatewayUrl,
+  saveCloseToTray,
   saveDebugStudioEnabled,
 } = require('./appConfig.cjs');
 
@@ -116,6 +117,65 @@ test('invalid saves and a failed atomic replacement leave the existing file inta
   });
 });
 
+test('close-to-tray follows the unset default and rejects non-boolean values', () => {
+  temporaryConfig((file) => {
+    // A packaged build passes `true`; everything else leaves it off unless the file says otherwise.
+    assert.equal(loadAppConfig(file, {}).close_to_tray, false);
+    assert.equal(loadAppConfig(file, {}, { defaultCloseToTray: true }).close_to_tray, true);
+    assert.equal(loadAppConfig(file, { TINADEC_GATEWAY_URL: 'https://managed.example.com' },
+      { defaultCloseToTray: true }).close_to_tray, true);
+
+    fs.writeFileSync(file, '[window]\nclose_to_tray = false\n');
+    assert.equal(loadAppConfig(file, {}, { defaultCloseToTray: true }).close_to_tray, false);
+    fs.writeFileSync(file, 'window.close_to_tray = true\n');
+    assert.equal(loadAppConfig(file, {}).close_to_tray, true);
+
+    for (const value of ['"true"', '1', '[true]', '{ value = true }']) {
+      fs.writeFileSync(file, `[window]\nclose_to_tray = ${value}\n`);
+      assert.throws(() => loadAppConfig(file, {}), /close_to_tray must be a boolean/);
+    }
+    fs.writeFileSync(file, 'window = "on"\n');
+    assert.throws(() => loadAppConfig(file, {}), /window must be a table/);
+  });
+});
+
+test('saving close-to-tray keeps comments, the developer table, and the rest of the file', () => {
+  temporaryConfig((file) => {
+    const original = '# connection\ngateway_url = "https://stored.example.com"\r\n'
+      + 'user_root = "C:/TinadecData"\r\n'
+      + '[appearance]\r\nmode = "dark" # keep theme\r\n'
+      + '[developer] # local preferences\r\ndebug_studio_enabled = true\r\n'
+      + '[window]\r\n# close_to_tray = false is only an example\r\n';
+    fs.writeFileSync(file, original);
+
+    const saved = saveCloseToTray(file, true, {});
+    assert.equal(saved.close_to_tray, true);
+    const after = fs.readFileSync(file, 'utf8');
+    assert.ok(after.includes('# connection') && after.includes('# keep theme'), 'comments survive');
+    assert.ok(after.includes('# close_to_tray = false is only an example'), 'the example comment is untouched');
+    const document = parse(after);
+    assert.equal(document.window.close_to_tray, true);
+    assert.equal(document.developer.debug_studio_enabled, true);
+    assert.equal(document.appearance.mode, 'dark');
+    assert.equal(document.gateway_url, 'https://stored.example.com');
+
+    // Saving again flips the stored value in place rather than appending a second key.
+    saveCloseToTray(file, false, {});
+    const flipped = fs.readFileSync(file, 'utf8');
+    assert.equal(parse(flipped).window.close_to_tray, false);
+    const settings = flipped.split('\n').map((line) => line.trim()).filter((line) => line.startsWith('close_to_tray'));
+    assert.deepEqual(settings, ['close_to_tray = false']);
+
+    // A file with no [window] table gains one, and a non-boolean is refused without touching it.
+    fs.writeFileSync(file, 'gateway_url = "https://stored.example.com"\n');
+    saveCloseToTray(file, true, {});
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).window.close_to_tray, true);
+    const intact = fs.readFileSync(file, 'utf8');
+    assert.throws(() => saveCloseToTray(file, 'yes', {}), /must be a boolean/);
+    assert.equal(fs.readFileSync(file, 'utf8'), intact);
+  });
+});
+
 /** Run the actual main IPC registration without Electron startup or user-root access. */
 function mainConfigFixture(configFile) {
   const handlers = new Map();
@@ -149,6 +209,7 @@ function mainConfigFixture(configFile) {
     './appConfig.cjs': {
       loadAppConfig: (file) => loadAppConfig(file, env),
       saveDebugStudioEnabled: (file, enabled) => saveDebugStudioEnabled(file, enabled, env),
+      saveCloseToTray: (file, enabled) => saveCloseToTray(file, enabled, env),
     },
     './serviceDiscovery.cjs': {},
     './serviceManager.cjs': { canonicalLocalGatewayUrl: (url) => url === DEFAULT_GATEWAY_URL ? url : null },
@@ -166,6 +227,7 @@ function mainConfigFixture(configFile) {
       createDebugStudioWindow: async () => { state.opened++; state.debug = makeWindow(3); return state.debug; },
     },
     './panelWindow.cjs': { getMainWindow: () => main },
+    './tray.cjs': { createTrayController: () => ({ refresh() {}, destroy() {}, isActive: () => false }), trayIconPath: () => 'unused-test-icon' },
     './terminalManager.cjs': { registerTerminalIpc() {} },
     './petWindow.cjs': {},
     './petStore.cjs': {},
@@ -244,6 +306,43 @@ test('actual main IPC restricts saves, broadcasts without payload and closes Deb
     assert.deepEqual(fixture.state.messages.map((message) => message.id), [1, 2, 3]);
     assert.ok(fixture.state.messages.every((message) => message.args.length === 1));
     assert.equal(parse(fs.readFileSync(file, 'utf8')).appearance.mode, 'dark');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('actual main IPC stores close-to-tray only for the trusted main page and rebroadcasts it', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinadec-close-to-tray-'));
+  try {
+    const file = path.join(root, 'desktop.toml');
+    const original = '# preferences\n[developer]\ndebug_studio_enabled = true\n';
+    fs.writeFileSync(file, original);
+    const fixture = mainConfigFixture(file);
+    const save = fixture.handlers.get('tinadec:close-to-tray-save');
+
+    assert.throws(() => save(fixture.panelEvent, true), /trusted main host page/);
+    fixture.state.trusted = false;
+    assert.throws(() => save(fixture.event, true), /trusted main host page/);
+    fixture.state.trusted = true;
+    assert.throws(() => save({ ...fixture.event, mainFrame: false }, true), /trusted main host page/);
+    assert.throws(() => save(fixture.event, 'true'), /must be a boolean/);
+    assert.equal(fs.readFileSync(file, 'utf8'), original);
+    assert.equal(fixture.state.messages.length, 0);
+
+    const enabled = save(fixture.event, true);
+    assert.equal(enabled.close_to_tray, true);
+    // The answer is the same snapshot `tinadec:app-config` serves, so the settings page can reuse it.
+    assert.deepEqual(enabled, fixture.handlers.get('tinadec:app-config')());
+    // Both live windows learn the stored value; the already-destroyed one is skipped.
+    assert.deepEqual(fixture.state.messages.map((message) => message.id), [1, 2]);
+    assert.ok(fixture.state.messages.every((message) => message.args[0] === 'tinadec:close-to-tray-changed'
+      && message.args[1].close_to_tray === true));
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).window.close_to_tray, true);
+
+    fixture.state.messages.length = 0;
+    assert.equal(save(fixture.event, false).close_to_tray, false);
+    // Compared as JSON: the payload objects were built inside the vm realm.
+    assert.deepEqual(fixture.state.messages.map((message) => JSON.stringify(message.args[1])),
+      ['{"close_to_tray":false}', '{"close_to_tray":false}']);
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).developer.debug_studio_enabled, true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

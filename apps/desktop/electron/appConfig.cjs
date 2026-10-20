@@ -27,18 +27,25 @@ function normalizeGatewayUrl(value) {
   return url.toString().replace(/\/$/, '');
 }
 
-function loadAppConfig(configFile, env = process.env) {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.defaultCloseToTray] What an unset `window.close_to_tray` means. The main
+ *   process passes the packaged-build default; every other caller only needs the stored value.
+ */
+function loadAppConfig(configFile, env = process.env, options = {}) {
   const stored = readDocument(configFile);
   const debugStudioEnabled = readDebugStudioEnabled(stored);
+  const preferences = { debug_studio_enabled: debugStudioEnabled,
+    close_to_tray: readCloseToTray(stored) ?? options.defaultCloseToTray ?? false };
   const managedUrl = env.TINADEC_GATEWAY_URL?.trim();
   if (managedUrl) {
     return { gateway_url: normalizeGatewayUrl(managedUrl), source: 'environment', managed: true, path: configFile,
-      debug_studio_enabled: debugStudioEnabled };
+      ...preferences };
   }
 
   return { gateway_url: stored.gateway_url ? normalizeGatewayUrl(stored.gateway_url) : DEFAULT_GATEWAY_URL,
     source: stored.gateway_url ? 'user' : 'default', managed: false, path: configFile,
-    debug_studio_enabled: debugStudioEnabled };
+    ...preferences };
 }
 
 function readDocumentSource(configFile) {
@@ -63,6 +70,20 @@ function readDebugStudioEnabled(document) {
   return value ?? false;
 }
 
+/** The window preferences table; a missing table or key leaves the decision to the caller. */
+function readCloseToTray(document) {
+  const windowTable = document.window;
+  if (windowTable !== undefined && (!windowTable || typeof windowTable !== 'object'
+      || Array.isArray(windowTable) || windowTable instanceof Date)) {
+    throw new Error('desktop.toml window must be a table.');
+  }
+  const value = windowTable?.close_to_tray;
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw new Error('desktop.toml window.close_to_tray must be a boolean.');
+  }
+  return value;
+}
+
 function writeDocumentSource(configFile, source) {
   fs.mkdirSync(path.dirname(configFile), { recursive: true });
   const temporary = `${configFile}.${process.pid}.tmp`;
@@ -74,32 +95,40 @@ function writeDocument(configFile, document) {
   writeDocumentSource(configFile, stringify(document));
 }
 
-/** Keep surrounding TOML/comments when a narrow edit has the exact expected meaning. */
-function debugStudioDocumentSource(source, expected, enabled) {
+/**
+ * Keep surrounding TOML/comments when a narrow edit has the exact expected meaning.
+ *
+ * `expected` is the whole document *after* the edit, so a candidate only wins when re-parsing it
+ * yields exactly that document: matching another table, a comment, or a multiline string can never
+ * take effect. The value is a boolean, so neither half of the replacement needs escaping.
+ */
+function tableScalarDocumentSource(source, expected, table, key) {
+  const value = expected[table][key];
+  const setting = `${key} = ${value}`;
+  const quotedKey = `(?:${key}|"${key}"|'${key}')`;
+  const quotedTable = `(?:${table}|"${table}"|'${table}')`;
   const newline = source.includes('\r\n') ? '\r\n' : '\n';
-  const setting = `debug_studio_enabled = ${enabled}`;
   const matchesExpected = (candidate) => {
     try { return isDeepStrictEqual(parse(candidate), expected); }
     catch { return false; }
   };
 
-  // Parsing the result protects against matching another table, a comment, or a multiline string.
-  const scalar = /((?:debug_studio_enabled|"debug_studio_enabled"|'debug_studio_enabled')[ \t]*=[ \t]*)(true|false)\b/g;
+  const scalar = new RegExp(`(${quotedKey}[ \\t]*=[ \\t]*)(true|false)\\b`, 'g');
   for (const match of source.matchAll(scalar)) {
     const position = match.index + match[1].length;
-    const candidate = source.slice(0, position) + enabled + source.slice(position + match[2].length);
+    const candidate = source.slice(0, position) + value + source.slice(position + match[2].length);
     if (matchesExpected(candidate)) return candidate;
   }
 
-  const table = /^[ \t]*\[[ \t]*(?:developer|"developer"|'developer')[ \t]*\][ \t]*(?:#[^\r\n]*)?(?:\r?\n|$)/gm;
-  for (const match of source.matchAll(table)) {
+  const tableHeader = new RegExp(`^[ \\t]*\\[[ \\t]*${quotedTable}[ \\t]*\\][ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$)`, 'gm');
+  for (const match of source.matchAll(tableHeader)) {
     const position = match.index + match[0].length;
     const separator = match[0].endsWith('\n') ? '' : newline;
     const candidate = source.slice(0, position) + separator + setting + newline + source.slice(position);
     if (matchesExpected(candidate)) return candidate;
   }
 
-  const inline = /(^[ \t]*(?:developer|"developer"|'developer')[ \t]*=[ \t]*\{)([^\r\n]*)(\})/gm;
+  const inline = new RegExp(`(^[ \\t]*${quotedTable}[ \\t]*=[ \\t]*\\{)([^\\r\\n]*)(\\})`, 'gm');
   for (const match of source.matchAll(inline)) {
     const position = match.index + match[1].length;
     const candidate = source.slice(0, position) + ` ${setting}${match[2].trim() ? ', ' : ' '}` + source.slice(position);
@@ -107,9 +136,9 @@ function debugStudioDocumentSource(source, expected, enabled) {
   }
 
   const separator = !source || source.endsWith('\n') ? '' : newline;
-  const appended = `${source}${separator}[developer]${newline}${setting}${newline}`;
+  const appended = `${source}${separator}[${table}]${newline}${setting}${newline}`;
   if (matchesExpected(appended)) return appended;
-  const dotted = `developer.${setting}${newline}${source}`;
+  const dotted = `${table}.${setting}${newline}${source}`;
   if (matchesExpected(dotted)) return dotted;
 
   // Unusual valid TOML forms still preserve all fields through the existing serializer.
@@ -123,7 +152,19 @@ function saveDebugStudioEnabled(configFile, enabled, env = process.env) {
   readDebugStudioEnabled(document);
   document.developer ??= Object.create(null);
   document.developer.debug_studio_enabled = enabled;
-  writeDocumentSource(configFile, debugStudioDocumentSource(source, document, enabled));
+  writeDocumentSource(configFile, tableScalarDocumentSource(source, document, 'developer', 'debug_studio_enabled'));
+  return loadAppConfig(configFile, env);
+}
+
+/** Closing the main window hides it to the tray instead of quitting the app. */
+function saveCloseToTray(configFile, enabled, env = process.env) {
+  if (typeof enabled !== 'boolean') throw new Error('Close to tray must be a boolean.');
+  const source = readDocumentSource(configFile);
+  const document = parse(source);
+  readCloseToTray(document);
+  document.window ??= Object.create(null);
+  document.window.close_to_tray = enabled;
+  writeDocumentSource(configFile, tableScalarDocumentSource(source, document, 'window', 'close_to_tray'));
   return loadAppConfig(configFile, env);
 }
 
@@ -164,6 +205,7 @@ module.exports = {
   normalizeGatewayUrl,
   resetGatewayUrl,
   saveGatewayUrl,
+  saveCloseToTray,
   saveDebugStudioEnabled,
   saveUserStorageRoot,
 };

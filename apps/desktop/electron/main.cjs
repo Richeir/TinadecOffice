@@ -17,7 +17,7 @@ if (typeof electron !== 'object' || !electron.app) {
   process.exit(1);
 }
 
-const { app, BrowserWindow, clipboard, dialog, ipcMain, protocol, screen, shell } = electron;
+const { app, BrowserWindow, Menu, Tray, clipboard, dialog, ipcMain, nativeImage, protocol, screen, shell } = electron;
 const path = require('node:path');
 const { configureElectronStorage } = require('./storagePaths.cjs');
 const { createLogSink } = require('./logSink.cjs');
@@ -38,7 +38,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
     try { hostLogSink.write('electron', `${new Date().toISOString()} ${level} ${require('node:util').format(...values)}\n`); } catch { /* stderr remains available if disk writes fail */ }
   };
 }
-const { loadAppConfig, resetGatewayUrl, saveGatewayUrl, saveUserStorageRoot, saveDebugStudioEnabled } = require('./appConfig.cjs');
+const { loadAppConfig, resetGatewayUrl, saveGatewayUrl, saveUserStorageRoot, saveDebugStudioEnabled, saveCloseToTray } = require('./appConfig.cjs');
 const { discoverServices } = require('./serviceDiscovery.cjs');
 const { ensureLocalServices, stopLocalServices, canonicalLocalGatewayUrl } = require('./serviceManager.cjs');
 const { createHostControl } = require('./hostControl.cjs');
@@ -47,6 +47,11 @@ const { createHostConnection } = require('./hostConnection.cjs');
 let trustedHostReady = false;
 let hostConnection;
 let shuttingDown = false;
+// The main window is tracked here rather than re-derived: panelWindow.getMainWindow() falls back to
+// "first window that is not a panel", which can hand back a pet window once the main one is gone.
+let mainWindow = null;
+let trayController = null;
+let closeToTrayPreference = false;
 const hostControl = createHostControl({ startupToken: process.env.TINADEC_HOST_CONTROL_TOKEN, isTrustedHost: () => trustedHostReady });
 // The development orchestrator can share a launch credential; keep it out of later renderer/terminal children.
 delete process.env.TINADEC_HOST_CONTROL_TOKEN;
@@ -107,6 +112,7 @@ const {
   sourceToMediaPath,
 } = require('./localMedia.cjs');
 const { attachExternalLinkGuards } = require('./externalLinks.cjs');
+const { createTrayController, shouldHideOnClose, trayIconPath } = require('./tray.cjs');
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 
@@ -125,8 +131,69 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.tinadec.office');
 }
 
+// A window hidden in the tray has no taskbar entry, so launching the app again is how the user comes
+// back to it. Without this lock that launch starts a second Core and Gateway on the same ports and
+// shows a window that can never connect. Packaged builds only: a dev run must stay able to coexist
+// with an installed build. `second-instance` re-opens the window that is already running.
+const hasSingleInstanceLock = !app.isPackaged || app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.exit(0);
+} else {
+  // Before the first window exists, startup is already about to show one.
+  app.on('second-instance', () => { if (mainWindow) void showMainWindow(); });
+}
+
 function appConfigFile() {
   return hostPaths.desktopConfig;
+}
+
+/** A packaged build keeps running in the tray by default; a dev run must not, or it holds the ports
+ *  the next `npm run dev` needs. An explicit `[window] close_to_tray` always wins. */
+function readDesktopConfig() {
+  return loadAppConfig(appConfigFile(), process.env, { defaultCloseToTray: app.isPackaged });
+}
+
+/** Keeping the app alive is only safe while a tray icon exists to bring it back. */
+function keepRunningInTray() {
+  return shouldHideOnClose({
+    shuttingDown,
+    closeToTray: closeToTrayPreference,
+    trayActive: Boolean(trayController?.isActive()),
+  });
+}
+
+function refreshTray() {
+  trayController?.refresh();
+}
+
+/**
+ * Persist the preference and let every open window follow it — the tray checkbox and the switch in
+ * Settings are two views of the same value, so whichever was used the other must update.
+ */
+function applyCloseToTray(enabled) {
+  // No coercion here: saveCloseToTray is the validator, so a caller that passes something other than
+  // a boolean is told so instead of silently getting its value rounded to true.
+  const config = saveCloseToTray(appConfigFile(), enabled);
+  closeToTrayPreference = config.close_to_tray;
+  refreshTray();
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('tinadec:close-to-tray-changed', { close_to_tray: closeToTrayPreference });
+    }
+  }
+  return config;
+}
+
+/** The one way back to the app: reuse the hidden window, recreate it if it was really closed. */
+async function showMainWindow() {
+  const existing = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    if (!existing.isVisible()) existing.show();
+    existing.focus();
+    return existing;
+  }
+  return createWindow();
 }
 
 async function createWindow() {
@@ -160,6 +227,23 @@ async function createWindow() {
 
   attachExternalLinkGuards(win.webContents);
 
+  mainWindow = win;
+
+  // Closing the window hides it while the preference is on: a run that is mid-flight keeps going,
+  // and the tray icon is the way back. Quitting (tray → 退出, app.quit(), Cmd+Q) goes through
+  // before-quit, which raises `shuttingDown`, so this same handler then lets the real close through.
+  // When the tray could not be created `keepRunningInTray()` is false and closing quits as before —
+  // a hidden window with no icon would be unreachable.
+  win.on('close', (event) => {
+    if (!keepRunningInTray()) return;
+    event.preventDefault();
+    win.hide();
+    trayController?.notifyHidden();
+  });
+  win.on('show', refreshTray);
+  win.on('hide', refreshTray);
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+
   win.once('ready-to-show', () => {
     win.show();
     if (isDev) {
@@ -186,7 +270,7 @@ ipcMain.handle('tinadec:select-workspace-folders', async (event, title) => {
 });
 
 function appConfigSnapshot() {
-  return { ...loadAppConfig(appConfigFile()), storage: {
+  return { ...readDesktopConfig(), storage: {
   root: hostPaths.root, source: hostPaths.source, bootstrap_config: hostPaths.desktopConfig,
   managed: hostPaths.source === 'environment', local_services: Boolean(canonicalLocalGatewayUrl(process.env.TINADEC_RESOLVED_GATEWAY_URL)),
   } };
@@ -274,6 +358,26 @@ ipcMain.handle('tinadec:open-debug-studio', async (event) => {
   if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) return false;
   if (!loadAppConfig(appConfigFile()).debug_studio_enabled) return false;
   return Boolean(await createDebugStudioWindow());
+});
+
+// --- Window and tray preferences ---
+// Same authority as the other desktop preferences: only the trusted main page may change this, and
+// the tray rebroadcasts the stored value so the Settings switch and the tray checkbox never disagree.
+ipcMain.handle('tinadec:close-to-tray-save', (event, enabled) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) {
+    throw new Error('Window preferences require the trusted main host page.');
+  }
+  applyCloseToTray(enabled);
+  // Answer with the same shape `tinadec:app-config` returns, so one snapshot type covers both.
+  return appConfigSnapshot();
+});
+
+// The interface language lives in the renderer (localStorage + lazily loaded bundles), so the tray
+// menu learns it from the window that owns it. Untrusted senders are ignored rather than rejected:
+// this carries no authority, it only picks which of five label sets the tray draws.
+ipcMain.on('tinadec:interface-locale', (event, locale) => {
+  if (typeof locale !== 'string' || !isTrustedHostDocumentSender(event)) return;
+  trayController?.setLocale(locale);
 });
 
 // --- TinadecUIE layout persistence IPC ---
@@ -419,6 +523,7 @@ ipcMain.handle('tinadec:read-image-data-url', async (_event, source) => {
 // Detach a tab into a new floating window
 ipcMain.handle('tinadec:detach-panel', async (event, tabId, type, title, state) => {
   const result = await createPanelWindow(tabId, type, title, state || {});
+  refreshTray();
   return result;
 });
 
@@ -429,6 +534,7 @@ ipcMain.handle('tinadec:reattach-panel', async (event, tabId, type, title, state
   const senderWin = BrowserWindow.fromWebContents(event.sender);
   if (senderWin) {
     reattachPanelWindow(senderWin.id, tabId, type, title, state);
+    refreshTray();
   }
   return true;
 });
@@ -436,6 +542,7 @@ ipcMain.handle('tinadec:reattach-panel', async (event, tabId, type, title, state
 // Close a specific panel window by windowId
 ipcMain.on('tinadec:close-panel-window', (event, windowId) => {
   closePanelWindow(windowId);
+  refreshTray();
 });
 
 // Focus a specific panel window by windowId
@@ -523,12 +630,20 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(async () => {
+  // A second launch has already exited above; this one owns the local services.
+  if (!hasSingleInstanceLock) return;
   let gatewayUrl;
-  try { gatewayUrl = loadAppConfig(appConfigFile()).gateway_url; }
+  let storedCloseToTray;
+  try {
+    const config = readDesktopConfig();
+    gatewayUrl = config.gateway_url;
+    storedCloseToTray = config.close_to_tray;
+  }
   catch (error) {
     dialog.showErrorBox('TinadecOffice', `无法读取 TOML 配置 / Cannot read the TOML configuration\n${appConfigFile()}\n${error.message}`);
     app.quit(); return;
   }
+  closeToTrayPreference = storedCloseToTray;
   process.env.TINADEC_RESOLVED_GATEWAY_URL = gatewayUrl;
   const managed = Boolean(canonicalLocalGatewayUrl(gatewayUrl));
   let localServicesInitialized = false;
@@ -586,6 +701,46 @@ app.whenReady().then(async () => {
     }
   });
   await createWindow();
+
+  // The tray exists only while the preference asks for it: a user who turned it off gets no stray
+  // icon, and `refresh()` destroying it is what makes the window close normally again.
+  trayController = createTrayController({
+    Tray,
+    Menu,
+    nativeImage,
+    iconPath: trayIconPath({ electronDir: __dirname, isDev }),
+    getState: () => ({
+      enabled: closeToTrayPreference,
+      visible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+      closeToTray: closeToTrayPreference,
+      panels: getAllPanelWindows(),
+    }),
+    actions: {
+      show: () => { void showMainWindow(); },
+      hide: () => mainWindow?.hide(),
+      showPanel: (windowId) => focusPanelWindow(windowId),
+      setCloseToTray: (enabled) => {
+        try {
+          applyCloseToTray(enabled);
+          // Turning the icon off while the window is hidden would leave nothing to click.
+          if (!enabled) void showMainWindow();
+        } catch (error) {
+          // Keep the checkbox showing what is actually stored.
+          console.error('[tinadec] close-to-tray change failed:', error.message);
+          refreshTray();
+        }
+      },
+      quit: () => { shuttingDown = true; app.quit(); },
+    },
+    // The renderer reports the saved interface language over `tinadec:interface-locale` after boot;
+    // until then the OS locale is the best available guess.
+    locale: app.getLocale(),
+    onError: (error) => console.warn('[tinadec] tray unavailable:', error?.message ?? error),
+  });
+  refreshTray();
+  // Closing a detached panel changes the panel submenu, and nothing else announces window churn.
+  app.on('browser-window-created', refreshTray);
+
   // Report the settled result after the page is on screen; startup failures stay recoverable
   // through the banner's retry, exactly as they were when this await came before the window.
   hostStartup.then((initialHost) => {
@@ -595,16 +750,22 @@ app.whenReady().then(async () => {
   await Promise.all(downloadedPets.filter((pet) => pet.enabled).map((pet) => createPetWindow(pet.slug).catch(() => undefined)));
 
   app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await createWindow();
-    }
+    // On macOS this also covers a window that exists but was hidden into the tray.
+    await showMainWindow();
   });
 });
 
 app.on('window-all-closed', () => {
   closeAllPanelWindows();
   closeAllPetWindows();
-  if (process.platform !== 'darwin') {
+  // A hidden main window is still an open window, so this only runs once the window really closed:
+  // the preference is off, the tray could not be created, or the user is quitting.
+  if (process.platform !== 'darwin' && !keepRunningInTray()) {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  trayController?.destroy();
+  trayController = null;
 });

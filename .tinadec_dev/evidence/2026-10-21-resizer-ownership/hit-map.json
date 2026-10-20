@@ -1,0 +1,109 @@
+{
+ "clipped": {
+  "resizer": {
+   "left": 297,
+   "right": 305,
+   "width": 8
+  },
+  "hits": [
+   -5,
+   -4,
+   -3,
+   -2
+  ]
+ },
+ "unclipped": {
+  "resizer": {
+   "left": 677,
+   "right": 685,
+   "width": 8
+  },
+  "hits": [
+   -5,
+   -4,
+   -3,
+   -2,
+   -1,
+   0,
+   1,
+   2
+  ]
+ },
+ "clippedRows": [
+  {
+   "dx": -7,
+   "hit": false,
+   "el": "clipped"
+  },
+  {
+   "dx": -6,
+   "hit": false,
+   "el": "clipped"
+  },
+  {
+   "dx": -5,
+   "hit": true,
+   "el": "uie-column-resizer uie-column-resizer-right"
+  },
+  {
+   "dx": -4,
+   "hit": true,
+   "el": "uie-column-resizer uie-column-resizer-right"
+  },
+  {
+   "dx": -3,
+   "hit": true,
+   "el": "uie-column-resizer uie-column-resizer-right"
+  },
+  {
+   "dx": -2,
+   "hit": true,
+   "el": "uie-column-resizer uie-column-resizer-right"
+  },
+  {
+   "dx": -1,
+   "hit": false,
+   "el": "clipped"
+  },
+  {
+   "dx": 0,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 1,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 2,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 3,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 4,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 5,
+   "hit": false,
+   "el": "BODY"
+  },
+  {
+   "dx": 6,
+   "hit": false,
+   "el": "next-a"
+  },
+  {
+   "dx": 7,
+   "hit": false,
+   "el": "next-a"
+  }
+ ]
+}

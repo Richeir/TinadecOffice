@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>resizer clip probe</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #16181d; color: #cfd4dd; font: 12px/1.5 system-ui; }
+  /* Verbatim from apps/TinadecUI/src/components/UieColumn.vue */
+  .uie-column { position: absolute; min-height: 0; overflow: hidden; }
+  .uie-column-resizer-right { right: -4px; }
+  .uie-column-resizer {
+    position: absolute; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 30; background: transparent;
+  }
+  .uie-column-resizer::after {
+    content: ''; position: absolute; top: 50%; width: 3px; height: 28px; border-radius: 999px;
+    background: #6ea8fe; opacity: 0; transform: translateY(-50%); transition: opacity .15s ease;
+  }
+  .uie-column-resizer-right::after { left: 1px; }
+  .uie-column-resizer:hover::after, .uie-column-resizer:active::after { opacity: .45; }
+
+  .panel { position: absolute; top: 40px; height: 260px; background: #22252c; border: 1px solid #3a3f4b; border-radius: 12px; }
+  #clipped { left: 40px; width: 260px; }        /* the shipping rule: overflow hidden */
+  #unclipped { left: 420px; width: 260px; overflow: visible; } /* same box, clip removed */
+  .next { position: absolute; top: 40px; height: 260px; background: #1c1f25; border: 1px solid #303540; border-radius: 12px; }
+  #next-a { left: 308px; width: 100px; }  /* 8px gap after #clipped (40+260+8) */
+  #next-b { left: 688px; width: 100px; }  /* 8px gap after #unclipped (420+260+8) */
+</style>
+</head>
+<body>
+  <div id="clipped" class="uie-column panel"><div class="uie-column-resizer uie-column-resizer-right"></div></div>
+  <div id="next-a" class="next"></div>
+  <div id="unclipped" class="uie-column panel" style="overflow: visible"><div class="uie-column-resizer uie-column-resizer-right"></div></div>
+  <div id="next-b" class="next"></div>
+</body>
+</html>

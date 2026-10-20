@@ -68,6 +68,14 @@ const visualCollapsed = computed(
   () => !props.column.collapsed && props.geometry.width <= COLLAPSED_COLUMN_WIDTH,
 )
 
+// The drag handle is drawn outside the clipped box, so it states its own visibility
+// instead of inheriting the rail branch's `v-else`: side columns only, and never on
+// the collapsed rail (an icon rail has no width worth dragging).
+const showResizer = computed(() =>
+  (props.column.slotId === 'left' || props.column.slotId === 'right')
+  && !(isFeatureColumn.value && (props.column.collapsed || visualCollapsed.value)),
+)
+
 // Open feature tabs (everything in the column except the pinned homePicker),
 // used to render the vertical icon rail while the panel is collapsed.
 const openFeatureInstances = computed<PersistedCardInstance[]>(() =>
@@ -271,95 +279,104 @@ function onDividerUp() {
       height: `${geometry.height}px`,
     }"
   >
-    <!-- Collapsed feature panel: 44px rail (expand + Home + open feature-tab
-         icons), same material as the stack. Shows both for a real user
-         collapse and for a visual (solver-forced) collapse — without this the
-         dock column would render an empty pane list and blank out. -->
-    <div
-      v-if="isFeatureColumn && (column.collapsed || visualCollapsed)"
-      class="uie-column-rail"
-      :style="railStyle"
-      v-bind="railAttrs"
-    >
-      <button
-        class="uie-column-toggle-btn"
-        :title="t('app.expand')"
-        @click="expand()"
-      >
-        <PanelRightOpen :size="16" />
-      </button>
-      <button
-        class="uie-column-collapsed-icon"
-        :class="{ active: isHomeActive }"
-        :title="t('context.homeTitle')"
-        @click="expand(featureHomeId)"
-      >
-        <HomeIcon :size="18" />
-      </button>
-      <!-- Open feature-tab icons: icon-only, vertical; clicking activates the
-           tab and expands the panel. -->
-      <button
-        v-for="inst in openFeatureInstances"
-        :key="inst.id"
-        class="uie-column-collapsed-icon"
-        :class="{ active: isFeatureActive(inst.id) }"
-        :title="cardTitle(inst)"
-        @click="expand(inst.id)"
-      >
-        <component :is="railIconFor(inst.descriptorId)" :size="16" />
-      </button>
-    </div>
-
-    <template v-else>
-      <!-- Resizer handle: Left column resizes via right edge, Right column resizes via left edge -->
+    <!-- Everything the column box must clip: the collapsed rail, the stacks and
+         their shadows, and content that shrinks during the collapse animation.
+         The drag handle is deliberately NOT in here (see below). -->
+    <div class="uie-column-clip">
+      <!-- Collapsed feature panel: 44px rail (expand + Home + open feature-tab
+           icons), same material as the stack. Shows both for a real user
+           collapse and for a visual (solver-forced) collapse — without this the
+           dock column would render an empty pane list and blank out. -->
       <div
-        v-if="column.slotId === 'left' || column.slotId === 'right'"
-        class="uie-column-resizer"
-        :class="column.slotId === 'right' ? 'uie-column-resizer-left' : 'uie-column-resizer-right'"
-        @pointerdown="onResizeDown"
-      />
+        v-if="isFeatureColumn && (column.collapsed || visualCollapsed)"
+        class="uie-column-rail"
+        :style="railStyle"
+        v-bind="railAttrs"
+      >
+        <button
+          class="uie-column-toggle-btn"
+          :title="t('app.expand')"
+          @click="expand()"
+        >
+          <PanelRightOpen :size="16" />
+        </button>
+        <button
+          class="uie-column-collapsed-icon"
+          :class="{ active: isHomeActive }"
+          :title="t('context.homeTitle')"
+          @click="expand(featureHomeId)"
+        >
+          <HomeIcon :size="18" />
+        </button>
+        <!-- Open feature-tab icons: icon-only, vertical; clicking activates the
+             tab and expands the panel. -->
+        <button
+          v-for="inst in openFeatureInstances"
+          :key="inst.id"
+          class="uie-column-collapsed-icon"
+          :class="{ active: isFeatureActive(inst.id) }"
+          :title="cardTitle(inst)"
+          @click="expand(inst.id)"
+        >
+          <component :is="railIconFor(inst.descriptorId)" :size="16" />
+        </button>
+      </div>
 
-      <!-- Dock (multi-pane split) column: panes + dividers + drop overlay -->
-      <UieDock
-        v-if="column.dock && dock"
-        :column="column"
-        :geometry="geometry"
-        :dock="dock"
-        :resizing="isResizing"
-      />
-
-      <!-- Plain stacks: primary + optional secondary -->
       <template v-else>
-        <!-- Primary stack -->
-        <UieStack
-          :stack="column.primary"
-          :geometry="primaryGeometry"
-          :instances="primaryInstances"
-          :degraded="primaryDegraded"
-          :surface-mode="column.surfaceMode"
-          :slot-id="column.slotId"
+        <!-- Dock (multi-pane split) column: panes + dividers + drop overlay -->
+        <UieDock
+          v-if="column.dock && dock"
+          :column="column"
+          :geometry="geometry"
+          :dock="dock"
           :resizing="isResizing"
         />
 
-        <!-- Secondary stack + divider -->
-        <template v-if="column.secondary && split">
-          <div
-            class="uie-split-divider"
-            :style="{ top: `${split.dividerY - geometry.y - 2}px` }"
-            @pointerdown="onDividerDown"
-          />
+        <!-- Plain stacks: primary + optional secondary -->
+        <template v-else>
+          <!-- Primary stack -->
           <UieStack
-            :stack="column.secondary"
-            :geometry="{ x: 0, y: split.lower.y - geometry.y, width: geometry.width, height: split.lower.height, degraded: !!split.lower.degraded }"
-            :instances="secondaryInstances"
-            :degraded="!!split.lower.degraded"
+            :stack="column.primary"
+            :geometry="primaryGeometry"
+            :instances="primaryInstances"
+            :degraded="primaryDegraded"
             :surface-mode="column.surfaceMode"
             :slot-id="column.slotId"
             :resizing="isResizing"
           />
+
+          <!-- Secondary stack + divider -->
+          <template v-if="column.secondary && split">
+            <div
+              class="uie-split-divider"
+              :style="{ top: `${split.dividerY - geometry.y - 2}px` }"
+              @pointerdown="onDividerDown"
+            />
+            <UieStack
+              :stack="column.secondary"
+              :geometry="{ x: 0, y: split.lower.y - geometry.y, width: geometry.width, height: split.lower.height, degraded: !!split.lower.degraded }"
+              :instances="secondaryInstances"
+              :degraded="!!split.lower.degraded"
+              :surface-mode="column.surfaceMode"
+              :slot-id="column.slotId"
+              :resizing="isResizing"
+            />
+          </template>
         </template>
       </template>
-    </template>
+    </div>
+
+    <!-- The drag handle straddles the column edge: half over this panel, half in the
+         gutter. It sits outside .uie-column-clip because a clipped half would still
+         look right but be dead to the pointer — the handle is 12px wide, 6 inside and
+         6 in the gutter. Left column resizes via its right edge, the right column via
+         its left edge; neither exists on the collapsed rail. -->
+    <div
+      v-if="showResizer"
+      class="uie-column-resizer"
+      :class="column.slotId === 'right' ? 'uie-column-resizer-left' : 'uie-column-resizer-right'"
+      @pointerdown="onResizeDown"
+    />
   </div>
 </template>
 
@@ -367,8 +384,20 @@ function onDividerUp() {
 .uie-column {
   position: absolute;
   min-height: 0;
-  overflow: hidden;
+  /* The drag handle straddles this column's edge, so the column itself must not
+     clip: a clipped half still looks fine but is dead to the pointer. Clipping
+     moved to .uie-column-clip, which holds every child. */
+  overflow: visible;
   transition: left 0.25s cubic-bezier(0.2, 0, 0, 1), width 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The clipped box: the collapsed rail, the stacks and their shadows, and the
+   content that shrinks while the column animates. Same rect as the column, so
+   every absolutely positioned child keeps its coordinates. */
+.uie-column-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .uie-column.is-resizing {
@@ -401,52 +430,46 @@ function onDividerUp() {
   overflow-y: auto;
 }
 
+/* 12px of grab area centred on the seam: 6px over the panel, 6px in the gutter.
+   The column no longer clips, so both halves are live for the pointer. */
 .uie-column-resizer-right {
-  right: -4px;
+  right: -6px;
 }
 
 .uie-column-resizer-left {
-  left: -4px;
+  left: -6px;
 }
 
 .uie-column-resizer {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 12px;
   cursor: col-resize;
   z-index: 30;
   background: transparent;
 }
 
-/* Small translucent pill handle, vertically centered on the column edge.
-   Hidden by default; fades in on hover/active. The 8px full-height hit
-   area stays (pointerdown + cursor) — only the visual is a tiny pill. */
+/* Small translucent pill handle, straddling the seam (half over the panel edge,
+   half in the gutter) and vertically centred. Hidden by default; fades in on
+   hover and stays visible for the whole drag. */
 .uie-column-resizer::after {
   content: '';
   position: absolute;
   top: 50%;
+  left: 50%;
   width: 3px;
   height: 28px;
   border-radius: 999px;
   background: var(--accent-primary);
   opacity: 0;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   transition: opacity 0.15s ease;
 }
 
-.uie-column-resizer-right::after {
-  /* Right edge extends 4px outside the column and is clipped by
-     overflow:hidden, so the pill anchors fully inside the column. */
-  left: 1px;
-}
-
-.uie-column-resizer-left::after {
-  right: 1px;
-}
-
 .uie-column-resizer:hover::after,
-.uie-column-resizer:active::after {
+.uie-column-resizer:active::after,
+.uie-column.is-resizing .uie-column-resizer::after {
   opacity: 0.45;
 }
 

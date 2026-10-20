@@ -1,0 +1,156 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>resizer probe (real rules)</title>
+<style>
+  /* Only the tokens the copied rules consume; the real app supplies them via styles.css. */
+  :root { --accent-primary: #6ea8fe; }
+  html, body { height: 100%; margin: 0; background: #16181d; color: #cfd4dd; }
+  body { position: relative; }
+  .uie-stack { position: absolute; }
+
+.uie-column {
+  position: absolute;
+  min-height: 0;
+  /* The drag handle straddles this column's edge, so the column itself must not
+     clip: a clipped half still looks fine but is dead to the pointer. Clipping
+     moved to .uie-column-clip, which holds every child. */
+  overflow: visible;
+  transition: left 0.25s cubic-bezier(0.2, 0, 0, 1), width 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The clipped box: the collapsed rail, the stacks and their shadows, and the
+   content that shrinks while the column animates. Same rect as the column, so
+   every absolutely positioned child keeps its coordinates. */
+.uie-column-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.uie-column.is-resizing {
+  transition: none !important;
+}
+
+/* Window-stacking overlay: a very wide right feature panel floats over the chat
+   (raised above the other columns) so the composer keeps its comfortable width.
+   The float stack inside already carries the panel border/shadow; a leftward
+   drop shadow makes the overlap read as stacked windows. */
+.uie-column--overlay {
+  z-index: 20;
+}
+
+.uie-column--overlay .uie-stack {
+  box-shadow: -8px 0 16px -12px rgba(0, 0, 0, 0.4), var(--shadow-card-subtle);
+}
+
+/* Collapsed feature panel rail: carries the same island material as the stack
+   it replaces (rounded, bordered, shadowed). Buttons use the shared
+   shared UIE rail rules. Vertical scrolling lets the icon rail
+   grow past the rail height when many tabs are open. */
+.uie-column-rail {
+  width: 100%;
+  height: 100%;
+  background: var(--surface-section);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card-subtle);
+  overflow-y: auto;
+}
+
+/* 12px of grab area centred on the seam: 6px over the panel, 6px in the gutter.
+   The column no longer clips, so both halves are live for the pointer. */
+.uie-column-resizer-right {
+  right: -6px;
+}
+
+.uie-column-resizer-left {
+  left: -6px;
+}
+
+.uie-column-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: col-resize;
+  z-index: 30;
+  background: transparent;
+}
+
+/* Small translucent pill handle, straddling the seam (half over the panel edge,
+   half in the gutter) and vertically centred. Hidden by default; fades in on
+   hover and stays visible for the whole drag. */
+.uie-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.15s ease;
+}
+
+.uie-column-resizer:hover::after,
+.uie-column-resizer:active::after,
+.uie-column.is-resizing .uie-column-resizer::after {
+  opacity: 0.45;
+}
+
+.uie-split-divider {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: row-resize;
+  z-index: 25;
+  background: transparent;
+  border-top: 1px solid var(--border-muted);
+}
+
+/* Horizontal pill handle, centered on the split line. Same style as the
+   column-edge pill so both dividers read consistently. */
+.uie-split-divider::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.15s ease;
+}
+
+.uie-split-divider:hover::after,
+.uie-split-divider:active::after {
+  opacity: 0.45;
+}
+
+</style></head>
+<body>
+
+  <div id="a" class="uie-column" style="left:40px;top:40px;width:260px;height:260px;">
+    <div class="uie-column-clip">
+      <div class="uie-stack" style="left:0;top:0;width:260px;height:260px;background:#22252c;border:1px solid #3a3f4b;border-radius:12px"></div>
+    </div>
+    <div class="uie-column-resizer uie-column-resizer-right"></div>
+  </div>
+  <div class="uie-column" style="left:308px;top:40px;width:100px;height:260px">
+    <div class="uie-column-clip"><div class="uie-stack" style="left:0;top:0;width:100px;height:260px;background:#1c1f25;border:1px solid #303540;border-radius:12px"></div></div>
+  </div>
+
+  <div id="b" class="uie-column" style="left:420px;top:40px;width:260px;height:260px;">
+    <div class="uie-column-clip">
+      <div class="uie-stack" style="left:0;top:0;width:260px;height:260px;background:#22252c;border:1px solid #3a3f4b;border-radius:12px"></div>
+    </div>
+    <div class="uie-column-resizer uie-column-resizer-right"></div>
+  </div>
+  <div class="uie-column" style="left:688px;top:40px;width:100px;height:260px">
+    <div class="uie-column-clip"><div class="uie-stack" style="left:0;top:0;width:100px;height:260px;background:#1c1f25;border:1px solid #303540;border-radius:12px"></div></div>
+  </div>
+</body></html>

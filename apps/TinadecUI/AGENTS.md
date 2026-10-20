@@ -1,9 +1,17 @@
 # TinadecUI — UI Engineering Suite
 
-**Last Updated:** 2026-10-16
-**Last Updated By:** 卡片与标签文字只走 Desktop 翻译键（`uie.*`、`useCardTitle()`），见 Module boundary rules。
+**Last Updated:** 2026-10-21
+**Last Updated By:** 左右列的拖动把手跨缝（不得再被 `.uie-column` 裁切），见文首条目。
 **Last Verified Commit:** 9406f0c + `fix/i18n-ui-debug`
 **Branch:** fix/i18n-ui-debug
+
+### 2026-10-21 列拖动把手骑在缝上（`.uie-column-clip`）
+
+`.uie-column-resizer` 一直是 8px 宽、`right/left: -4px`，**几何上本来就跨缝**；但 `.uie-column` 的 `overflow: hidden` 把探出去的一半裁掉，而被裁掉的区域**不参与命中测试**——实测声明 8px 只有 4px 能抓，pill 也被 `::after { left: 1px }` 锚在面板内侧。这不是设计选择：同文件里的垂直分割 `.uie-split-divider::after` 本来就居中在分割线上。
+
+现在 `.uie-column` **不再裁切**，裁切下沉到新包装层 `.uie-column-clip`（`position:absolute; inset:0; overflow:hidden`），把手作为列的**兄弟**留在外面：宽 12px（6 内 + 6 外），pill 用 `left:50%; translate(-50%,-50%)` 骑在缝上，`is-resizing` 期间保持可见。子元素（`UieStack`/`UieDock`/rail）都是 absolute，包装层与原列同 rect，**坐标零变化**。
+
+两条必须一起记住的约束：**`apps/desktop/src/animations/page-transitions.css` 的 `overflow: visible !important` 已经改指向 `.uie-column-clip`**（页面进出场时 stack 要飞出面板）；**折叠轨（`showResizer`）与中列没有把手**，这个判断现在写在脚本里而不是靠 `v-else` 继承。回归：`apps/desktop/src/components/UieColumnHandle.test.ts` 钉住「把手是 clip 的兄弟、左右边对应正确、中列与折叠轨没有把手」。证据与逐像素命中区：`.tinadec_dev/evidence/2026-10-21-resizer-ownership/`。
 
 ### 2026-10-11 首页 Git 工作状态卡
 

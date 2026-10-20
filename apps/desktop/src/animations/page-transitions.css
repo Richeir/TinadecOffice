@@ -37,15 +37,16 @@ themselves. Columns fly upward with scale-down and stagger on exit, and rise
 from below with stagger on entry.
 ---------------------------------------------------------------------------- */
 
-/* During the animation let the column overflow so a rising/flying stack is not
-   clipped by .uie-column's overflow:hidden. !important is required because
-   .uie-column's overflow:hidden lives in a Vue <style scoped> block whose
-   [data-v-xxx] attribute selector wins over plain global specificity (0,2,0).
+/* During the animation let the clipped box overflow so a rising/flying stack is not
+   cut by .uie-column-clip's overflow:hidden (the column itself never clips — its
+   drag handle has to straddle the edge). !important is required because that
+   overflow:hidden lives in a Vue <style scoped> block whose [data-v-xxx] attribute
+   selector wins over plain global specificity (0,2,0).
    overflow does NOT create a backdrop root, so blur is unaffected;
    .uie-canvas stays overflow:hidden and clips at the window edge. */
-.home-page-container.home-preparing .uie-column,
-.home-page-container.home-entering .uie-column,
-.home-page-container.home-exiting .uie-column {
+.home-page-container.home-preparing .uie-column-clip,
+.home-page-container.home-entering .uie-column-clip,
+.home-page-container.home-exiting .uie-column-clip {
   overflow: visible !important;
 }
 

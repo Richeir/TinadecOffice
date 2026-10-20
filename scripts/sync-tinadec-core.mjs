@@ -5,7 +5,9 @@
    license transform (GPL-3.0-or-later -> MIT in .csproj files, idempotent —
    the nested tree is already MIT) and rewrites SYNC.md provenance.
    --commit stages exactly the synced top-level paths (never `git add -A`,
-   the mirror carries untracked Api/data runtime artifacts) and commits. */
+   the mirror carries untracked Api/data runtime artifacts) and commits.
+   Office-originated syncs commit on the mirror's `Office` branch; `main` only
+   receives deliberate merges. Set TINADEC_CORE_SYNC_BRANCH to override. */
 
 import { execFileSync, execSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -20,6 +22,7 @@ const target = process.env.TINADEC_CORE_TARGET
   : path.resolve(officeRoot, '../TinadecCore')
 const dryRun = process.argv.includes('--dry-run')
 const doCommit = process.argv.includes('--commit')
+const syncBranch = process.env.TINADEC_CORE_SYNC_BRANCH ?? 'Office'
 
 const SKIP_DIRS = new Set(['bin', 'obj', 'data', 'artifacts', '.vs', 'TestResults', '.idea'])
 const SKIP_FILES = new Set(['SYNC.md'])
@@ -104,6 +107,19 @@ function run() {
   if (!existsSync(target)) {
     console.error(`[sync-tinadec-core] target mirror not found: ${target}`)
     process.exit(1)
+  }
+  if (doCommit) {
+    let branch = 'unknown'
+    try {
+      branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: target, encoding: 'utf8' }).trim()
+    } catch {
+      console.error(`[sync-tinadec-core] could not read the mirror branch at ${target}`)
+      process.exit(1)
+    }
+    if (branch !== syncBranch) {
+      console.error(`[sync-tinadec-core] mirror is on '${branch}', not '${syncBranch}'. Office-originated syncs must land on '${syncBranch}'; main only receives deliberate merges. Switch first: git -C "${target}" switch ${syncBranch}. Set TINADEC_CORE_SYNC_BRANCH to override.`)
+      process.exit(1)
+    }
   }
   if (!dryRun) mkdirSync(target, { recursive: true })
 

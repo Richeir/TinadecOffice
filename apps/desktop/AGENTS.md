@@ -1,5 +1,21 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-20 侧边栏页脚：小头像 + 按实测宽度决定是否显示昵称
+
+页脚身份区（`AppSidebar.vue` 的 `.sidebar-footer`）头像 26px → **20px**，左侧改成可伸展胶囊 `[头像][昵称]`，右侧三个壳层动作加 `flex: 0 0 auto`（不能被身份区挤）。折叠轨仍然是头像在上、图标在下的单列。
+
+昵称是否出现**不是断点，是算术**：`lib/profileNameFit.ts` 的 `profileNameFits` 比较
+`padding + 按钮内边距×2 + 头像 + 名字与头像间距 + 昵称自然宽度 + PROFILE_NAME_MIN_GAP(10) + 页脚 gap + 动作组宽度 ≤ 页脚 clientWidth`。
+放不下就整条不渲染，**不做省略号**——身份区里截断的名字读起来像故障。因此实现里有一个 `visibility:hidden`、`width:max-content` 的**探针 span**：被 clamp 的可见标签报不出自然宽度，只有探针能。探针挂在按钮内、绝对定位（页脚 `position:relative`），所以 `.sidebar-footer` 的直接子元素仍只有「身份按钮 + 动作组」两个，既有顺序断言不用改。
+
+测量时机是三条：`ResizeObserver` 盯页脚（UIE 左栏拖拽、折叠动画都会改它的宽）、`document.fonts.ready`（换字体改文字宽度但不会触发 resize）、以及 `nickname`/`collapsed` 变化后 `nextTick`。**`collapsed` 必须短路**：折叠轨只有一列图标，按宽度量会在动画期间闪进闪出。
+
+**过渡只做透明度，宽度必须瞬时**。让 `max-width` 参与动画会在整个过渡里切出半截字（实测中间帧 `opacity 0.74` 时第二个字被垂直切掉），那正是 fit 判定要避免的产物。所以：淡入时 `max-width` 用 `0s` 直接到位、`opacity` 180ms 由 0 → 1；淡出时 `opacity` 180ms 由 1 → 0，`max-width`/`margin-left` 用 `0s linear 0.18s` 延迟到淡出结束才收，于是看到的是完整名字在变暗而不是被压扁。名字元素因此**常驻**（`v-if="nickname"`，不随 fit 结果挂载/卸载），否则没有可淡出的对象；淡入终点由 JS 写入的 `--profile-name-max`（实测自然宽度）封顶。`prefers-reduced-motion` 下取消过渡。行宽**单帧大跳**（例如一次切换折叠）时盒宽会被行宽直接压到 0、看不到淡出——拖拽不会这样跳，别为此把宽度加进动画。
+
+可访问性：可见昵称 `aria-hidden`，按钮的 `aria-label` 恒为 `<昵称> · 个人`；`title` 只在昵称被收起时带上昵称（显示时重复它纯属噪音）。几何常量 20/3/6 在 `AppSidebar.vue` 与 `styles.css` 两处，**改头像尺寸必须同改**。
+
+验证：`profileNameFit.test.ts` 6 例（含差 1px 余量、未布局不上报）；`AppSidebar.test.ts` 用 stub 的 `clientWidth`/`getBoundingClientRect` 喂真实数字（happy-dom 无布局，且 `getComputedStyle` 只对**已挂到 document** 的元素解析内联 padding/gap，所以用户例必须 `attachTo: document.body`）。真实 Chromium（CDP，非 Electron）逐档量：两字昵称在 200px 栏显示且离动作组还有 33px，180px 收起；过渡用页内 rAF 采样（`timeline.json`）证明淡出期间盒宽恒为 24px 而非被压扁。证据与截图在 `.tinadec_dev/evidence/2026-10-20-sidebar-footer-identity/`。
+
 ## 2026-10-20 托盘菜单与“关闭后保持运行”
 
 关闭主窗口不再等于退出：`window.close_to_tray` 为真且托盘图标真的创建成功时，`win.on('close')` 只 `preventDefault()` + `hide()`，正在跑的 run 继续执行。判定收敛在 `tray.cjs` 的 `shouldHideOnClose({shuttingDown, closeToTray, trayActive})`，`main.cjs` 的 `keepRunningInTray()` 是唯一调用点——**托盘创建失败（无 StatusNotifier 的桌面）必须回落到“关闭即退出”**，否则窗口会藏起来且没有图标能把它叫回来。`shuttingDown` 由 `before-quit` 与托盘“退出”共同抬升，是放行真正 close 的开关。

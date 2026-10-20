@@ -2118,6 +2118,8 @@ button.agent-topology-node:hover,
 }
 
 .sidebar-footer {
+  /* The identity's measuring probe is absolutely positioned against this row. */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2126,17 +2128,20 @@ button.agent-topology-node:hover,
 }
 
 /* The identity is the footer's only non-action: it sits left, the shell
-   actions keep the right edge. The hover plate is round to match the portrait. */
+   actions keep the right edge. The hover plate is a pill so it can stretch
+   around the nickname instead of staying a circle. */
 .sidebar-profile {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 3px;
   border: 0;
   border-radius: 9999px;
   background: transparent;
+  overflow: hidden;
   cursor: pointer;
   transition: background 0.1s;
 }
@@ -2147,6 +2152,64 @@ button.agent-topology-node:hover,
 .sidebar-profile:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+
+/* The nickname is revealed only when lib/profileNameFit says the row holds it
+   whole, and the reveal is capped at the name's own measured width. The layout
+   half of the change is deliberately instant and the opacity carries the motion:
+   animating the width would clip a glyph in half for the whole transition, which
+   is exactly the artifact the fit test exists to avoid. On the way out the width
+   is held until the fade has finished (0s + 0.18s delay), so the name never
+   shrinks while it is still readable. It owns its leading space (no flex gap), so
+   collapsing it also closes the gap. */
+.sidebar-profile-name,
+.sidebar-profile-name-probe {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.sidebar-profile-name {
+  display: inline-block;
+  max-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    max-width 0s linear 0.18s,
+    margin-left 0s linear 0.18s;
+}
+
+.sidebar-profile-name--shown {
+  max-width: var(--profile-name-max, 0px);
+  margin-left: 6px;
+  opacity: 1;
+  transition:
+    opacity 0.18s ease-out,
+    max-width 0s,
+    margin-left 0s;
+}
+
+.sidebar-profile-name-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.sidebar-profile:hover .sidebar-profile-name {
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-profile-name {
+    transition: none;
+  }
 }
 
 .sidebar-footer-action {
@@ -2299,6 +2362,8 @@ button.agent-topology-node:hover,
 .sidebar-footer-actions {
   display: flex;
   align-items: center;
+  /* Never squeezed by the identity: the fit test assumes the actions keep their width. */
+  flex: 0 0 auto;
   gap: 2px;
   transition: flex-direction 0.28s cubic-bezier(0.2, 0, 0, 1), gap 0.28s cubic-bezier(0.2, 0, 0, 1);
 }

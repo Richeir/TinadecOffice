@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppSidebar from './AppSidebar.vue'
 import type { ProjectDto, SessionDto } from '../api'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { freeWorkspaceKey, workspaceListStorageKey } from '@/composables/useWorkspaceList'
+import { setNickname } from '@/lib/userProfile'
 
 vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
   useI18n: () => ({ t: (key: string) => key }),
@@ -385,6 +386,9 @@ describe('AppSidebar lifecycle management', () => {
 })
 
 describe('AppSidebar footer identity', () => {
+  beforeEach(() => { setNickname('') })
+  afterEach(() => { setNickname('') })
+
   it('keeps the profile portrait left of the shell actions and opens the personal module', async () => {
     const wrapper = factory()
     const children = Array.from(wrapper.get('.sidebar-footer').element.children)
@@ -400,11 +404,94 @@ describe('AppSidebar footer identity', () => {
     wrapper.unmount()
   })
 
+  // happy-dom runs no layout engine: clientWidth is 0 and every rect is empty, so the
+  // measurement is fed the numbers a real footer row reports before each assertion.
+  function stubRow(footer: HTMLElement, actions: HTMLElement, probe: HTMLElement, footerWidth: number, nameWidth: number) {
+    const rect = (width: number) => () => ({ width, height: 14, top: 0, left: 0, right: width, bottom: 14, x: 0, y: 0, toJSON: () => ({}) })
+    footer.style.paddingLeft = '12px'
+    footer.style.paddingRight = '12px'
+    footer.style.columnGap = '8px'
+    Object.defineProperty(footer, 'clientWidth', { configurable: true, value: footerWidth })
+    Object.defineProperty(actions, 'getBoundingClientRect', { configurable: true, value: rect(88) })
+    Object.defineProperty(probe, 'getBoundingClientRect', { configurable: true, value: rect(nameWidth) })
+  }
+
+  async function settle(wrapper: ReturnType<typeof factory>) {
+    await nextTick()
+    await nextTick()
+    await wrapper.vm.$nextTick()
+  }
+
+  it('fades the nickname in beside the portrait once the footer can hold it whole', async () => {
+    // Attached: happy-dom only resolves computed style (inline padding/gap here) for
+    // elements that are actually in the document.
+    const wrapper = factory({}, document.body)
+    const footer = wrapper.get<HTMLElement>('.sidebar-footer').element
+    const actions = wrapper.get<HTMLElement>('.sidebar-footer-actions').element
+    const probe = wrapper.get<HTMLElement>('.sidebar-profile-name-probe').element
+    const named = () => wrapper.get('.sidebar-profile').classes().includes('sidebar-profile--named')
+    const name = () => wrapper.get('.sidebar-profile-name')
+
+    // No layout yet: the name must not be claimed on a 0px row. It is rendered (so the
+    // fade has something to animate) but collapsed to zero width by the style below.
+    setNickname('风眠')
+    await settle(wrapper)
+    expect(named()).toBe(false)
+    expect(name().classes()).not.toContain('sidebar-profile-name--shown')
+    expect(name().text()).toBe('风眠')
+    expect(probe.textContent).toBe('风眠')
+
+    // 24 padding + 6+20+6 portrait row + 48 name + 10 clear space + 8 gap + 88 actions = 210.
+    stubRow(footer, actions, probe, 260, 48)
+    setNickname('风眠鸣')
+    await settle(wrapper)
+    expect(named()).toBe(true)
+    expect(name().classes()).toContain('sidebar-profile-name--shown')
+    // The reveal is capped at the measured width, so the fade cannot stop mid-word.
+    expect(name().attributes('style')).toContain('--profile-name-max: 48px')
+    expect(name().text()).toBe('风眠鸣')
+    // The name is up, so the tooltip goes back to naming the destination only.
+    expect(wrapper.get('.sidebar-profile').attributes('title')).toBe('sidebar.personal')
+
+    // The same name stops fitting once the column is dragged narrower than 210px.
+    stubRow(footer, actions, probe, 200, 48)
+    setNickname('风眠鸣语')
+    await settle(wrapper)
+    expect(named()).toBe(false)
+    expect(name().classes()).not.toContain('sidebar-profile-name--shown')
+    // Hidden, but still discoverable: the tooltip names the person the portrait belongs to.
+    expect(wrapper.get('.sidebar-profile').attributes('title')).toBe('风眠鸣语 · sidebar.personal')
+    // The visible label is aria-hidden, so the control's own name carries the identity.
+    expect(wrapper.get('.sidebar-profile').attributes('aria-label')).toBe('风眠鸣语 · sidebar.personal')
+    wrapper.unmount()
+  })
+
+  it('renders no name at all when the profile has no nickname', async () => {
+    const wrapper = factory()
+    await settle(wrapper)
+    expect(wrapper.find('.sidebar-profile-name').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('keeps the portrait visible above the stacked actions on the collapsed rail', () => {
     const wrapper = factory({ collapsed: true })
     const footer = wrapper.get('.sidebar-footer')
     expect(footer.find('.sidebar-profile').exists()).toBe(true)
     expect(footer.find('.sidebar-footer-actions-collapsed').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('never shows the nickname on the collapsed rail, however wide the row reports itself', async () => {
+    setNickname('风眠')
+    const wrapper = factory({ collapsed: true }, document.body)
+    const footer = wrapper.get<HTMLElement>('.sidebar-footer').element
+    const actions = wrapper.get<HTMLElement>('.sidebar-footer-actions').element
+    const probe = wrapper.get<HTMLElement>('.sidebar-profile-name-probe').element
+    // A rail that would otherwise pass the width test: only the collapsed guard hides the name.
+    stubRow(footer, actions, probe, 900, 24)
+    setNickname('风眠鸣')
+    await settle(wrapper)
+    expect(wrapper.get('.sidebar-profile').classes()).not.toContain('sidebar-profile--named')
     wrapper.unmount()
   })
 })

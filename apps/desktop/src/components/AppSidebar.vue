@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useWorkspaceList, freeWorkspaceKey, recentWorkspaceSessions } from '@/composables/useWorkspaceList'
 import { workspaceIcons, type WorkspaceLoadState } from '@/lib/workspaces'
 import { selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
@@ -36,6 +36,8 @@ import { UiButton, UiSelectField } from '@/components/ui'
 import { useNotifications } from '@/composables/useNotifications'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { errorCodeMessage } from '@/lib/apiError'
+import { userProfile } from '@/lib/userProfile'
+import { profileNameFits } from '@/lib/profileNameFit'
 
 const { t, te } = useI18n()
 const { confirm } = useNotifications()
@@ -324,6 +326,82 @@ function openDebugStudio() {
   if (!debugStudioEnabled.value) return
   ;(window as unknown as { tinadec?: { openDebugStudio?: () => Promise<boolean> } }).tinadec?.openDebugStudio?.()
 }
+
+// ---- Footer identity ----
+// The portrait carries the nickname only while the footer row has room for it in
+// full plus clear space before the shell actions. The geometry below mirrors
+// `.sidebar-profile` in styles.css (button padding, the name's leading margin,
+// the portrait size); the decision itself lives in a pure function so it can be
+// exercised without a laid-out document.
+const PROFILE_AVATAR_SIZE = 20
+const PROFILE_BUTTON_PADDING = 3
+const PROFILE_NAME_GAP = 6
+
+const nickname = computed(() => userProfile.nickname.trim())
+const footerEl = ref<HTMLElement | null>(null)
+const footerActionsEl = ref<HTMLElement | null>(null)
+const profileNameProbe = ref<HTMLElement | null>(null)
+const profileNameShown = ref(false)
+/** Natural name width, handed to CSS as the end of the reveal (see `.sidebar-profile-name`). */
+const profileNameMax = ref(0)
+
+function px(value: string | null | undefined): number {
+  const parsed = Number.parseFloat(value ?? '')
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function measureProfileName() {
+  const footer = footerEl.value
+  const probe = profileNameProbe.value
+  // The collapsed rail is one icon wide and animates; measuring mid-transition
+  // would flash the name in and out, so it simply stays off there.
+  if (!footer || !probe || props.collapsed) { profileNameShown.value = false; return }
+  const styles = getComputedStyle(footer)
+  const nameWidth = probe.getBoundingClientRect().width
+  profileNameMax.value = Math.ceil(nameWidth)
+  profileNameShown.value = profileNameFits({
+    footerWidth: footer.clientWidth,
+    padding: px(styles.paddingLeft) + px(styles.paddingRight),
+    gap: px(styles.columnGap) || px(styles.gap),
+    actionsWidth: footerActionsEl.value?.getBoundingClientRect().width ?? 0,
+    avatarSize: PROFILE_AVATAR_SIZE,
+    buttonPadding: PROFILE_BUTTON_PADDING,
+    nameGap: PROFILE_NAME_GAP,
+    nameWidth,
+  })
+}
+
+// Hover keeps a hidden name discoverable: the tooltip names the person the
+// portrait belongs to, and drops the redundant repetition once the name is up.
+// The accessible name always carries the nickname — the visible text is
+// aria-hidden, so a screen reader must not lose the identity when the row narrows.
+const profileTitle = computed(() => (nickname.value && !profileNameShown.value
+  ? `${nickname.value} · ${t('sidebar.personal')}`
+  : t('sidebar.personal')))
+const profileLabel = computed(() => (nickname.value
+  ? `${nickname.value} · ${t('sidebar.personal')}`
+  : t('sidebar.personal')))
+
+let footerResizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  measureProfileName()
+  if (typeof ResizeObserver === 'undefined') return
+  footerResizeObserver = new ResizeObserver(measureProfileName)
+  // Resizing the nav column (or collapsing it) resizes the footer, which is the
+  // signal the fit test waits for.
+  if (footerEl.value) footerResizeObserver.observe(footerEl.value)
+  // The probe measures in the face that is actually loaded: a late webfont swap
+  // changes the name's width, and no resize follows it.
+  document.fonts?.ready.then(measureProfileName, () => {})
+})
+onBeforeUnmount(() => {
+  footerResizeObserver?.disconnect()
+  footerResizeObserver = null
+})
+watch([nickname, () => props.collapsed], async () => {
+  await nextTick()
+  measureProfileName()
+})
 </script>
 
 <template>
@@ -428,18 +506,33 @@ function openDebugStudio() {
       </div>
     </div>
 
-    <div class="sidebar-footer">
-      <!-- Identity sits at the far left; the three shell actions stay right-aligned. -->
+    <div ref="footerEl" class="sidebar-footer">
+      <!-- Identity sits at the far left; the three shell actions stay right-aligned.
+           The nickname rides beside the portrait only while the row can hold it whole. -->
       <button
         type="button"
         class="sidebar-profile"
-        :title="t('sidebar.personal')"
-        :aria-label="t('sidebar.personal')"
+        :class="{ 'sidebar-profile--named': profileNameShown }"
+        :title="profileTitle"
+        :aria-label="profileLabel"
         @click="emit('go-personal')"
       >
-        <PersonalAvatar :size="26" />
+        <PersonalAvatar :size="PROFILE_AVATAR_SIZE" />
+        <!-- Rendered whenever there is a name to carry, and animated by width + opacity:
+             collapsing it to zero width is what makes the fade reversible mid-resize.
+             The cap is the measured natural width, so the reveal never shows a clipped word. -->
+        <span
+          v-if="nickname"
+          class="sidebar-profile-name"
+          :class="{ 'sidebar-profile-name--shown': profileNameShown }"
+          :style="{ '--profile-name-max': `${profileNameMax}px` }"
+          aria-hidden="true"
+        >{{ nickname }}</span>
+        <!-- Measured, never painted: the fit test needs the name's natural width, which
+             a clamped or hidden label cannot report. -->
+        <span ref="profileNameProbe" class="sidebar-profile-name-probe" aria-hidden="true">{{ nickname }}</span>
       </button>
-      <div class="sidebar-footer-actions" :class="{ 'sidebar-footer-actions-collapsed': collapsed }">
+      <div ref="footerActionsEl" class="sidebar-footer-actions" :class="{ 'sidebar-footer-actions-collapsed': collapsed }">
         <UiButton
           variant="ghost"
           size="icon"

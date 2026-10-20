@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>粒子瀑布 · 试验台</title>
+<style>
+  :root { --bg-a: #0e1424; --bg-b: #05070d; --bg-c: #04060a; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(130% 95% at 50% 0%, var(--bg-a) 0%, var(--bg-b) 46%, var(--bg-c) 100%);
+    font-family: system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  #c { display: block; width: 100vw; height: 100vh; }
+  body.clean .hud, body.clean .fps { display: none; }
+  .hud {
+    position: fixed; left: 14px; bottom: 14px; z-index: 10;
+    display: grid; gap: 5px; padding: 11px 13px;
+    border-radius: 10px; background: rgba(8, 12, 20, 0.74);
+    border: 1px solid rgba(150, 180, 255, 0.13);
+    backdrop-filter: blur(10px);
+    color: #b9c8e2; font-size: 11px; line-height: 1.15;
+    user-select: none;
+  }
+  .hud label { display: grid; grid-template-columns: 60px 112px 36px; align-items: center; gap: 7px; }
+  .hud input[type=range] { width: 112px; accent-color: #7fd8e8; }
+  .hud output { font-variant-numeric: tabular-nums; color: #7fd8e8; text-align: right; }
+  .hud .row { display: flex; gap: 6px; margin-top: 3px; }
+  .hud button { flex: 1; padding: 5px 6px; border-radius: 6px; border: 1px solid rgba(150,180,255,0.18); background: rgba(120,160,255,0.09); color: #b9c8e2; font: inherit; cursor: pointer; }
+  .hud button:hover { background: rgba(120,160,255,0.2); }
+  .fps { position: fixed; right: 14px; top: 14px; z-index: 10; color: #5d6d8a; font-size: 11px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="fps" id="fps"></div>
+
+<div class="hud">
+  <label>流速<input id="speed" type="range" min="0.15" max="2.6" step="0.01" value="1"><output id="speedOut">1.00</output></label>
+  <label>水沿线<input id="lip" type="range" min="0.15" max="0.72" step="0.005" value="0.40"><output id="lipOut">0.40</output></label>
+  <label>浪高<input id="wave" type="range" min="0" max="2.6" step="0.01" value="1"><output id="waveOut">1.00</output></label>
+  <label>颗粒<input id="size" type="range" min="0.4" max="2.6" step="0.01" value="1"><output id="sizeOut">1.00</output></label>
+  <label>水量<input id="count" type="range" min="0.25" max="2.2" step="0.01" value="1"><output id="countOut">1.00</output></label>
+  <div class="row">
+    <button id="themeBtn">明/暗</button>
+    <button id="pauseBtn">暂停</button>
+  </div>
+</div>
+
+<script>
+'use strict'
+
+const BASE_COUNT = 400000
+const CONFIG = { speed: 1, lip: 0.40, wave: 1, size: 1, count: 1, dark: true }
+
+const canvas = document.getElementById('c')
+const gl = canvas.getContext('webgl2', {
+  alpha: true, antialias: false, premultipliedAlpha: false,
+  powerPreference: 'high-performance', preserveDrawingBuffer: true,
+})
+if (!gl) {
+  document.body.innerHTML = '<p style="color:#f88;font:13px system-ui;padding:24px">当前环境没有 WebGL2。</p>'
+  throw new Error('no webgl2')
+}
+
+const VERT = `#version 300 es
+precision highp float;
+
+in vec3 aSeed;
+
+uniform float uTime;
+uniform float uAspect;
+uniform vec2  uMouse;
+uniform float uMouseStrength;
+uniform float uPixelRatio;
+uniform float uSpeed;
+uniform float uLip;
+uniform float uLipY;
+uniform float uFarY;
+uniform float uWave;
+uniform float uSize;
+uniform vec3  uColorCore;
+uniform vec3  uColorTip;
+uniform float uDensity;
+
+out float vAlpha;
+out vec3  vColor;
+
+// 水面波纹必须是“横向的、由远及近的带子”。
+// x/y 频率相当的叠加只会得到干涉斑块，看起来像脏噪点而不是水。
+float surfaceWave(float x, float y, float t) {
+  float w = 0.0;
+  // 主波：沿 y 传播的横向波纹，被 x 缓慢扭曲成弯曲的波带
+  w += sin(y * 34.0 + sin(x * 2.10 + t * 0.24) * 3.0 - t * 1.05) * 0.026;
+  w += sin(y * 58.0 + sin(x * 3.30 - t * 0.30) * 3.8 - t * 1.70) * 0.013;
+  w += sin(y * 92.0 + sin(x * 5.10 + t * 0.19) * 4.6 - t * 2.40) * 0.0062;
+  // 纵向涌浪：让波纹整体起伏，不至于平板
+  w += sin(x * 4.40 + y * 3.10 + t * 0.52) * 0.021;
+  w += sin(x * 9.30 - y * 5.40 + t * 0.88) * 0.010;
+  return w;
+}
+
+void main() {
+  float seedA = aSeed.x;
+  float seedB = aSeed.y;
+  float seedC = aSeed.z;
+
+  // 每个粒子在自己周期里循环，buffer 永不重建
+  float u = fract(uTime * (0.024 + seedC * 0.011) * uSpeed + seedB);
+
+  float rx = seedA * 2.0 - 1.0;
+  float xEdge = sign(rx) * pow(abs(rx), 1.06);
+  float edgeFade = 1.0 - pow(abs(rx), 9.0);
+
+  // 水沿是一条起伏的边，不是一条直线
+  float lipY = uLipY + sin(xEdge * 3.20 + 0.6) * 0.072 + sin(xEdge * 7.90 + 2.1) * 0.030;
+
+  float x, y, alpha, size;
+
+  if (u < uLip) {
+    // ===== 湖面：一层粒子毯，靠疏密与波峰表达翻滚 =====
+    float p = u / uLip;
+
+    y = mix(uFarY, lipY, pow(p, 0.92));
+    x = xEdge * mix(0.94, 1.05, p);
+
+    // 近沿处波浪必须收敛到 0，否则湖面被抬高、和瀑布的起点之间留一道空档
+    float seam = 1.0 - smoothstep(0.80, 1.0, p);
+
+    // 水面是平的：几何位移必须很小，波纹几乎全部体现在明暗上。
+    // 位移一大，俯视下就变成沙丘/雪原，怎么调都不像水。
+    float wv = surfaceWave(x, y, uTime) * uWave;
+    y += wv * (0.55 + p * 1.15) * seam * 0.22;
+    y += sin(y * 15.0 + uTime * 0.9) * 0.0065 * uWave * p * seam;
+    x += sin(y * 5.1 + uTime * 0.55 + seedB * 6.283) * 0.009 * p * seam;
+
+    // 鼠标涟漪
+    vec2 mp = vec2(x * uAspect, y) - uMouse;
+    float md = length(mp);
+    y += sin(md * 19.0 - uTime * 4.6) * exp(-md * 3.8) * 0.060 * uMouseStrength * seam;
+
+    // 波峰聚拢、波谷沉下去 —— 翻滚的体积感几乎全部来自这一项的对比度
+    float h = clamp(wv / (0.078 * max(uWave, 0.001)), -1.0, 1.0);
+    float crest = smoothstep(-0.80, 0.80, h);
+
+    // 水面的光带：让颗粒沿波纹方向拉出明暗，而不是一片均匀的星点。
+    // 下限必须压在 0 以上，否则半个周期会把湖面整块抹掉。
+    float streak = 0.80 + 0.26 * sin(x * 5.4 + wv * 26.0 + 1.1);
+
+    // 水面高光：波峰上撒一层极亮的粼光，没有它整片会读成沙丘而不是水
+    float glint = pow(max(0.0, sin(x * 17.0 + wv * 46.0 + uTime * 0.7)), 9.0);
+
+    alpha = (0.52 + 0.40 * p) * (0.45 + 0.95 * pow(crest, 1.15)) * streak * edgeFade * uDensity;
+    alpha += glint * crest * 0.55 * edgeFade * uDensity;
+    size  = mix(1.30, 2.60, p) * (0.84 + 0.34 * crest) * uSize;
+    vColor = mix(uColorTip, uColorCore, clamp(p * 0.76 + crest * 0.42, 0.0, 1.0));
+
+    // 远端淡出挂在生命周期 p 上：挂在 y 上会被波浪推出窗口，整列一起消失成黑柱
+    alpha *= smoothstep(0.0, 0.07, p);
+  } else {
+    // ===== 瀑布：离沿之后自由落体，纵向拉成条纹 =====
+    float q = (u - uLip) / (1.0 - uLip);
+    // 纯 q² 会把 20% 的粒子全挤在沿口 0.06 的高度里，烧成一条白带
+    float fall = mix(q, q * q, 0.58);
+
+    y = lipY - fall * 1.38;
+
+    // 瀑布从满宽的湖面朝中线汇聚成一道主流，再靠下坠重新摊开一点。
+    // 铺满全宽只会得到一层水幕，永远没有“飞流直下”的重量。
+    float converge = smoothstep(0.0, 0.45, q);
+    float width = mix(1.02, 0.58, converge) * mix(1.0, 1.24, pow(q, 0.8));
+    x = xEdge * width;
+
+    // 用位置扭曲代替 alpha 条纹：把粒子真的挤成股，缝里是真没有粒子。
+    // A*k 接近 1 时密度差最剧烈，超过就折叠了。
+    x += sin(x * 11.0 + q * 2.4 + seedA * 3.0) * 0.082 * converge;
+    x += sin(q * 3.4 + seedA * 37.0) * 0.010 * q;
+    y += surfaceWave(x * 0.30, y, uTime) * 0.34 * (1.0 - q) * uWave;
+
+    // 鼠标拨开水流
+    vec2 mp = vec2(x * uAspect, y) - uMouse;
+    float md = length(mp);
+    x += sign(mp.x + 0.0001) * exp(-md * 6.5) * uMouseStrength * 0.085;
+
+    // 水流股：等距 fract 一眼就是窗帘。用被调制的平滑正弦，粗细明暗都不齐，
+    // 相邻股在下落中还会互相穿插，才有了水流的层次。
+    float colPhase = seedA * 78.0 + sin(seedA * 13.0) * 3.00 + q * 2.60;
+    float ribbon = 0.82 + 0.18 * sin(colPhase);
+    float colRank = 0.5 + 0.5 * sin(seedA * 6.10 + 0.70);
+    ribbon *= 0.86 + 0.22 * colRank;
+
+    // 一直流到屏幕底部才散：早淡出会让下半截整个发空
+    alpha = (1.0 - smoothstep(0.90, 1.0, q)) * (1.0 + 0.40 * exp(-q * 26.0)) * ribbon * edgeFade * uDensity * 1.12;
+    size  = mix(2.60, 1.35, pow(q, 0.55)) * (0.86 + 0.26 * colRank) * uSize * 1.10;
+    vColor = mix(uColorCore, uColorTip, q * 0.55);
+  }
+
+  vAlpha = clamp(alpha, 0.0, 1.0);
+
+  gl_Position = vec4(x, y, 0.0, 1.0);
+  gl_PointSize = max(1.0, size * uPixelRatio * 1.15);
+}
+`
+
+const FRAG = `#version 300 es
+precision highp float;
+
+in float vAlpha;
+in vec3  vColor;
+out vec4 fragColor;
+
+void main() {
+  // 硬边圆点：只在最外圈 0.05 半径抗锯齿，颗粒边界保持锐利
+  vec2 c = gl_PointCoord - 0.5;
+  float d2 = dot(c, c);
+  float edge = 1.0 - smoothstep(0.185, 0.250, d2);
+  if (edge <= 0.002) discard;
+  fragColor = vec4(vColor, vAlpha * edge);
+}
+`
+
+function compile(type, source) {
+  const shader = gl.createShader(type)
+  gl.shaderSource(shader, source)
+  gl.compileShader(shader)
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader) || 'shader compile failed')
+  }
+  return shader
+}
+
+const program = gl.createProgram()
+gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT))
+gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG))
+gl.linkProgram(program)
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(program) || 'program link failed')
+}
+gl.useProgram(program)
+
+const U = {}
+for (const name of ['uTime', 'uAspect', 'uMouse', 'uMouseStrength', 'uPixelRatio', 'uSpeed',
+  'uLip', 'uLipY', 'uFarY', 'uWave', 'uSize', 'uColorCore', 'uColorTip', 'uDensity']) {
+  U[name] = gl.getUniformLocation(program, name)
+}
+
+const seedBuffer = gl.createBuffer()
+const seedAttr = gl.getAttribLocation(program, 'aSeed')
+gl.enableVertexAttribArray(seedAttr)
+gl.vertexAttribPointer(seedAttr, 3, gl.FLOAT, false, 0, 0)
+
+let particleCount = 0
+
+function buildParticles(scale) {
+  const count = Math.round(BASE_COUNT * scale)
+  const seeds = new Float32Array(count * 3)
+  // 横向用分层采样：纯随机会产生泊松空洞，同样的粒子数看起来稀得多。
+  // 分层后横向覆盖均匀，纵向仍随机，颗粒才连成“面”。
+  const lanes = Math.max(2, Math.round(Math.sqrt(count * 1.6)))
+  for (let i = 0; i < count; i++) {
+    const lane = i % lanes
+    seeds[i * 3] = (lane + Math.random()) / lanes
+    seeds[i * 3 + 1] = Math.random()
+    seeds[i * 3 + 2] = Math.random()
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, seedBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, seeds, gl.STATIC_DRAW)
+  gl.vertexAttribPointer(seedAttr, 3, gl.FLOAT, false, 0, 0)
+  particleCount = count
+}
+
+const state = {
+  time: 0, dpr: 1, aspect: 1,
+  mouse: [99, 99], mouseTarget: [99, 99],
+  mouseStrength: 0, mouseStrengthTarget: 0,
+}
+
+function resize() {
+  const w = Math.max(1, window.innerWidth)
+  const h = Math.max(1, window.innerHeight)
+  state.dpr = Math.min(window.devicePixelRatio || 1, 2)
+  canvas.width = Math.round(w * state.dpr)
+  canvas.height = Math.round(h * state.dpr)
+  state.aspect = w / h
+  gl.viewport(0, 0, canvas.width, canvas.height)
+}
+
+window.addEventListener('pointermove', (event) => {
+  const nx = (event.clientX / window.innerWidth) * 2 - 1
+  const ny = -((event.clientY / window.innerHeight) * 2 - 1)
+  state.mouseTarget[0] = nx * state.aspect
+  state.mouseTarget[1] = ny
+  state.mouseStrengthTarget = 1
+})
+window.addEventListener('pointerleave', () => { state.mouseStrengthTarget = 0 })
+
+const themes = {
+  dark:  { core: [1.00, 1.00, 1.00], tip: [0.34, 0.74, 0.88], bg: ['#0a1622', '#04080e', '#03060a'] },
+  // 白粒子要看得见，底色就不能逼近纯白：靠中浅灰蓝把白托起来，
+  // 对比度由 alpha 的疏密给，而不是给粒子加阴影去糊。
+  light: { core: [1.00, 1.00, 1.00], tip: [0.97, 0.99, 1.00], bg: ['#e4eaee', '#ccd6de', '#b9c5cf'] },
+}
+
+function applyTheme() {
+  const set = themes[CONFIG.dark ? 'dark' : 'light']
+  const root = document.documentElement.style
+  root.setProperty('--bg-a', set.bg[0])
+  root.setProperty('--bg-b', set.bg[1])
+  root.setProperty('--bg-c', set.bg[2])
+}
+
+gl.disable(gl.DEPTH_TEST)
+gl.enable(gl.BLEND)
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+gl.clearColor(0, 0, 0, 0)
+
+let paused = false
+let last = performance.now()
+let frames = 0
+let fpsTimer = 0
+
+function draw(now) {
+  requestAnimationFrame(draw)
+  const dt = Math.min(0.05, (now - last) / 1000)
+  last = now
+  if (!paused) state.time += dt
+
+  state.mouse[0] += (state.mouseTarget[0] - state.mouse[0]) * 0.20
+  state.mouse[1] += (state.mouseTarget[1] - state.mouse[1]) * 0.20
+  state.mouseStrength += (state.mouseStrengthTarget - state.mouseStrength) * 0.09
+
+  const set = themes[CONFIG.dark ? 'dark' : 'light']
+
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.useProgram(program)
+  gl.uniform1f(U.uTime, state.time)
+  gl.uniform1f(U.uAspect, state.aspect)
+  gl.uniform2f(U.uMouse, state.mouse[0], state.mouse[1])
+  gl.uniform1f(U.uMouseStrength, state.mouseStrength)
+  gl.uniform1f(U.uPixelRatio, state.dpr)
+  gl.uniform1f(U.uSpeed, CONFIG.speed)
+  gl.uniform1f(U.uLip, CONFIG.lip)
+  gl.uniform1f(U.uLipY, 0.20)
+  gl.uniform1f(U.uFarY, 1.16)
+  gl.uniform1f(U.uWave, CONFIG.wave)
+  gl.uniform1f(U.uSize, CONFIG.size)
+  gl.uniform3fv(U.uColorCore, set.core)
+  gl.uniform3fv(U.uColorTip, set.tip)
+  gl.uniform1f(U.uDensity, 1)
+
+  gl.drawArrays(gl.POINTS, 0, particleCount)
+
+  frames++
+  fpsTimer += dt
+  if (fpsTimer >= 0.5) {
+    document.getElementById('fps').textContent =
+      `${Math.round(frames / fpsTimer)} fps · ${particleCount.toLocaleString()} 粒子 · WebGL2`
+    frames = 0
+    fpsTimer = 0
+  }
+}
+
+function bindRange(id, key, after) {
+  const input = document.getElementById(id)
+  const out = document.getElementById(id + 'Out')
+  const sync = () => {
+    CONFIG[key] = parseFloat(input.value)
+    out.textContent = CONFIG[key].toFixed(2)
+    after?.()
+  }
+  input.addEventListener('input', sync)
+  sync()
+}
+
+buildParticles(1)
+bindRange('speed', 'speed')
+bindRange('lip', 'lip')
+bindRange('wave', 'wave')
+bindRange('size', 'size')
+bindRange('count', 'count', () => buildParticles(CONFIG.count))
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  CONFIG.dark = !CONFIG.dark
+  applyTheme()
+})
+document.getElementById('pauseBtn').addEventListener('click', (event) => {
+  paused = !paused
+  event.currentTarget.textContent = paused ? '继续' : '暂停'
+})
+
+const params = new URLSearchParams(location.search)
+if (params.get('theme') === 'light') CONFIG.dark = false
+if (params.get('t')) state.time = parseFloat(params.get('t'))
+if (params.get('clean') === '1') document.body.classList.add('clean')
+applyTheme()
+resize()
+window.addEventListener('resize', resize)
+
+window.__waterfall = { CONFIG, state, gl }
+requestAnimationFrame(draw)
+</script>
+</body>
+</html>

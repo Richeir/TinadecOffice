@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>粒子布 · 场</title>
+<style>
+  :root { --bg-a: #0d1524; --bg-b: #05080f; --bg-c: #03050a; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(120% 90% at 50% 8%, var(--bg-a) 0%, var(--bg-b) 48%, var(--bg-c) 100%);
+    font-family: system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  #c { display: block; width: 100vw; height: 100vh; }
+  body.clean .hud, body.clean .fps { display: none; }
+  .hud {
+    position: fixed; left: 14px; bottom: 14px; z-index: 10;
+    display: grid; gap: 5px; padding: 11px 13px;
+    border-radius: 10px; background: rgba(8, 12, 20, 0.74);
+    border: 1px solid rgba(150, 180, 255, 0.13);
+    backdrop-filter: blur(10px);
+    color: #b9c8e2; font-size: 11px; line-height: 1.15;
+    user-select: none;
+  }
+  .hud label { display: grid; grid-template-columns: 58px 112px 36px; align-items: center; gap: 7px; }
+  .hud input[type=range] { width: 112px; accent-color: #7fd8e8; }
+  .hud output { font-variant-numeric: tabular-nums; color: #7fd8e8; text-align: right; }
+  .hud .row { display: flex; gap: 6px; margin-top: 3px; }
+  .hud button { flex: 1; padding: 5px 6px; border-radius: 6px; border: 1px solid rgba(150,180,255,0.18); background: rgba(120,160,255,0.09); color: #b9c8e2; font: inherit; cursor: pointer; }
+  .hud button:hover { background: rgba(120,160,255,0.2); }
+  .fps { position: fixed; right: 14px; top: 14px; z-index: 10; color: #5d6d8a; font-size: 11px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="fps" id="fps"></div>
+
+<div class="hud">
+  <label>流速<input id="drift" type="range" min="0" max="2.5" step="0.01" value="1"><output id="driftOut">1.00</output></label>
+  <label>起伏<input id="swell" type="range" min="0" max="2.5" step="0.01" value="1"><output id="swellOut">1.00</output></label>
+  <label>纵深<input id="depth" type="range" min="0" max="2.2" step="0.01" value="1"><output id="depthOut">1.00</output></label>
+  <label>颗粒<input id="size" type="range" min="0.3" max="2.4" step="0.01" value="1"><output id="sizeOut">1.00</output></label>
+  <label>间距<input id="gap" type="range" min="14" max="56" step="1" value="34"><output id="gapOut">34</output></label>
+  <div class="row">
+    <button id="themeBtn">明/暗</button>
+    <button id="pauseBtn">暂停</button>
+  </div>
+</div>
+
+<script>
+'use strict'
+
+const CONFIG = { drift: 1, swell: 1, depth: 1, size: 1, gap: 34, dark: true }
+
+const canvas = document.getElementById('c')
+const gl = canvas.getContext('webgl2', {
+  alpha: true, antialias: false, premultipliedAlpha: false,
+  powerPreference: 'high-performance', preserveDrawingBuffer: true,
+})
+if (!gl) {
+  document.body.innerHTML = '<p style="color:#f88;font:13px system-ui;padding:24px">当前环境没有 WebGL2。</p>'
+  throw new Error('no webgl2')
+}
+
+const VERT = `#version 300 es
+precision highp float;
+
+in vec2 aGrid;      // 0..1 网格坐标
+in vec2 aJitter;    // 每颗粒子的微小偏移与大小扰动
+
+uniform float uTime;
+uniform float uAspect;
+uniform vec2  uMouse;
+uniform float uMouseStrength;
+uniform float uPixelRatio;
+uniform float uDrift;
+uniform float uSwell;
+uniform float uDepth;
+uniform float uSize;
+uniform float uSpacing;   // CSS 像素
+uniform vec3  uColorNear;
+uniform vec3  uColorFar;
+
+out float vAlpha;
+out vec3  vColor;
+
+// 布面的高度场：几个不同尺度的行波叠在一起，才有“弯曲”而不是“抖动”。
+// 波长要短到屏幕高度上能容下 2-3 个弧；波长一长，布就退化成飘带或百叶窗。
+float height(vec2 p, float t) {
+  float h = 0.0;
+  h += sin(p.x * 3.40 + t * 0.30) * 0.40;
+  h += sin(p.y * 3.00 - t * 0.24) * 0.30;
+  h += sin((p.x + p.y) * 5.20 + t * 0.41) * 0.12;
+  h += sin((p.x - p.y) * 7.80 - t * 0.55) * 0.05;
+  return h;
+}
+
+void main() {
+  float t = uTime * uDrift;
+  vec2 uv = aGrid;
+
+  // b = 屏幕等比坐标（横纵同一个尺度），w = 世界坐标（波形用，含 aspect 修正）。
+  // 屏幕位置必须走 b，否则长宽比会把网格拉成竖线，布就成了丝绒窗帘。
+  vec2 b = vec2(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0) * 1.06;
+  vec2 w = vec2(b.x * uAspect, b.y);
+
+  // 缓慢的横向漂移：整块布像被风推着走，而粒子本身不跳格
+  w.x += sin(w.y * 1.30 + t * 0.20) * 0.20;
+  w.y += sin(w.x * 1.10 - t * 0.16) * 0.12;
+
+  // 高度场
+  float z = height(w, t) * uSwell * uDepth;
+
+  // 手指按在布上：局部鼓起
+  vec2 m = uMouse;
+  float md = distance(w, m);
+  float press = exp(-md * md * 2.2) * uMouseStrength;
+  z += press * 0.85 * uDepth;
+
+  float persp = 1.0 / (1.0 + 0.55 - z * 0.18);
+  vec2 screen;
+  screen.x = b.x * persp * 1.90;
+  screen.y = (b.y + z * 0.40) * persp * 1.90;
+
+  gl_Position = vec4(screen, 0.0, 1.0);
+
+  // 颗粒大小：间距的固定比例乘透视，保证“一颗颗”的织理不被透视破坏
+  float basePx = uSpacing * 0.52;
+  gl_PointSize = max(1.5, basePx * persp * uSize * uPixelRatio);
+
+  // 近亮远暗；边缘再压一道，免得露出画布边界
+  float near = smoothstep(-0.9, 1.1, z / max(uDepth, 0.001));
+  vColor = mix(uColorFar, uColorNear, near);
+  vAlpha = (0.50 + 0.42 * near) * smoothstep(1.30, 0.92, max(abs(screen.x) / max(uAspect, 0.001), abs(screen.y)));
+  vAlpha *= 0.88 + 0.12 * aJitter.y;
+}
+`
+
+const FRAG = `#version 300 es
+precision highp float;
+
+in float vAlpha;
+in vec3  vColor;
+out vec4 fragColor;
+
+void main() {
+  // 硬边圆点，只在最外一圈抗锯齿：要大颗、要数得清
+  vec2 c = gl_PointCoord - 0.5;
+  float d2 = dot(c, c);
+  float edge = 1.0 - smoothstep(0.190, 0.250, d2);
+  if (edge <= 0.002) discard;
+  fragColor = vec4(vColor, vAlpha * edge);
+}
+`
+
+function compile(type, source) {
+  const shader = gl.createShader(type)
+  gl.shaderSource(shader, source)
+  gl.compileShader(shader)
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader) || 'shader compile failed')
+  }
+  return shader
+}
+
+const program = gl.createProgram()
+gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT))
+gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG))
+gl.linkProgram(program)
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(program) || 'program link failed')
+}
+gl.useProgram(program)
+
+const U = {}
+for (const name of ['uTime', 'uAspect', 'uMouse', 'uMouseStrength', 'uPixelRatio', 'uDrift',
+  'uSwell', 'uDepth', 'uSize', 'uSpacing', 'uColorNear', 'uColorFar']) {
+  U[name] = gl.getUniformLocation(program, name)
+}
+
+const gridBuffer = gl.createBuffer()
+const jitterBuffer = gl.createBuffer()
+const gridAttr = gl.getAttribLocation(program, 'aGrid')
+const jitterAttr = gl.getAttribLocation(program, 'aJitter')
+gl.enableVertexAttribArray(gridAttr)
+gl.enableVertexAttribArray(jitterAttr)
+
+let pointCount = 0
+
+/** 网格间距固定为 CSS 像素，粒子直径取间距的 0.52，织理在任何窗口尺寸下都一致。
+ *  布要比视口大一圈（1.7×），否则弯曲会把侧边和底边翻进画面，露出一条硬边。 */
+function buildCloth() {
+  const w = Math.max(1, window.innerWidth) * 1.7
+  const h = Math.max(1, window.innerHeight) * 1.7
+  const gap = CONFIG.gap
+  const cols = Math.ceil(w / gap) + 3
+  const rows = Math.ceil(h / gap) + 3
+  const count = cols * rows
+  const grid = new Float32Array(count * 2)
+  const jitter = new Float32Array(count * 2)
+
+  let i = 0
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      grid[i * 2] = (col + 0.5) / cols
+      grid[i * 2 + 1] = (row + 0.5) / rows
+      jitter[i * 2] = Math.random()
+      jitter[i * 2 + 1] = Math.random()
+      i++
+    }
+  }
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, grid, gl.STATIC_DRAW)
+  gl.vertexAttribPointer(gridAttr, 2, gl.FLOAT, false, 0, 0)
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, jitterBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, jitter, gl.STATIC_DRAW)
+  gl.vertexAttribPointer(jitterAttr, 2, gl.FLOAT, false, 0, 0)
+
+  pointCount = count
+}
+
+const state = {
+  time: 0, dpr: 1, aspect: 1,
+  mouse: [99, 99], mouseTarget: [99, 99],
+  strength: 0, strengthTarget: 0,
+}
+
+function resize() {
+  const w = Math.max(1, window.innerWidth)
+  const h = Math.max(1, window.innerHeight)
+  state.dpr = Math.min(window.devicePixelRatio || 1, 2)
+  canvas.width = Math.round(w * state.dpr)
+  canvas.height = Math.round(h * state.dpr)
+  state.aspect = w / h
+  gl.viewport(0, 0, canvas.width, canvas.height)
+  buildCloth()
+}
+
+window.addEventListener('pointermove', (event) => {
+  const nx = (event.clientX / window.innerWidth) * 2 - 1
+  const ny = -((event.clientY / window.innerHeight) * 2 - 1)
+  state.mouseTarget[0] = nx * state.aspect
+  state.mouseTarget[1] = ny
+  state.strengthTarget = 1
+})
+window.addEventListener('pointerleave', () => { state.strengthTarget = 0 })
+
+const themes = {
+  dark:  { near: [0.92, 0.98, 1.00], far: [0.30, 0.49, 0.66], bg: ['#111c2e', '#070d18', '#04070d'] },
+  light: { near: [1.00, 1.00, 1.00], far: [0.62, 0.71, 0.79], bg: ['#dde5eb', '#cbd5de', '#bcc7d1'] },
+}
+
+function applyTheme() {
+  const set = themes[CONFIG.dark ? 'dark' : 'light']
+  const root = document.documentElement.style
+  root.setProperty('--bg-a', set.bg[0])
+  root.setProperty('--bg-b', set.bg[1])
+  root.setProperty('--bg-c', set.bg[2])
+}
+
+gl.disable(gl.DEPTH_TEST)
+gl.enable(gl.BLEND)
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+gl.clearColor(0, 0, 0, 0)
+
+let paused = false
+let last = performance.now()
+let frames = 0
+let fpsTimer = 0
+
+function draw(now) {
+  requestAnimationFrame(draw)
+  const dt = Math.min(0.05, (now - last) / 1000)
+  last = now
+  if (!paused) state.time += dt
+
+  state.mouse[0] += (state.mouseTarget[0] - state.mouse[0]) * 0.12
+  state.mouse[1] += (state.mouseTarget[1] - state.mouse[1]) * 0.12
+  state.strength += (state.strengthTarget - state.strength) * 0.06
+
+  const set = themes[CONFIG.dark ? 'dark' : 'light']
+
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.useProgram(program)
+  gl.uniform1f(U.uTime, state.time)
+  gl.uniform1f(U.uAspect, state.aspect)
+  gl.uniform2f(U.uMouse, state.mouse[0], state.mouse[1])
+  gl.uniform1f(U.uMouseStrength, state.strength)
+  gl.uniform1f(U.uPixelRatio, state.dpr)
+  gl.uniform1f(U.uDrift, CONFIG.drift)
+  gl.uniform1f(U.uSwell, CONFIG.swell)
+  gl.uniform1f(U.uDepth, CONFIG.depth)
+  gl.uniform1f(U.uSize, CONFIG.size)
+  gl.uniform1f(U.uSpacing, CONFIG.gap)
+  gl.uniform3fv(U.uColorNear, set.near)
+  gl.uniform3fv(U.uColorFar, set.far)
+
+  gl.drawArrays(gl.POINTS, 0, pointCount)
+
+  frames++
+  fpsTimer += dt
+  if (fpsTimer >= 0.5) {
+    document.getElementById('fps').textContent =
+      `${Math.round(frames / fpsTimer)} fps · ${pointCount.toLocaleString()} 颗粒子 · WebGL2`
+    frames = 0
+    fpsTimer = 0
+  }
+}
+
+function bindRange(id, key, after) {
+  const input = document.getElementById(id)
+  const out = document.getElementById(id + 'Out')
+  const sync = () => {
+    CONFIG[key] = key === 'gap' ? parseInt(input.value, 10) : parseFloat(input.value)
+    out.textContent = key === 'gap' ? String(CONFIG[key]) : CONFIG[key].toFixed(2)
+    after?.()
+  }
+  input.addEventListener('input', sync)
+  sync()
+}
+
+bindRange('drift', 'drift')
+bindRange('swell', 'swell')
+bindRange('depth', 'depth')
+bindRange('size', 'size')
+bindRange('gap', 'gap', () => buildCloth())
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  CONFIG.dark = !CONFIG.dark
+  applyTheme()
+})
+document.getElementById('pauseBtn').addEventListener('click', (event) => {
+  paused = !paused
+  event.currentTarget.textContent = paused ? '继续' : '暂停'
+})
+
+const params = new URLSearchParams(location.search)
+if (params.get('theme') === 'light') CONFIG.dark = false
+if (params.get('t')) state.time = parseFloat(params.get('t'))
+if (params.get('clean') === '1') document.body.classList.add('clean')
+applyTheme()
+resize()
+window.addEventListener('resize', resize)
+
+window.__cloth = { CONFIG, state, gl }
+requestAnimationFrame(draw)
+</script>
+</body>
+</html>

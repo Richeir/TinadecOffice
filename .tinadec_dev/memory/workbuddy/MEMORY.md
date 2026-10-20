@@ -17,6 +17,15 @@
 - 网关上游不可达必须回 **502**（`src/upstreamFailure.ts`），且**不能**走 `toProblemDetails`（`normalizeCode` 会把 code 抹成 `conflict`，丢掉 `CORE_UNREACHABLE` 指纹）。`TINADEC_GATEWAY_TIMEOUT_MS` 至今无人消费。
 - 桌面端 `package.json` 的 `test` 脚本是**显式文件清单**：新增 electron 测试文件必须同时加进那一行，否则静默不跑。
 
+## 发布说明由 AI 手写（2026-10-20 定案）
+- **每次发版，AI 要自己写更新说明，不能只依赖 `--generate-notes`**。用户的原话：`--generate-notes` 出来的是 `Fix/model center unify` 这种 PR 标题，解释不了任何事，也不回答"我为什么要升级"。
+- 正文主体写在 `docs/releases/<tag>.md`（带 v 的文件名，如 `v0.3.0.md`），结构固定：`## What's new`（3–6 条粗体小标题，讲用户得到什么）+ `## What's changed`（新能力 / 修复 / 性能 / 升级须知）。
+- 规程全文见 `docs/release-notes.zh-CN.md`。取材顺序：`git log --oneline <prev>..<tag> --no-merges` → `git diff --shortstat` → `gh pr list --state merged` → **关键改动读实现**。数字只取可复验来源，不许估算。
+- 排版顺序是刻意的：**头图 → What's new → What's changed → 折叠的 Full commit log → 折叠的 Installation → 折叠的 Known boundaries**。安装表与平台边界每版重复、对老用户是噪音，必须收进 `<details>`。
+- 拼装是**单一实现** `scripts/release-body.mjs`：CI（`desktop-release.yml` 的 `Compose release notes`）与本地补写都调它。`node scripts/release-body.mjs v0.3.0 --update` = 重新拼装并 `gh release edit`（只改正文，不动 tag 与资产）；`--out <file>` 只预览。
+- 缺 `docs/releases/<tag>.md` 时脚本**不失败**（发版不该被文案卡住），只升 `::warning::`，并在 body 留 `<!-- release-notes: ... is missing -->` 便于事后 grep。
+- 两个坑：`gh release create` 的 `--notes-file` 与 `--generate-notes` **互斥**；generate-notes 的 body **自带 `## What's Changed` 标题**，拼接时不要重复加。
+
 ## 环境硬约束
 - **TinadTools 宿主禁用反射序列化**（`JsonSerializerIsReflectionEnabledByDefault=false`）：动态 JSON payload 必须用 `Utf8JsonWriter` 手写或 source-gen context（`ShellToolJsonContext` 等），否则运行时 InvalidOperationException。
 - **TinadTools 协议冒烟**：`scripts/terminal_protocol_smoke.py`（驱动真实子进程验证 one-shot/长驻/控制/事件顺序）。

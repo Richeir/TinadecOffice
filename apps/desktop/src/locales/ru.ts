@@ -1592,6 +1592,12 @@ export default {
     runtimePolicy: "Политика выполнения",
     runtimePolicyNone: "Обычный режим",
     runtimePolicyStructuredInvestigation: "Структурированное расследование",
+    runtimePolicyAutonomousExploration: "Автономное исследование",
+    runtimePolicyFeatures: "Функции политики выполнения",
+    runtimePolicyRequiredFeature: "Обязательно",
+    runtimePolicyDependenciesHint: "Зависимости: {pairs}",
+    runtimePolicySettings: "Настройки политики выполнения (JSON)",
+    runtimePolicySettingsInvalid: "Настройки политики выполнения должны быть корректным объектом JSON.",
     promptsPanelHint: "Единый вид холста конвейера и библиотеки фрагментов: версии, сигналы эффективности и оценка токенов.",
     runtimePanelHint: "Мониторинг работающих экземпляров агентов: пауза, возобновление, отмена и перенаправление очереди.",
     runtimeCeilings: {

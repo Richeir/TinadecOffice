@@ -1502,10 +1502,38 @@ export interface AgentModeTopologyWriteDto {
   runtime_policy?: AgentModeRuntimePolicy | null;
 }
 
-export interface AgentModeRuntimePolicy {
-  kind: 'structured_investigation';
+/**
+ * Numeric knobs for autonomous exploration. Every key is optional on the wire:
+ * Core fills absent values with its frozen defaults. Keys are snake_case to match
+ * the manifest and `runtime_policy.settings` exactly — the registry rejects
+ * unknown keys instead of guessing an alias.
+ */
+export interface AutonomousExplorationSettings {
+  planner_debounce_ms?: number;
+  planner_heartbeat_ms?: number;
+  max_parallel_workers?: number;
+  max_intents_per_cycle?: number;
+  max_worker_rounds?: number;
+  digest_after_idle_ms?: number;
+  context_compaction_tokens?: number;
+  trace_result_limit?: number;
+  coverage_min_ratio?: number;
+  max_retries_per_intent?: number;
+}
+
+export type AgentModeRuntimePolicy =
+  | { kind: 'structured_investigation'; version: 1; features: string[]; settings?: never }
+  | { kind: 'autonomous_exploration'; version: 1; features: string[]; settings?: AutonomousExplorationSettings };
+
+/** One host-owned policy from the Core registry; the editor never hard-codes these. */
+export interface AgentModeRuntimePolicyDefinition {
+  kind: AgentModeRuntimePolicy['kind'];
   version: 1;
+  required_core_capability: string;
   features: string[];
+  required_features: string[];
+  dependencies: Array<{ feature: string; requires: string }>;
+  default_settings?: AutonomousExplorationSettings | null;
 }
 
 export interface AgentModeTopologyDto {
@@ -3379,6 +3407,7 @@ export const api = {
   listAgentVersions: (id: string) => request<AgentVersionDto[]>(`/api/v1/agents/${encodeURIComponent(id)}/versions`),
   getAgentVersion: (id: string, versionId: string) => request<AgentVersionDto>(`/api/v1/agents/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`),
   // agent-modes topology
+  listAgentModeRuntimePolicies: (options?: { signal?: AbortSignal }) => request<AgentModeRuntimePolicyDefinition[]>('/api/v1/agent-mode-runtime-policies', options),
   listAgentModeTopologies: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('agent-modes'), () => request<AgentModeTopologyDto[]>('/api/v1/agent-modes'), options?.signal),
   createAgentModeDraft: (body: Omit<Partial<AgentModeTopologyDto>, 'nodes' | 'edges'> & Partial<AgentModeTopologyWriteDto>) => request<AgentModeTopologyDto>('/api/v1/agent-modes', { method: 'POST', body: JSON.stringify(body) }),
   getAgentModeTopology: (id: string) => request<AgentModeTopologyDto>(`/api/v1/agent-modes/${encodeURIComponent(id)}`),

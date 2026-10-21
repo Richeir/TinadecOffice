@@ -26,6 +26,7 @@ public static class AgentConfigurationEndpoints
         app.MapGet("/api/v1/agents/{id:guid}/versions/{versionId:guid}", GetAgentVersion);
 
         // Agent Modes
+        app.MapGet("/api/v1/agent-mode-runtime-policies", ListModeRuntimePolicies);
         app.MapGet("/api/v1/agent-modes", ListModes);
         app.MapPost("/api/v1/agent-modes", CreateMode);
         app.MapGet("/api/v1/agent-modes/{id:guid}", GetMode);
@@ -560,6 +561,26 @@ public static class AgentConfigurationEndpoints
     }
 
     // ── modes ──
+    static IResult ListModeRuntimePolicies()
+    {
+        var definitions = ModeRuntimePolicyRegistry.Definitions
+            .OrderBy(d => d.Kind, StringComparer.Ordinal)
+            .Select(d => new ModeRuntimePolicyDefinitionDto
+            {
+                Kind = d.Kind,
+                Version = d.Version,
+                RequiredCoreCapability = d.RequiredCoreCapability,
+                Features = d.Features.OrderBy(f => f, StringComparer.Ordinal).ToArray(),
+                RequiredFeatures = d.RequiredFeatures,
+                Dependencies = d.Dependencies
+                    .Select(x => new ModePolicyFeatureDependencyDto { Feature = x.Feature, Requires = x.Requires })
+                    .ToArray(),
+                DefaultSettings = d.DefaultSettings,
+            })
+            .ToArray();
+        return Results.Ok(definitions);
+    }
+
     static async Task<IResult> ListModes(IDbContextFactory<AgentConfigurationDbContext> f, ITenantContextAccessor a, HttpRequest req, CancellationToken ct)
     {
         var (t,w,_) = Ctx(a);

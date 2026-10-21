@@ -41,6 +41,10 @@ export interface paths {
     /** Reject evolution proposal */
     post: operations["postApiV1Agent-evolutionProposalsByCandidateIdReject"];
   };
+  "/api/v1/agent-mode-runtime-policies": {
+    /** List supported mode runtime policy definitions */
+    get: operations["getApiV1Agent-mode-runtime-policies"];
+  };
   "/api/v1/agent-modes": {
     /** List agent modes for application mode */
     get: operations["getApiV1Agent-modes"];
@@ -1104,6 +1108,9 @@ export interface components {
       description: string | null;
       display_name: string;
       enabled: boolean;
+      i18n?: {
+        [key: string]: unknown;
+      };
       /** @enum {string} */
       layer: "operation" | "execution";
       model_strategy: {
@@ -1243,6 +1250,9 @@ export interface components {
       config: {
         [key: string]: unknown;
       };
+      i18n?: {
+        [key: string]: unknown;
+      };
       label: string;
       /** @enum {string} */
       layer: "operation" | "execution";
@@ -1258,14 +1268,23 @@ export interface components {
       description: string | null;
       display_name: string;
       edges: components["schemas"]["AgentPackModeEdge"][];
+      i18n?: {
+        [key: string]: unknown;
+      };
       nodes: components["schemas"]["AgentPackModeNode"][];
       resource_key: string;
+      runtime_policy?: {
+        [key: string]: unknown;
+      } | null;
       slug: string;
     };
     AgentPackPromptPipelineResource: {
       description: string | null;
       display_name: string;
       graph: {
+        [key: string]: unknown;
+      };
+      i18n?: {
         [key: string]: unknown;
       };
       resource_key: string;
@@ -1936,6 +1955,7 @@ export interface components {
       dispatch_mode: "queued" | "parallel" | "insert";
       expected_context_revision?: string | number;
       expected_settings_revision?: string | number;
+      interface_locale?: string;
       interrupt?: boolean;
       meeting_model_override?: components["schemas"]["MeetingModelOverride"] | null;
       mode_version_id?: string | null;
@@ -2825,6 +2845,14 @@ export interface operations {
         candidateId: string;
       };
     };
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** List supported mode runtime policy definitions */
+  "getApiV1Agent-mode-runtime-policies": {
     responses: {
       200: {
         content: never;

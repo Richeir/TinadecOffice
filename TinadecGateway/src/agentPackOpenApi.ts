@@ -35,6 +35,7 @@ const agentResource = t.Object({
   system_prompt: t.String(),
   enabled: t.Boolean(),
   base_prompt_pipeline_ref: nullableString(),
+  i18n: t.Optional(jsonObject()),
 }, { additionalProperties: false });
 
 const promptPipelineResource = t.Object({
@@ -43,6 +44,7 @@ const promptPipelineResource = t.Object({
   display_name: t.String(),
   description: nullableString(),
   graph: jsonObject(),
+  i18n: t.Optional(jsonObject()),
 }, { additionalProperties: false });
 
 const modeNode = t.Object({
@@ -52,6 +54,7 @@ const modeNode = t.Object({
   label: t.String(),
   config: jsonObject(),
   position: nullableJsonObject(),
+  i18n: t.Optional(jsonObject()),
 }, { additionalProperties: false });
 
 const modeEdge = t.Object({
@@ -69,6 +72,8 @@ const modeResource = t.Object({
   nodes: t.Array(componentRef('AgentPackModeNode')),
   edges: t.Array(componentRef('AgentPackModeEdge')),
   canvas_layout: jsonObject(),
+  runtime_policy: t.Optional(nullableJsonObject()),
+  i18n: t.Optional(jsonObject()),
 }, { additionalProperties: false });
 
 const resources = t.Object({

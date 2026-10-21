@@ -25,6 +25,45 @@ public sealed class ModeRuntimePolicyDto
     public JsonElement? Settings { get; init; }
 }
 
+/// <summary>
+/// Registry projection used by the mode editor: the complete feature allow-list,
+/// the minimum required subset and the dependency edges live in one place, so the
+/// UI never re-implements policy validation.
+/// </summary>
+public sealed class ModeRuntimePolicyDefinitionDto
+{
+    [JsonPropertyName("kind")]
+    public string Kind { get; init; } = string.Empty;
+
+    [JsonPropertyName("version")]
+    public int Version { get; init; }
+
+    [JsonPropertyName("required_core_capability")]
+    public string RequiredCoreCapability { get; init; } = string.Empty;
+
+    [JsonPropertyName("features")]
+    public IReadOnlyList<string> Features { get; init; } = [];
+
+    [JsonPropertyName("required_features")]
+    public IReadOnlyList<string> RequiredFeatures { get; init; } = [];
+
+    [JsonPropertyName("dependencies")]
+    public IReadOnlyList<ModePolicyFeatureDependencyDto> Dependencies { get; init; } = [];
+
+    [JsonPropertyName("default_settings")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? DefaultSettings { get; init; }
+}
+
+public sealed class ModePolicyFeatureDependencyDto
+{
+    [JsonPropertyName("feature")]
+    public string Feature { get; init; } = string.Empty;
+
+    [JsonPropertyName("requires")]
+    public string Requires { get; init; } = string.Empty;
+}
+
 public sealed class CorrectionTraceDto
 {
     [JsonPropertyName("episode_id")]

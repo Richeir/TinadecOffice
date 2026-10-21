@@ -74,6 +74,35 @@ public sealed class AgentModeListTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ModeRuntimePolicyDefinitions_ExposeRegistryAllowListsAndDefaults()
+    {
+        var client = _factory!.CreateClient();
+        var definitions = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/agent-mode-runtime-policies");
+
+        Assert.NotNull(definitions);
+        Assert.Equal(2, definitions!.Length);
+
+        var correction = definitions.Single(d => d.GetProperty("kind").GetString() == "structured_investigation");
+        Assert.Equal("structured_investigation_v1", correction.GetProperty("required_core_capability").GetString());
+        Assert.Contains(correction.GetProperty("features").EnumerateArray(), feature => feature.GetString() == "causal_trace");
+        Assert.Equal("causal_trace", correction.GetProperty("required_features")[0].GetString());
+        // Correction has no numeric knobs; a null settings block must stay omitted.
+        Assert.False(correction.TryGetProperty("default_settings", out _));
+
+        var autonomous = definitions.Single(d => d.GetProperty("kind").GetString() == "autonomous_exploration");
+        Assert.Equal("autonomous_exploration_v1", autonomous.GetProperty("required_core_capability").GetString());
+        Assert.Equal(12, autonomous.GetProperty("features").GetArrayLength());
+        Assert.Equal("exploration_graph", autonomous.GetProperty("required_features")[0].GetString());
+        Assert.Contains(autonomous.GetProperty("dependencies").EnumerateArray(), dependency =>
+            dependency.GetProperty("feature").GetString() == "side_question"
+            && dependency.GetProperty("requires").GetString() == "event_driven_planning");
+
+        var defaults = autonomous.GetProperty("default_settings");
+        Assert.Equal(4, defaults.GetProperty("max_parallel_workers").GetInt32());
+        Assert.Equal(0.6, defaults.GetProperty("coverage_min_ratio").GetDouble(), 3);
+    }
+
+    [Fact]
     public async Task Interactions_WithRandomModeVersionId_IsRejectedAsInvalidRequest()
     {
         var client = _factory!.CreateClient();

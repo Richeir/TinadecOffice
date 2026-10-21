@@ -88,6 +88,9 @@ const sessionInteractionRequest = t.Object({
   expected_settings_revision: t.Optional(t.Integer()),
   clear_meeting_model_override: t.Optional(t.Boolean()),
   attachment_ids: t.Optional(t.Array(t.String())), interrupt: t.Optional(t.Boolean()),
+  // Frozen onto the run so the response language follows the UI that submitted
+  // it; Core normalizes and falls back, the Gateway only forwards it.
+  interface_locale: t.Optional(t.String()),
 }, { additionalProperties: false });
 
 const session = t.Object({

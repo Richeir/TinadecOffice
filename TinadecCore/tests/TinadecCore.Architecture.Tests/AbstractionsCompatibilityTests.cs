@@ -35,6 +35,13 @@ public sealed class AbstractionsCompatibilityTests
         ]));
     }
 
+    // Locale-aware overloads were added as default interface methods. The
+    // compatibility contract is about the original (shortest-parameter) signature,
+    // so ambiguity must not be treated as a failure.
     private static System.Reflection.MethodInfo Method(Type type, string name) =>
-        type.GetMethod(name) ?? throw new InvalidOperationException($"Expected {type.Name}.{name} to exist.");
+        type.GetMethods()
+            .Where(method => method.Name == name)
+            .OrderBy(method => method.GetParameters().Length)
+            .FirstOrDefault()
+        ?? throw new InvalidOperationException($"Expected {type.Name}.{name} to exist.");
 }

@@ -37,6 +37,10 @@
           "enabled": {
             "type": "boolean"
           },
+          "i18n": {
+            "additionalProperties": true,
+            "type": "object"
+          },
           "layer": {
             "enum": [
               "operation",
@@ -587,6 +591,10 @@
             "additionalProperties": true,
             "type": "object"
           },
+          "i18n": {
+            "additionalProperties": true,
+            "type": "object"
+          },
           "label": {
             "type": "string"
           },
@@ -636,6 +644,10 @@
             },
             "type": "array"
           },
+          "i18n": {
+            "additionalProperties": true,
+            "type": "object"
+          },
           "nodes": {
             "items": {
               "$ref": "#/components/schemas/AgentPackModeNode"
@@ -644,6 +656,11 @@
           },
           "resource_key": {
             "type": "string"
+          },
+          "runtime_policy": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
           },
           "slug": {
             "type": "string"
@@ -671,6 +688,10 @@
             "type": "string"
           },
           "graph": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "i18n": {
             "additionalProperties": true,
             "type": "object"
           },
@@ -3460,6 +3481,9 @@
                 "type": "integer"
               }
             ]
+          },
+          "interface_locale": {
+            "type": "string"
           },
           "interrupt": {
             "type": "boolean"
@@ -6772,6 +6796,18 @@
           "200": {}
         },
         "summary": "Reject evolution proposal",
+        "tags": [
+          "AgentCenter"
+        ]
+      }
+    },
+    "/api/v1/agent-mode-runtime-policies": {
+      "get": {
+        "operationId": "getApiV1Agent-mode-runtime-policies",
+        "responses": {
+          "200": {}
+        },
+        "summary": "List supported mode runtime policy definitions",
         "tags": [
           "AgentCenter"
         ]

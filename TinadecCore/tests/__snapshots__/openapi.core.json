@@ -45,6 +45,15 @@
           "enabled": {
             "type": "boolean"
           },
+          "i18n": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentPackI18nDto"
+            },
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "layer": {
             "type": [
               "null",
@@ -274,6 +283,44 @@
               {
                 "$ref": "#/components/schemas/AgentPackManifestDto"
               }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AgentPackI18nDto": {
+        "properties": {
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "system_prompt": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "templates": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "object"
             ]
           }
         },
@@ -628,6 +675,15 @@
           "config": {
             "$ref": "#/components/schemas/JsonElement"
           },
+          "i18n": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentPackI18nDto"
+            },
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "label": {
             "type": [
               "null",
@@ -694,6 +750,15 @@
             },
             "type": "array"
           },
+          "i18n": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentPackI18nDto"
+            },
+            "type": [
+              "null",
+              "object"
+            ]
+          },
           "nodes": {
             "items": {
               "$ref": "#/components/schemas/AgentPackModeNodeDto"
@@ -718,7 +783,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/CorrectionRuntimePolicyDto"
+                "$ref": "#/components/schemas/ModeRuntimePolicyDto"
               }
             ]
           },
@@ -840,6 +905,15 @@
           },
           "graph": {
             "$ref": "#/components/schemas/JsonElement"
+          },
+          "i18n": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AgentPackI18nDto"
+            },
+            "type": [
+              "null",
+              "object"
+            ]
           },
           "resource_key": {
             "type": [
@@ -1571,28 +1645,6 @@
           "passed_after_execution_id": {
             "type": [
               "null",
-              "string"
-            ]
-          }
-        },
-        "type": "object"
-      },
-      "CorrectionRuntimePolicyDto": {
-        "properties": {
-          "features": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "version": {
-            "format": "int32",
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
               "string"
             ]
           }
@@ -3170,6 +3222,38 @@
           "target_storage_id": {
             "type": [
               "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ModeRuntimePolicyDto": {
+        "properties": {
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "version": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
               "string"
             ]
           }
@@ -7643,6 +7727,18 @@
         },
         "tags": [
           "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/agent-mode-runtime-policies": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AgentConfigurationEndpoints"
         ]
       }
     },

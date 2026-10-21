@@ -1592,6 +1592,12 @@ export default {
     runtimePolicy: "実行ポリシー",
     runtimePolicyNone: "通常モード",
     runtimePolicyStructuredInvestigation: "構造化された原因調査",
+    runtimePolicyAutonomousExploration: "自律探索",
+    runtimePolicyFeatures: "実行ポリシーの機能",
+    runtimePolicyRequiredFeature: "必須",
+    runtimePolicyDependenciesHint: "依存関係: {pairs}",
+    runtimePolicySettings: "実行ポリシー設定 (JSON)",
+    runtimePolicySettingsInvalid: "実行ポリシー設定は有効な JSON オブジェクトである必要があります。",
     promptsPanelHint: "パイプラインキャンバスとフラグメントライブラリの統合ビュー：バージョン、効果のシグナル、トークンの見積もり。",
     runtimePanelHint: "実行中のエージェントインスタンスを監視：一時停止・再開・キャンセルと待機列の振り直し。",
     runtimeCeilings: {

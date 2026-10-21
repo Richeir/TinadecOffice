@@ -1858,6 +1858,14 @@ const app = new Elysia()
     setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
     return result.data;
   }, { detail: { summary: 'List agent modes for application mode', tags: ['AgentCenter'] } })
+  .get('/api/v1/agent-mode-runtime-policies', async ({ set, request }) => {
+    const headers = forwardHeaders(request);
+    const result = await proxyJson('/api/v1/agent-mode-runtime-policies', { headers });
+    setStatus(set, result.status);
+    if (result.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(result.status, result.data, '/api/v1/agent-mode-runtime-policies'); }
+    setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
+    return result.data;
+  }, { detail: { summary: 'List supported mode runtime policy definitions', tags: ['AgentCenter'] } })
   .get('/api/v1/agents', async ({ set, request }) => {
     const headers = forwardHeaders(request);
     const search = new URL(request.url).search;

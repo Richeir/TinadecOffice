@@ -2,10 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { History, Plus, RefreshCw, Search, Trash2 } from '@lucide/vue'
-import { UiBadge, UiButton, UiInput, UiLabel, UiSelectField, UiSheet } from '@/components/ui'
+import { UiBadge, UiButton, UiCheckbox, UiInput, UiLabel, UiSelectField, UiSheet, UiTextarea } from '@/components/ui'
 import AgentModeCanvas from '@/components/canvas/AgentModeCanvas.vue'
 import GovernanceRolesPanel from '@/components/agentCenter/GovernanceRolesPanel.vue'
-import { api as baseApi, type AgentDefinitionDto, type AgentModeEdgeDto, type AgentModeNodeDto, type AgentModeRuntimePolicy, type AgentModeTopologyDto, type ModeVersionDto, type ModelProviderInstanceDto, type ModelRouteDto } from '@/api'
+import { api as baseApi, type AgentDefinitionDto, type AgentModeEdgeDto, type AgentModeNodeDto, type AgentModeRuntimePolicy, type AgentModeRuntimePolicyDefinition, type AgentModeTopologyDto, type ModeVersionDto, type ModelProviderInstanceDto, type ModelRouteDto } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
 const api = scopedApi(baseApi, () => 'user')
 import { useNotifications } from '@/composables/useNotifications'
@@ -22,7 +22,10 @@ const modeQuery = ref('')
 const modeNodes = ref<AgentModeNodeDto[]>([])
 const modeEdges = ref<AgentModeEdgeDto[]>([])
 const modeEtag = ref<string | null>(null)
-const runtimePolicyKind = ref<'none' | 'structured_investigation'>('none')
+const runtimePolicyKind = ref<'none' | AgentModeRuntimePolicy['kind']>('none')
+const runtimePolicyFeatures = ref<string[]>([])
+const runtimePolicySettingsJson = ref('')
+const runtimePolicyDefinitions = ref<AgentModeRuntimePolicyDefinition[]>([])
 const modeVersions = ref<ModeVersionDto[]>([])
 const modeVersionsLoading = ref(false)
 const showVersionDrawer = ref(false)
@@ -58,13 +61,69 @@ const selectedModeReadOnly = computed(() => {
   const m = selectedMode.value
   return Boolean(selectedModeId.value && (!m || m.managed || m.status === 'published' || m.status === 'archived'))
 })
-const runtimePolicy = computed<AgentModeRuntimePolicy | null>(() => runtimePolicyKind.value === 'structured_investigation'
-  ? {
-      kind: 'structured_investigation',
-      version: 1,
-      features: ['causal_trace', 'completion_contract', 'failing_repro_required', 'clarification_ledger', 'user_reproduction_reopens', 'local_hunk_revert'],
+const selectedPolicyDefinition = computed(() =>
+  runtimePolicyDefinitions.value.find((definition) => definition.kind === runtimePolicyKind.value) ?? null
+)
+const policyKindOptions = computed(() => [
+  { value: 'none', label: t('settings.runtimePolicyNone') },
+  ...runtimePolicyDefinitions.value.map((definition) => ({
+    value: definition.kind,
+    label: definition.kind === 'structured_investigation'
+      ? t('settings.runtimePolicyStructuredInvestigation')
+      : definition.kind === 'autonomous_exploration'
+        ? t('settings.runtimePolicyAutonomousExploration')
+        : definition.kind,
+  })),
+])
+/** Parse the settings draft without mutating it: invalid JSON must block saving, not silently save null. */
+const parsedPolicySettings = computed<{ value: Record<string, unknown> | null; error: string }>(() => {
+  if (runtimePolicyKind.value !== 'autonomous_exploration') return { value: null, error: '' }
+  const raw = runtimePolicySettingsJson.value.trim()
+  if (!raw) return { value: {}, error: '' }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { value: null, error: t('settings.runtimePolicySettingsInvalid') }
     }
-  : null)
+    return { value: parsed as Record<string, unknown>, error: '' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { value: null, error: `${t('settings.runtimePolicySettingsInvalid')} ${message}` }
+  }
+})
+const runtimePolicy = computed<AgentModeRuntimePolicy | null>(() => {
+  if (runtimePolicyKind.value === 'none') return null
+  if (runtimePolicyKind.value === 'structured_investigation') {
+    return { kind: 'structured_investigation', version: 1, features: [...runtimePolicyFeatures.value] }
+  }
+  const settings = parsedPolicySettings.value.value
+  if (!settings) return null
+  return { kind: 'autonomous_exploration', version: 1, features: [...runtimePolicyFeatures.value], settings }
+})
+
+function setRuntimePolicyKind(value: string) {
+  const kind: 'none' | AgentModeRuntimePolicy['kind'] =
+    value === 'structured_investigation' || value === 'autonomous_exploration' ? value : 'none'
+  if (kind === runtimePolicyKind.value) return
+  runtimePolicyKind.value = kind
+  const definition = runtimePolicyDefinitions.value.find((item) => item.kind === kind) ?? null
+  // Selecting a policy starts from its full allow-list (the old correction
+  // editor did the same); required features cannot be unchecked below.
+  runtimePolicyFeatures.value = definition ? [...definition.features] : []
+  runtimePolicySettingsJson.value = kind === 'autonomous_exploration' && definition?.default_settings
+    ? JSON.stringify(definition.default_settings, null, 2)
+    : ''
+}
+
+function togglePolicyFeature(feature: string, checked: boolean) {
+  if (selectedModeReadOnly.value) return
+  if (!checked) {
+    if (selectedPolicyDefinition.value?.required_features.includes(feature)) return
+    runtimePolicyFeatures.value = runtimePolicyFeatures.value.filter((item) => item !== feature)
+    return
+  }
+  if (!runtimePolicyFeatures.value.includes(feature)) runtimePolicyFeatures.value = [...runtimePolicyFeatures.value, feature]
+}
 
 function normalizeLayer(layer?: string): 'operation' | 'execution' {
   return layer === 'execution' ? 'execution' : 'operation'
@@ -98,6 +157,24 @@ async function loadAgents() {
   }
 }
 
+function applyRuntimePolicy(policy: AgentModeRuntimePolicy | null | undefined) {
+  if (policy?.kind === 'structured_investigation') {
+    runtimePolicyKind.value = policy.kind
+    runtimePolicyFeatures.value = [...policy.features]
+    runtimePolicySettingsJson.value = ''
+    return
+  }
+  if (policy?.kind === 'autonomous_exploration') {
+    runtimePolicyKind.value = policy.kind
+    runtimePolicyFeatures.value = [...policy.features]
+    runtimePolicySettingsJson.value = policy.settings ? JSON.stringify(policy.settings, null, 2) : ''
+    return
+  }
+  runtimePolicyKind.value = 'none'
+  runtimePolicyFeatures.value = []
+  runtimePolicySettingsJson.value = ''
+}
+
 async function selectMode(id: string) {
   selectedModeId.value = id
   try {
@@ -127,7 +204,7 @@ async function selectMode(id: string) {
       label: (e.label as string | undefined) ?? undefined,
     })) as AgentModeEdgeDto[]
     modeEtag.value = m.revision != null ? String(m.revision) : null
-    runtimePolicyKind.value = m.runtime_policy?.kind === 'structured_investigation' ? 'structured_investigation' : 'none'
+    applyRuntimePolicy(m.runtime_policy)
     // Fold the managed/status facts back onto the list row so the read-only notice
     // reflects the live resource state for pack-installed published modes too.
     if (m.managed !== undefined || m.status) {
@@ -146,7 +223,7 @@ async function selectMode(id: string) {
     modeNodes.value = []
     modeEdges.value = []
     modeEtag.value = null
-    runtimePolicyKind.value = 'none'
+    applyRuntimePolicy(null)
     notify.error(error, { title: t('agentCenter.loadModesFailed') })
   }
 }
@@ -158,7 +235,7 @@ consumeRequest(pendingModeId, async (modeId) => {
   modeNodes.value = []
   modeEdges.value = []
   modeEtag.value = null
-  runtimePolicyKind.value = 'none'
+  applyRuntimePolicy(null)
   if (!modes.value.some((mode) => mode.id === modeId)) await loadModes()
   if (generation !== modeNavigationGeneration) return
   if (!modes.value.some((mode) => mode.id === modeId)) {
@@ -166,6 +243,7 @@ consumeRequest(pendingModeId, async (modeId) => {
     modeNodes.value = []
     modeEdges.value = []
     modeEtag.value = null
+    applyRuntimePolicy(null)
     notify.error(t('app.loadFailedMessage'), { title: t('agentCenter.loadModesFailed'), key: 'search-navigation' })
     return
   }
@@ -214,6 +292,10 @@ function toCoreTopology(nodes: AgentModeNodeDto[], edges: AgentModeEdgeDto[]) {
 
 async function saveModeDraft() {
   if (!selectedModeId.value || selectedModeReadOnly.value) return
+  if (parsedPolicySettings.value.error) {
+    notify.error(parsedPolicySettings.value.error, { title: t('settings.runtimePolicySettingsInvalid') })
+    return
+  }
   modeBusy.value = true
   try {
     await api.updateAgentModeDraft(selectedModeId.value, { ...toCoreTopology(modeNodes.value, modeEdges.value), runtime_policy: runtimePolicy.value, canvas_layout: {} }, modeEtag.value)
@@ -243,6 +325,10 @@ async function publishMode() {
 async function cloneSelectedMode() {
   const source = selectedMode.value
   if (!source || !selectedModeReadOnly.value) return
+  if (parsedPolicySettings.value.error) {
+    notify.error(parsedPolicySettings.value.error, { title: t('settings.runtimePolicySettingsInvalid') })
+    return
+  }
   modeBusy.value = true
   try {
     const m = await api.createAgentModeDraft({
@@ -380,6 +466,7 @@ async function loadModeVersions() {
 onMounted(() => {
   void loadAgents()
   void loadModes()
+  void api.listAgentModeRuntimePolicies().then((rows) => { runtimePolicyDefinitions.value = rows }).catch(() => { runtimePolicyDefinitions.value = [] })
   void api.listModelProviders().then((rows) => { providers.value = rows }).catch(() => { providers.value = [] })
   void api.listModelRoutes().then((rows) => { routes.value = rows }).catch(() => { routes.value = [] })
 })
@@ -414,15 +501,49 @@ defineExpose({ loadModes })
     </div>
 
     <div v-if="selectedModeId" class="ac-mode-policy">
-      <UiLabel>{{ t('settings.runtimePolicy') }}</UiLabel>
-      <UiSelectField
-        v-model="runtimePolicyKind"
-        :disabled="selectedModeReadOnly"
-        :options="[
-          { value: 'none', label: t('settings.runtimePolicyNone') },
-          { value: 'structured_investigation', label: t('settings.runtimePolicyStructuredInvestigation') },
-        ]"
-      />
+      <div class="ac-mode-policy-head">
+        <UiLabel>{{ t('settings.runtimePolicy') }}</UiLabel>
+        <UiSelectField
+          :model-value="runtimePolicyKind"
+          :disabled="selectedModeReadOnly"
+          :options="policyKindOptions"
+          @update:model-value="setRuntimePolicyKind"
+        />
+      </div>
+      <template v-if="selectedPolicyDefinition">
+        <div class="ac-mode-policy-features">
+          <UiLabel>{{ t('settings.runtimePolicyFeatures') }}</UiLabel>
+          <label
+            v-for="feature in selectedPolicyDefinition.features"
+            :key="feature"
+            class="ac-mode-policy-feature"
+          >
+            <UiCheckbox
+              :model-value="runtimePolicyFeatures.includes(feature)"
+              :disabled="selectedModeReadOnly || selectedPolicyDefinition.required_features.includes(feature)"
+              :aria-label="feature"
+              @update:model-value="(checked: boolean) => togglePolicyFeature(feature, checked)"
+            />
+            <span>{{ feature }}</span>
+            <UiBadge v-if="selectedPolicyDefinition.required_features.includes(feature)" variant="outline">
+              {{ t('settings.runtimePolicyRequiredFeature') }}
+            </UiBadge>
+          </label>
+          <p v-if="selectedPolicyDefinition.dependencies.length" class="quiet">
+            {{ t('settings.runtimePolicyDependenciesHint', { pairs: selectedPolicyDefinition.dependencies.map((dependency) => `${dependency.feature} → ${dependency.requires}`).join(', ') }) }}
+          </p>
+        </div>
+        <div v-if="runtimePolicyKind === 'autonomous_exploration'" class="ac-mode-policy-settings">
+          <UiLabel>{{ t('settings.runtimePolicySettings') }}</UiLabel>
+          <UiTextarea
+            v-model="runtimePolicySettingsJson"
+            :rows="10"
+            :disabled="selectedModeReadOnly"
+            placeholder='{ "max_parallel_workers": 4 }'
+          />
+          <p v-if="parsedPolicySettings.error" class="ac-mode-policy-error">{{ parsedPolicySettings.error }}</p>
+        </div>
+      </template>
     </div>
 
     <div class="center-workbench workbench-duo">
@@ -567,12 +688,39 @@ defineExpose({ loadModes })
 }
 .ac-mode-policy {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+.ac-mode-policy-head {
+  display: flex;
   align-items: center;
   gap: 8px;
   max-width: 360px;
 }
-.ac-mode-policy > :first-child { flex: 0 0 auto; }
-.ac-mode-policy > :last-child { flex: 1; min-width: 0; }
+.ac-mode-policy-head > :first-child { flex: 0 0 auto; }
+.ac-mode-policy-head > :last-child { flex: 1; min-width: 0; }
+.ac-mode-policy-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ac-mode-policy-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ac-mode-policy-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ac-mode-policy-error {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 12px;
+}
 .ac-node-strategy {
   display: flex;
   flex-direction: column;

@@ -16,7 +16,8 @@ public sealed record ModePolicyDefinition(
     IReadOnlySet<string> Features,
     IReadOnlyList<string> RequiredFeatures,
     IReadOnlyList<ModePolicyFeatureDependency> Dependencies,
-    Func<JsonElement?, string?>? ValidateSettings = null);
+    Func<JsonElement?, string?>? ValidateSettings = null,
+    JsonElement? DefaultSettings = null);
 
 public sealed record ModePolicyFeatureDependency(string Feature, string Requires);
 
@@ -101,7 +102,8 @@ public static class ModeRuntimePolicyRegistry
                     new(RunDossierFeature, WorkerSettlementFeature),
                     new(SideQuestionFeature, EventDrivenPlanningFeature),
                 ],
-                AutonomousExplorationSettings.Validate),
+                AutonomousExplorationSettings.Validate,
+                AutonomousExplorationSettings.ToJsonElement()),
         };
 
     public static IReadOnlyCollection<ModePolicyDefinition> Definitions => ByKind.Values.ToArray();
@@ -249,6 +251,14 @@ public sealed record AutonomousExplorationSettings
             MaxRetriesPerIntent = Int(json, "max_retries_per_intent", defaults.MaxRetriesPerIntent),
         };
     }
+
+    private static readonly JsonSerializerOptions SnakeCaseJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
+    public static JsonElement ToJsonElement() =>
+        JsonSerializer.SerializeToElement(new AutonomousExplorationSettings(), SnakeCaseJson);
 
     private static int Int(JsonElement element, string name, int fallback) =>
         element.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed) ? parsed : fallback;

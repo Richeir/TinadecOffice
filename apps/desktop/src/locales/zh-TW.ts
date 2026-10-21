@@ -1592,6 +1592,12 @@ export default {
     runtimePolicy: "執行時策略",
     runtimePolicyNone: "一般模式",
     runtimePolicyStructuredInvestigation: "結構化糾偏",
+    runtimePolicyAutonomousExploration: "自主探索",
+    runtimePolicyFeatures: "執行時策略特性",
+    runtimePolicyRequiredFeature: "必選",
+    runtimePolicyDependenciesHint: "依賴：{pairs}",
+    runtimePolicySettings: "執行時策略設定（JSON）",
+    runtimePolicySettingsInvalid: "執行時策略設定必須是合法的 JSON 物件。",
     promptsPanelHint: "管線畫布 + 片段庫統一檢視：版本、效力訊號與 Token 預估。",
     runtimePanelHint: "監控執行中的智能體例項：暫停/恢復/取消與佇列改派。",
     runtimeCeilings: {

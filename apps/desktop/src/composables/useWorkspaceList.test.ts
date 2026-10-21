@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
-import { recentWorkspaceSessions, revealWorkspace, useWorkspaceList, workspaceListStorageKey } from './useWorkspaceList'
+import { recentSessionRows, recentWorkspaceSessions, revealWorkspace, useWorkspaceList, workspaceListStorageKey } from './useWorkspaceList'
 import type { SessionDto } from '@/api'
 describe('workspace list persistence', () => {
   beforeEach(() => localStorage.clear())
@@ -20,6 +20,13 @@ describe('workspace list persistence', () => {
     const rows = Array.from({ length: 9 }, (_, index) => ({ id: `${index}`, storage_id: 'one', updated_at: new Date(index * 1000).toISOString() } as SessionDto))
     expect(recentWorkspaceSessions(rows, 'one::0').map(row => row.id)).toEqual(['8', '7', '6', '5', '4', '0'])
     expect(recentWorkspaceSessions(rows, null, true)).toHaveLength(9)
+  })
+  it('ranks the recent list newest first across workspaces and caps it', () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({ id: `${index}`, updated_at: new Date(index * 1000).toISOString() } as SessionDto))
+    expect(recentSessionRows(rows, 8).map(row => row.id)).toEqual(['9', '8', '7', '6', '5', '4', '3', '2'])
+    // Ties fall back to the id, so the order never depends on the order the groups were walked.
+    const ties = [{ id: 'b', updated_at: '2026-01-01T00:00:00Z' }, { id: 'a', updated_at: '2026-01-01T00:00:00Z' }] as SessionDto[]
+    expect(recentSessionRows(ties, 8).map(row => row.id)).toEqual(['a', 'b'])
   })
   it('retains manual order and state across refresh and remount', () => {
     let list!: ReturnType<typeof useWorkspaceList>

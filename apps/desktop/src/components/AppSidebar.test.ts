@@ -159,6 +159,64 @@ describe('AppSidebar lifecycle management', () => {
     wrapper.unmount()
   })
 
+  it('turns the cross-workspace recent list on from the workspace options picker', async () => {
+    localStorage.clear()
+    const second = { ...project, id: 'p-2', name: 'Second' }
+    const free: SessionDto = { ...session, id: 's-free', project_id: null, title: 'Older free chat', updated_at: '2026-08-01T00:00:00Z' }
+    const newest: SessionDto = { ...session, id: 's-new', project_id: 'p-2', title: 'Newest work', updated_at: '2026-09-05T00:00:00Z' }
+    const wrapper = factory({ projects: [project, second], sessions: [session, free, newest], selectedSessionId: 's-new' }, document.body)
+
+    // Off by default: the workspace rows stay the only navigation surface until it is asked for.
+    expect(wrapper.find('.recent-conversations').exists()).toBe(false)
+    const trigger = wrapper.get<HTMLButtonElement>('.workspace-section-option')
+    const menu = wrapper.get<HTMLDivElement>('.sidebar-workspace-options')
+    expect(trigger.attributes('popovertarget')).toBe(menu.attributes('id'))
+    expect(trigger.attributes('aria-controls')).toBe(menu.attributes('id'))
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+
+    await trigger.trigger('click')
+    dispatchViewToggle(menu.element, 'open')
+    await flushPromises()
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+
+    const option = wrapper.get('.sidebar-option')
+    expect(option.attributes('aria-checked')).toBe('false')
+    const hideOptions = vi.fn(() => dispatchViewToggle(menu.element, 'closed'))
+    Object.defineProperty(menu.element, 'hidePopover', { configurable: true, value: hideOptions })
+    await option.trigger('click')
+    expect(option.attributes('aria-checked')).toBe('true')
+
+    // Every workspace contributes — the free conversation included — newest first, and each row
+    // names the workspace it came from so a flat list never loses "where am I".
+    const rows = wrapper.findAll('.recent-conversation-row')
+    expect(rows.map(row => row.get('.session-title').text())).toEqual(['Newest work', 'Demo session', 'Older free chat'])
+    expect(rows.map(row => row.get('.recent-conversation-source').text())).toEqual(['Second', 'Demo project', 'chat.freeConversation'])
+    expect(rows[0]!.classes()).toContain('active')
+
+    // The panel covers the rows it just revealed, so picking closes it and hands focus back.
+    expect(hideOptions).toHaveBeenCalledTimes(1)
+    expect(trigger.attributes('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(trigger.element)
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).recent).toBe(true)
+
+    // A recents row opens that conversation without expanding its workspace first.
+    await rows[2]!.get('.session-item').trigger('click')
+    expect(wrapper.emitted('select-session')?.at(-1)).toEqual(['s-free'])
+
+    await option.trigger('click')
+    expect(wrapper.find('.recent-conversations').exists()).toBe(false)
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).recent).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('comes back with the recent list already on after a remount', () => {
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: true }))
+    const wrapper = factory()
+    expect(wrapper.get('.sidebar-option').attributes('aria-checked')).toBe('true')
+    expect(wrapper.findAll('.recent-conversation-row')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('keeps five recent conversations and the selected older one, then shows all', async () => {
     localStorage.clear()
     const sessions = Array.from({ length: 9 }, (_, index) => ({ ...session, id: `s-${index}`, updated_at: new Date(index * 1000).toISOString() }))

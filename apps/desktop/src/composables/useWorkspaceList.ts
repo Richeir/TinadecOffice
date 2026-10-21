@@ -6,22 +6,32 @@ export const freeWorkspaceKey = 'user::free'
 export const workspaceListStorageKey = 'tinadec.sidebar.workspaces.v1'
 const revealEvent = 'tinadec:workspace-reveal'
 export function revealWorkspace(key: string) { window.dispatchEvent(new CustomEvent(revealEvent, { detail: key })) }
-interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[] }
-const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [] })
+interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[]; recent: boolean }
+const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false })
 function read(): ListState {
   try {
     const value = JSON.parse(localStorage.getItem(workspaceListStorageKey) ?? 'null')
     if (!value || typeof value !== 'object') return defaults()
-    return { collapsed: value.collapsed === true, ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
+    return { collapsed: value.collapsed === true, recent: value.recent === true, ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
   } catch { return defaults() }
 }
+const byRecency = (a: SessionDto, b: SessionDto) =>
+  Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || a.id.localeCompare(b.id)
 export function recentWorkspaceSessions(rows: SessionDto[], selectedKey: string | null, all = false) {
-  const sorted = [...rows].sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || a.id.localeCompare(b.id))
+  const sorted = [...rows].sort(byRecency)
   if (all) return sorted
   const visible = sorted.slice(0, 5)
   const active = sorted.find(row => selectionKey(row) === selectedKey)
   if (active && !visible.includes(active)) visible.push(active)
   return visible
+}
+/**
+ * Newest first across every workspace, for the optional 最近对话 group: the point of that
+ * list is not to belong to a project, so the caller collects the rows and this only ranks
+ * and caps them.
+ */
+export function recentSessionRows(rows: SessionDto[], limit: number) {
+  return [...rows].sort(byRecency).slice(0, limit)
 }
 export function useWorkspaceList() {
   const state = ref(read())
@@ -62,5 +72,7 @@ export function useWorkspaceList() {
     if (index < 0 || target < 0 || target >= order.length) return
     ;[order[index], order[target]] = [order[target]!, order[index]!]; state.value.order = order
   }
-  return { state, reconcile, toggle, move, step }
+  /** Section-level options (currently only 最近对话) ride the same persisted record. */
+  function setRecent(value: boolean) { state.value.recent = value }
+  return { state, reconcile, toggle, move, step, setRecent }
 }

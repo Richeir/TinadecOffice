@@ -2007,14 +2007,19 @@ button.agent-topology-node:hover,
 .workspace-section-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 5px; flex: 1; padding: 4px 2px; color: var(--text-muted); background: transparent; border: 0; font-size: 12px; text-align: left; cursor: pointer; }
 .workspace-section-chevron { opacity: 0; transform: rotate(0); transition: opacity 120ms ease, transform 120ms ease; }
 .workspace-section-chevron.expanded { transform: rotate(90deg); }
-.workspace-section-add { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; background: transparent; color: var(--text-muted); border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+/* Section actions: the options picker and the add button share one shape and one reveal, so
+   the heading stays quiet until the pointer reaches the workspace block. */
+.workspace-section-action { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; background: transparent; color: var(--text-muted); border: 0; border-radius: var(--radius-sm); cursor: pointer; }
 /* Scoped to the section on purpose. `.sidebar-extra` further down re-asserts
-   `opacity: 1` at equal specificity, so a bare `.workspace-section-add { opacity: 0 }`
-   loses the cascade and the action then never hides. */
-.workspace-section .workspace-section-add { opacity: 0; pointer-events: none; }
-.workspace-section:hover .workspace-section-add, .workspace-section-heading:focus-within .workspace-section-add { opacity: 1; pointer-events: auto; }
+   `opacity: 1` at equal specificity, so a bare `.workspace-section-action { opacity: 0 }`
+   loses the cascade and the actions then never hide. */
+.workspace-section .workspace-section-action { opacity: 0; pointer-events: none; }
+.workspace-section:hover .workspace-section-action, .workspace-section-heading:focus-within .workspace-section-action { opacity: 1; pointer-events: auto; }
+/* An open picker must stay reachable while the pointer sits in its panel, which is outside
+   the hover region. */
+.workspace-section-action[aria-expanded="true"] { opacity: 1; pointer-events: auto; background: var(--surface-selected); color: var(--text-primary); }
 .workspace-section-heading:hover .workspace-section-chevron, .workspace-section-heading:focus-within .workspace-section-chevron { opacity: 1; }
-.workspace-section-add:hover { background: var(--surface-hover); color: var(--text-primary); }
+.workspace-section-action:hover { background: var(--surface-hover); color: var(--text-primary); }
 .workspace-section-heading button:focus-visible, .workspace-show-more:focus-visible, .workspace-load-error button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .workspace-show-more { align-self: flex-start; margin: 4px 0 8px; border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
 .workspace-show-more:hover { color: var(--text-primary); background: var(--surface-hover); }
@@ -2026,6 +2031,16 @@ button.agent-topology-node:hover,
 /* The group keeps its scrollport so the footer stays pinned to the bottom of the sidebar
    when the workspace list is collapsed. */
 .sidebar-list--group-collapsed { padding-top: 0; padding-bottom: 0; }
+/* Optional cross-workspace recents (sidebar options). It sits inside the workspace scrollport
+   because it is a shortcut into the same conversations, not a second navigation surface. */
+.recent-conversations { display: flex; flex-direction: column; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border-muted); }
+.recent-conversations-heading { padding: 4px 8px 3px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-muted); }
+.recent-conversation-icon { flex-shrink: 0; color: var(--text-muted); }
+/* The source column names the workspace the conversation lives in, so a flat list never
+   loses "where am I" — it yields to the title when the sidebar is narrow. */
+.recent-conversation-source { flex: 0 1 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
+/* The rail has no room for a flat chat list, and its section header is gone there too. */
+.sidebar-collapsed .recent-conversations { display: none; }
 .workspace-section-heading + .sidebar-list--group-collapsed { margin-top: 0; }
 .workspace-color-default { color: var(--text-secondary); }
 .workspace-color-blue { color: var(--accent-info); }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
-import { useWorkspaceList, freeWorkspaceKey, recentWorkspaceSessions } from '@/composables/useWorkspaceList'
+import { useWorkspaceList, freeWorkspaceKey, recentSessionRows, recentWorkspaceSessions } from '@/composables/useWorkspaceList'
 import { workspaceIcons, type WorkspaceLoadState } from '@/lib/workspaces'
 import { selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
 import {
@@ -17,6 +17,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  SlidersHorizontal,
   LayoutGrid,
   Waypoints,
   Sparkles,
@@ -282,6 +283,54 @@ function shownSessions(key: string) {
 }
 function isActiveSession(session: SessionDto) { return session.id === props.selectedSessionId && (!session.storage_id || session.storage_id === selectedStorage.value) }
 
+// ---- Section options (currently: 最近对话) ----
+// The recents list is what Codex/WorkBuddy lead with: newest conversations across every
+// workspace, so a chat is one click away without knowing which project it lives in. It is
+// built from the same group rows the list renders, which keeps the workspace/scope filters
+// (and the free conversation) as the single definition of "a conversation I can see".
+const RECENT_CONVERSATION_LIMIT = 8
+const recentConversations = computed(() => {
+  const source = new Map<string, string>()
+  const rows: SessionDto[] = []
+  for (const workspace of workspaces.value) {
+    for (const row of allSessions(workspace.key)) {
+      const key = selectionKey(row)
+      if (source.has(key)) continue
+      source.set(key, workspace.name)
+      rows.push(row)
+    }
+  }
+  return recentSessionRows(rows, RECENT_CONVERSATION_LIMIT)
+    .map(session => ({ session, workspace: source.get(selectionKey(session)) ?? '' }))
+})
+function toggleRecentConversations() {
+  list.setRecent(!list.state.value.recent)
+  // The panel sits exactly where the new rows appear, so it steps aside: the change is the
+  // feedback, and the gear keeps focus the way the view chooser does.
+  optionsMenu.value?.hidePopover()
+  optionsMenuTrigger?.focus({ preventScroll: true })
+}
+const optionsMenu = ref<HTMLDivElement | null>(null)
+let optionsMenuTrigger: HTMLButtonElement | null = null
+const optionsMenuId = `sidebar-workspace-options-${useId()}`
+const optionsMenuOpen = ref(false)
+const optionsMenuStyle = ref({ left: '0px', top: '0px' })
+/** Matches `.sidebar-workspace-options` width; the panel is display:none while closed, so it
+ *  cannot be measured before it opens. Change both together. */
+const OPTIONS_MENU_WIDTH = 236
+function openOptionsMenu(event: MouseEvent) {
+  // The native invoker performs the toggle; this only positions the panel under the gear.
+  optionsMenuTrigger = event.currentTarget as HTMLButtonElement
+  const rect = optionsMenuTrigger.getBoundingClientRect()
+  optionsMenuStyle.value = {
+    left: `${Math.max(8, Math.min(rect.right - OPTIONS_MENU_WIDTH, window.innerWidth - OPTIONS_MENU_WIDTH - 8))}px`,
+    top: `${rect.bottom + 6}px`,
+  }
+}
+function updateOptionsMenuState(event: Event) {
+  optionsMenuOpen.value = (event as ToggleEvent).newState === 'open'
+}
+
 function getProjectSessions(projectKey: string): SessionDto[] {
   const { id, storageId } = selectionIdentity(projectKey)
   return props.sessions.filter((s) => (s.project_id ?? null) === id && (!storageId || s.storage_id === storageId) && s.title)
@@ -456,9 +505,38 @@ watch([nickname, () => props.collapsed], async () => {
           <span class="sidebar-label">{{ t('sidebar.workspaces') }}</span>
           <ChevronRight :size="13" class="workspace-section-chevron" :class="{ expanded: !list.state.value.collapsed }" />
         </button>
-        <button class="workspace-section-add sidebar-extra" :aria-label="t('sidebar.newWorkspace')" :title="t('sidebar.newWorkspace')" @click.stop="emit('open-project')"><Plus :size="14" /></button>
+        <button
+          type="button"
+          class="workspace-section-action workspace-section-option sidebar-extra"
+          :aria-label="t('sidebar.workspaceOptions')"
+          :title="t('sidebar.workspaceOptions')"
+          :aria-expanded="optionsMenuOpen"
+          :aria-controls="optionsMenuId"
+          aria-haspopup="dialog"
+          :popovertarget="optionsMenuId"
+          popovertargetaction="toggle"
+          @click="openOptionsMenu"
+        ><SlidersHorizontal :size="14" /></button>
+        <button type="button" class="workspace-section-action workspace-section-add sidebar-extra" :aria-label="t('sidebar.newWorkspace')" :title="t('sidebar.newWorkspace')" @click.stop="emit('open-project')"><Plus :size="14" /></button>
       </div>
       <div id="sidebar-workspaces" class="sidebar-list" :class="{ 'sidebar-list--group-collapsed': list.state.value.collapsed }">
+        <div v-if="list.state.value.recent && !list.state.value.collapsed" class="recent-conversations" role="group" :aria-label="t('sidebar.recentConversations')">
+          <div class="recent-conversations-heading">{{ t('sidebar.recentConversations') }}</div>
+          <div
+            v-for="entry in recentConversations"
+            :key="selectionKey(entry.session)"
+            class="session-row recent-conversation-row"
+            :class="{ active: isActiveSession(entry.session) }"
+            @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
+          >
+            <button class="session-item" :aria-current="isActiveSession(entry.session) ? 'page' : undefined" :title="`${entry.session.title} · ${entry.workspace}`" @click="handleSessionClick(selectionKey(entry.session))">
+              <MessageSquare :size="13" class="recent-conversation-icon" />
+              <span class="session-title">{{ entry.session.title }}</span>
+              <span class="recent-conversation-source">{{ entry.workspace }}</span>
+            </button>
+          </div>
+          <div v-if="!recentConversations.length" class="session-empty">{{ t('sidebar.noSessions') }}</div>
+        </div>
         <template v-if="!list.state.value.collapsed"><div v-for="workspace in workspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
           <div class="project-row" :class="{
               active: workspace.project ? workspace.project.id === selectedProjectId && (!workspace.project.storage_id || workspace.project.storage_id === selectedStorage) : !selectedProjectId,
@@ -585,6 +663,31 @@ watch([nickname, () => props.collapsed], async () => {
       <button :aria-pressed="!spaceActive" :autofocus="!spaceActive" @click="changeView('flat')"><LayoutGrid :size="18" />{{ t('space.flat') }}</button>
       <button :aria-pressed="!!spaceActive" :autofocus="!!spaceActive" @click="changeView('space')"><Waypoints :size="18" />{{ t('space.title') }}</button>
     </div>
+    <div
+      :id="optionsMenuId"
+      ref="optionsMenu"
+      popover
+      class="sidebar-workspace-options"
+      :style="optionsMenuStyle"
+      role="dialog"
+      :aria-label="t('sidebar.workspaceOptions')"
+      @beforetoggle="updateOptionsMenuState"
+    >
+      <p class="sidebar-workspace-options-title">{{ t('sidebar.workspaceOptions') }}</p>
+      <button
+        type="button"
+        class="sidebar-option"
+        role="switch"
+        :aria-checked="list.state.value.recent"
+        @click="toggleRecentConversations"
+      >
+        <span class="sidebar-option-copy">
+          <span class="sidebar-option-label">{{ t('sidebar.recentConversations') }}</span>
+          <span class="sidebar-option-hint">{{ t('sidebar.recentConversationsHint') }}</span>
+        </span>
+        <span class="sidebar-option-switch" aria-hidden="true"></span>
+      </button>
+    </div>
     <dialog ref="migrationDialog" class="sidebar-migration-dialog" aria-labelledby="migration-title" @close="migrationSession = null">
       <form @submit.prevent="submitMigration">
         <h2 id="migration-title">{{ t('sidebar.migrateSession') }}</h2>
@@ -608,6 +711,23 @@ watch([nickname, () => props.collapsed], async () => {
 }
 .sidebar-view-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
 .sidebar-view-menu button:hover, .sidebar-view-menu button[aria-pressed="true"] { background: var(--surface-selected); }
+/* Section options mirror the view chooser: a native popover anchored by the invoker, so
+   Escape, light dismiss and focus restore stay browser behaviour instead of hand-rolled. */
+.sidebar-workspace-options { position: fixed; inset: auto; margin: 0; width: 236px; padding: 6px; border: 1px solid var(--border-muted); border-radius: 12px; background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-card-subtle); opacity: 0; transform: translateY(-6px) scale(0.98); transform-origin: top right; pointer-events: none; transition: opacity 160ms ease-out, transform 160ms ease-out, display 160ms allow-discrete, overlay 160ms allow-discrete; }
+.sidebar-workspace-options:popover-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+@starting-style { .sidebar-workspace-options:popover-open { opacity: 0; transform: translateY(-6px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .sidebar-workspace-options { transition: none; transform: none; } }
+.sidebar-workspace-options-title { margin: 4px 8px 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-muted); }
+.sidebar-option { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.sidebar-option:hover { background: var(--surface-hover); }
+.sidebar-option:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
+.sidebar-option-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.sidebar-option-label { font-size: 12px; color: var(--text-primary); }
+.sidebar-option-hint { font-size: 11px; line-height: 1.35; color: var(--text-muted); }
+.sidebar-option-switch { position: relative; flex: 0 0 auto; width: 26px; height: 15px; margin-top: 2px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 40%, transparent); transition: background 140ms ease; }
+.sidebar-option-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--text-secondary); transition: transform 140ms ease, background 140ms ease; }
+.sidebar-option[aria-checked="true"] .sidebar-option-switch { background: var(--accent-primary); }
+.sidebar-option[aria-checked="true"] .sidebar-option-switch::after { transform: translateX(11px); background: rgb(255 255 255 / 0.94); }
 .sidebar-migration-dialog { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--border-muted); border-radius: 12px; padding: 24px; background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-card-subtle); }
 .sidebar-migration-dialog::backdrop { background: color-mix(in srgb, var(--bg-overlay) 65%, transparent); }
 .sidebar-migration-dialog form, .sidebar-migration-dialog label { display: grid; gap: 12px; }

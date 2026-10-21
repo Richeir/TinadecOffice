@@ -198,6 +198,16 @@ public static class CoreVirtualToolPolicy
     public static bool IsPlanLedger(string? toolId) =>
         toolId is not null && PlanLedgerToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Searches one run's trace across the workers that produced it (B4): durable events, tool
+    /// executions with their redacted previews, and the evidence archive. Read-only and run-scoped;
+    /// the <c>cross_worker_trace</c> feature is declared by the mode and checked before serving.
+    /// </summary>
+    public const string TraceSearchToolId = "trace_search";
+
+    public static bool IsTraceSearch(string? toolId) =>
+        string.Equals(toolId, TraceSearchToolId, StringComparison.OrdinalIgnoreCase);
+
     public static bool IsPlanLedgerRead(string? toolId) =>
         string.Equals(toolId, PlanLedgerReadToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -214,7 +224,7 @@ public static class CoreVirtualToolPolicy
         IsCreateWorkspace(toolId) || IsTaskDispatch(toolId) || IsTaskWait(toolId) || IsPlanUpdate(toolId) || IsSpecPropose(toolId)
         || IsCorrectionTrace(toolId) || IsReadAttachment(toolId)
         || IsTinaChat(toolId) || IsOrganization(toolId) || IsGraphView(toolId) || IsRecallEvidence(toolId) || IsEnvironment(toolId)
-        || IsExploration(toolId) || IsPlanLedger(toolId);
+        || IsExploration(toolId) || IsPlanLedger(toolId) || IsTraceSearch(toolId);
 
     /// <summary>
     /// True when a call-time gate may demand that the tool appear in the TinadecTools child-process

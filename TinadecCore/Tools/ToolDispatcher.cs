@@ -67,6 +67,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
     private readonly IExplorationGraph? _exploration;
     /// <summary>The run's shared plan behind <c>plan_ledger_*</c>. Optional like the graph.</summary>
     private readonly IPlanLedger? _planLedger;
+    /// <summary>Cross-worker trace search behind <c>trace_search</c> (B4). Optional like the graph.</summary>
+    private readonly IRunTraceSearch? _runTraceSearch;
     /// <summary>The environment steward's registry behind <c>environment_*</c>. Optional like the archive.</summary>
     private readonly IEnvironmentRegistry? _environments;
     /// <summary>Standing approvals a person gave (todo E7): command prefixes honored at prepare, shell's per-session delegation opt-in re-checked at the gates.</summary>
@@ -100,7 +102,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         IToolConfigurationResolver? toolSettings = null,
         IScopeStorageLocations? storageLocations = null,
         IExplorationGraph? exploration = null,
-        IPlanLedger? planLedger = null)
+        IPlanLedger? planLedger = null,
+        IRunTraceSearch? runTraceSearch = null)
     {
         _provider = provider;
         _scopeResolver = scopeResolver;
@@ -126,6 +129,7 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         _storageLocations = storageLocations;
         _exploration = exploration;
         _planLedger = planLedger;
+        _runTraceSearch = runTraceSearch;
     }
 
     public Task<ToolDispatchResultDto> ExecuteAsync(ToolDispatchRequestDto request, CancellationToken cancellationToken = default) =>
@@ -892,6 +896,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             return await ExecutePlanLedgerToolAsync(scope, wire, cancellationToken).ConfigureAwait(false);
         }
 
+        if (CoreVirtualToolPolicy.IsTraceSearch(wire.ToolId))
+        {
+            return await ExecuteTraceSearchAsync(scope, wire, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!scope.SerializeWorkspaceWrites || !execution.MutatesWorkspace)
         {
             return streaming is not null
@@ -1582,6 +1591,92 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             return Error(ex.Message);
         }
         catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Serves cross-worker trace search (B4) inside the caller's own run. The frozen
+    /// <c>trace_result_limit</c> is the ceiling; a model-supplied limit can only narrow it. The
+    /// feature is re-checked here because admission alone cannot protect a host whose frozen body
+    /// predates the tool.
+    /// </summary>
+    private async Task<ToolWireResponseDto> ExecuteTraceSearchAsync(ToolInvocationScope scope, ToolWireRequestDto wire, CancellationToken cancellationToken)
+    {
+        if (!ModeRuntimePolicyRegistry.Has(scope.RuntimePolicy, ModeRuntimePolicyRegistry.CrossWorkerTraceFeature))
+            return new ToolWireResponseDto
+            {
+                CallId = wire.ToolCallId,
+                IsSuccess = false,
+                Error = "trace_search requires the cross_worker_trace runtime feature."
+            };
+        if (_runTraceSearch is not { } trace)
+            return new ToolWireResponseDto { CallId = wire.ToolCallId, IsSuccess = false, Error = "Trace search is not available in this host." };
+
+        var parameters = wire.Params ?? default;
+        ToolWireResponseDto Ok(object result) => new() { CallId = wire.ToolCallId, IsSuccess = true, Result = JsonSerializer.SerializeToElement(result) };
+        ToolWireResponseDto Error(string error) => new() { CallId = wire.ToolCallId, IsSuccess = false, Error = error };
+        string? Text(string name) =>
+            parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                && value.GetString()?.Trim() is { Length: > 0 } text ? text : null;
+        Guid? Id(string name)
+        {
+            var text = Text(name);
+            if (text is null) return null;
+            return Guid.TryParse(text, out var id) ? id : Guid.Empty;
+        }
+
+        var taskId = Id("task_id");
+        if (taskId == Guid.Empty) return Error("task_id must be an id from this run's tasks.");
+        var agentId = Id("agent_instance_id");
+        if (agentId == Guid.Empty) return Error("agent_instance_id must be an instance id from this run.");
+
+        var limit = AutonomousExplorationSettings.From(scope.RuntimePolicy?.Settings).TraceResultLimit;
+        if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("limit", out var limitValue))
+        {
+            if (limitValue.ValueKind != JsonValueKind.Number || !limitValue.TryGetInt32(out var requested) || requested < 1)
+                return Error("limit must be a positive number.");
+            limit = Math.Min(requested, limit);
+        }
+
+        try
+        {
+            var result = await trace.SearchAsync(new RunTraceQuery(
+                scope.TenantId, scope.WorkspaceId, scope.SessionId, scope.RunId,
+                taskId, agentId, Text("query"), limit), cancellationToken).ConfigureAwait(false);
+            return Ok(new
+            {
+                limit = result.Limit,
+                truncated = result.Truncated,
+                events = result.Events.Select(item => new
+                {
+                    event_id = item.EventId,
+                    event_type = item.EventType,
+                    timestamp = item.Timestamp,
+                    summary = item.Summary,
+                    payload = item.PayloadJson,
+                }).ToArray(),
+                tools = result.Tools.Select(item => new
+                {
+                    agent_instance_id = item.AgentInstanceId.ToString("N"),
+                    created_at = item.CreatedAt,
+                    execution = item.Preview,
+                }).ToArray(),
+                evidence = result.Evidence.Select(hit => new
+                {
+                    evidence_id = hit.EvidenceId,
+                    kind = hit.Kind,
+                    title = hit.Title,
+                    author = hit.Author,
+                    task_id = hit.TaskId,
+                    matched_by = hit.MatchedBy,
+                    created_at = hit.CreatedAt,
+                    snippet = hit.Snippet,
+                }).ToArray(),
+            });
+        }
+        catch (ArgumentException ex)
         {
             return Error(ex.Message);
         }

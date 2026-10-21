@@ -45,6 +45,17 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
             sp.GetService<TimeProvider>() ?? TimeProvider.System,
             sp.GetService<Microsoft.Extensions.Logging.ILogger<AutonomousExplorationCoordinator>>()));
         builder.Services.AddHostedService<AutonomousExplorationCoordinatorService>();
+        // B4: settlement of terminal worker results into the exploration graph and the plan ledger,
+        // and read-only trace search across one run's events, tools and evidence.
+        builder.Services.AddSingleton(sp => new WorkerSettlementService(
+            sp.GetService<IExplorationGraph>(),
+            sp.GetService<IPlanLedger>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<WorkerSettlementService>>()));
+        builder.Services.AddSingleton<IRunTraceSearch>(sp => new RunTraceSearchService(
+            sp.GetRequiredService<ILifecycleManager>(),
+            sp.GetRequiredService<IToolExecutionCoordinator>(),
+            sp.GetService<IEvidenceArchive>(),
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<RunTraceSearchService>>()));
         builder.Services.AddSingleton<IApprovalGateJudge, ApprovalGateJudge>();
         builder.Services.AddSingleton<AgentInstanceService>();
         builder.Services.AddSingleton<IAgentInstanceService>(sp => sp.GetRequiredService<AgentInstanceService>());
@@ -68,7 +79,7 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
             ModuleId = ModuleId,
             Version = "0.1.0",
             Dependencies = ["abstractions", "persistence", "lifecycle", "models", "memory", "context", "prompts", "loop_guard", "tools"],
-            Capabilities = ["dual_layer_orchestration", "task_dispatch", "collaboration", "scheduling", "result_aggregation", "operational_trigger_chain", "standing_member_turns", "governance_topic_sink", "approval_gate_judge", "autonomous_exploration_coordinator"],
+            Capabilities = ["dual_layer_orchestration", "task_dispatch", "collaboration", "scheduling", "result_aggregation", "operational_trigger_chain", "standing_member_turns", "governance_topic_sink", "approval_gate_judge", "autonomous_exploration_coordinator", "worker_settlement", "cross_worker_trace"],
             Language = "C#",
             MafPrimitives = ["agent", "workflow"],
             RegistrationStatus = ModuleRegistrationStatus.Registered

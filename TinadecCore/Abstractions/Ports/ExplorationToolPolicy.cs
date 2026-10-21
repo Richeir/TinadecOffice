@@ -23,7 +23,7 @@ public static class ExplorationToolPolicy
             [CoreVirtualToolPolicy.ExplorationDigestToolId] = ModeRuntimePolicyRegistry.MergedDigestFeature,
             [CoreVirtualToolPolicy.PlanLedgerReadToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
             [CoreVirtualToolPolicy.PlanLedgerUpdateToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
-            ["trace_search"] = ModeRuntimePolicyRegistry.CrossWorkerTraceFeature,
+            [CoreVirtualToolPolicy.TraceSearchToolId] = ModeRuntimePolicyRegistry.CrossWorkerTraceFeature,
             ["run_dossier"] = ModeRuntimePolicyRegistry.RunDossierFeature,
         };
 

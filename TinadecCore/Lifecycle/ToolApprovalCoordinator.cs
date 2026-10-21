@@ -185,6 +185,31 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         return row is null ? null : await ToSnapshotAsync(row, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<ToolExecutionSnapshot>> ListForRunAsync(
+        Guid runId,
+        Guid? taskId = null,
+        Guid? agentInstanceId = null,
+        int limit = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = _tenant.Current;
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var query = db.ToolExecutions.AsNoTracking()
+            .Where(x => x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId && x.RunId == runId);
+        if (taskId is { } task) query = query.Where(x => x.TaskId == task);
+        if (agentInstanceId is { } agent) query = query.Where(x => x.AgentInstanceId == agent);
+        // SQLite cannot ORDER BY a DateTimeOffset column, so newest-first is
+        // selected in memory after the run-scoped fetch.
+        var rows = (await query.ToListAsync(cancellationToken).ConfigureAwait(false))
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(Math.Clamp(limit, 1, 200))
+            .ToList();
+        var snapshots = new List<ToolExecutionSnapshot>(rows.Count);
+        foreach (var row in rows)
+            snapshots.Add(await ToSnapshotAsync(row, cancellationToken).ConfigureAwait(false));
+        return snapshots;
+    }
+
     public async Task<ToolExecutionSnapshot> BindAuthorizationAsync(
         Guid executionId,
         Guid? permissionRequestId,

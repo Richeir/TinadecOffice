@@ -906,6 +906,10 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
         public Task<ToolExecutionSnapshot?> FindAsync(Guid executionId, CancellationToken cancellationToken = default) =>
             inner.FindAsync(executionId, cancellationToken);
 
+        public Task<IReadOnlyList<ToolExecutionSnapshot>> ListForRunAsync(
+            Guid runId, Guid? taskId = null, Guid? agentInstanceId = null, int limit = 50, CancellationToken cancellationToken = default) =>
+            inner.ListForRunAsync(runId, taskId, agentInstanceId, limit, cancellationToken);
+
         public Task<ToolExecutionStartDecision> TryStartAsync(Guid executionId, bool allowStaleRunningReset = false, CancellationToken cancellationToken = default) =>
             inner.TryStartAsync(executionId, allowStaleRunningReset, cancellationToken);
 

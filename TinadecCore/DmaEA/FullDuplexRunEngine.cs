@@ -105,6 +105,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     private readonly IPlanLedger? _planLedger;
     /// <summary>The event-driven planner wake (B3), when the host registered the exploration module.</summary>
     private readonly AutonomousExplorationCoordinator? _autonomousPlanning;
+    /// <summary>The session's exploration graph (B4), read for the close-out findings section.</summary>
+    private readonly IExplorationGraph? _exploration;
+    /// <summary>Worker settlement (B4), when the host registered the exploration module.</summary>
+    private readonly WorkerSettlementService? _workerSettlement;
     /// <summary>
     /// The resource ledger, when the host registered one. Optional so a trimmed composition still runs;
     /// the ledger only ever refuses a call, never grants one.
@@ -205,6 +209,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         _longTermMemory = services.GetService(typeof(ILongTermMemoryService)) as ILongTermMemoryService;
         _planLedger = services.GetService(typeof(IPlanLedger)) as IPlanLedger;
         _autonomousPlanning = services.GetService(typeof(AutonomousExplorationCoordinator)) as AutonomousExplorationCoordinator;
+        _exploration = services.GetService(typeof(IExplorationGraph)) as IExplorationGraph;
+        _workerSettlement = services.GetService(typeof(WorkerSettlementService)) as WorkerSettlementService;
         _resourceLeases = services.GetService(typeof(IResourceLeaseService)) as IResourceLeaseService;
         _projection = services.GetService(typeof(RunStreamProjection)) as RunStreamProjection;
         _logger = logger;
@@ -3621,18 +3627,21 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     /// run's frozen policy enables event-driven planning, coalesces the wake, and forwards the raw
     /// fact to whoever subscribed to it; this engine never waits for the planner's turn.
     /// </summary>
-    private async Task ObserveAutonomousEventAsync(RunState run, FrozenRunConfigurationV1 configuration, string topic, string summary)
+    private async Task<bool> ObserveAutonomousEventAsync(RunState run, FrozenRunConfigurationV1 configuration, string topic, string summary)
     {
-        if (_autonomousPlanning is not { } planning || OrganizationScopeOf(run) is not { } scope) return;
+        if (_autonomousPlanning is not { } planning || OrganizationScopeOf(run) is not { } scope) return false;
         try
         {
-            await planning.ObserveAsync(
+            // True means the coordinator took the fact and forwarded it to the topic's standing
+            // subscribers itself; false means this engine still has to raise the standing notice.
+            return await planning.ObserveAsync(
                 new AutonomousPlanningRun(scope.TenantId, scope.WorkspaceId, scope.SessionId, Guid.Parse(run.RunId), configuration.RuntimePolicy),
                 topic, summary, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.TryLogDebug(ex, "Could not report {Topic} of run {RunId} to the autonomous planner.", topic, run.RunId);
+            return false;
         }
     }
 
@@ -3666,19 +3675,20 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     /// Keeps a lower layer's own words in the session's evidence archive (todo R4), so a summary can
     /// always be traced back to what was said. Best-effort: archiving never changes a run's outcome.
     /// </summary>
-    private async Task ArchiveEvidenceAsync(RunState run, Guid? taskId, string kind, string title, string? author, string content,
+    private async Task<Guid?> ArchiveEvidenceAsync(RunState run, Guid? taskId, string kind, string title, string? author, string content,
         string sourceKey, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(content) || OrganizationScopeOf(run) is not { } scope) return;
-        if (_services.GetService(typeof(IEvidenceArchive)) is not IEvidenceArchive archive) return;
+        if (string.IsNullOrWhiteSpace(content) || OrganizationScopeOf(run) is not { } scope) return null;
+        if (_services.GetService(typeof(IEvidenceArchive)) is not IEvidenceArchive archive) return null;
         try
         {
-            await archive.AppendAsync(new EvidenceEntry(scope.TenantId, scope.WorkspaceId, scope.SessionId, Guid.Parse(run.RunId), taskId,
+            return await archive.AppendAsync(new EvidenceEntry(scope.TenantId, scope.WorkspaceId, scope.SessionId, Guid.Parse(run.RunId), taskId,
                 kind, title, author, content, sourceKey), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             _logger.TryLogDebug(ex, "Could not archive {Kind} evidence of run {RunId}.", kind, run.RunId);
+            return null;
         }
     }
 
@@ -3794,13 +3804,14 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             }
             if (task.WorkerAgentId is { } finishedWorker) await SetMemberOfflineAsync(finishedWorker, cancellationToken).ConfigureAwait(false);
             // The result is kept verbatim, per attempt: the meeting and the summaries compress it, the archive never does.
-            await ArchiveEvidenceAsync(run, task.TaskId, EvidenceKinds.TaskResult, task.Title, task.WorkerHandle ?? task.WorkerAgentSlug,
+            var archivedEvidenceId = await ArchiveEvidenceAsync(run, task.TaskId, EvidenceKinds.TaskResult, task.Title, task.WorkerHandle ?? task.WorkerAgentSlug,
                 TaskEvidenceText(task), $"task:{task.TaskId:N}:{task.Attempt}", cancellationToken).ConfigureAwait(false);
             // A terminal task never carries a pending execution into later ticks:
             // without this, a failed task would be resumed (and re-evented) on every
             // wake for the rest of the run.
             task.PendingToolExecutionId = null;
             task.PendingToolApprovalId = null;
+            await SettleWorkerAsync(run, configuration, runId, task, execution, archivedEvidenceId, cancellationToken).ConfigureAwait(false);
         }
 
         await _lifecycle.UpdateTaskSnapshotAsync(runId, new
@@ -3882,6 +3893,71 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             // to task_closed is told about every terminal task, because a failure is what it watches for.
             await RaiseStandingAsync(run, configuration, GovernanceTopics.TaskClosed,
                 $"Task '{task.TaskKey}' ({task.WorkerHandle ?? task.WorkerAgentSlug}) ended {execution.Status}: {Clip(task.ResultSummary, 240)}",
+                "task", task.TaskId.ToString("N"), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// B4: hands a terminal worker result to shared state when the frozen policy enables
+    /// <c>worker_settlement</c>. The settlement itself decides what is citation-worthy (the archived
+    /// result and the worker's own executions) and what the plan ledger may close; this method only
+    /// announces the fact to the planner and the run's standing subscribers.
+    /// </summary>
+    private async Task SettleWorkerAsync(
+        RunState run,
+        FrozenRunConfigurationV1 configuration,
+        Guid runId,
+        DurableTaskNode task,
+        TaskExecutionResult execution,
+        Guid? archivedEvidenceId,
+        CancellationToken cancellationToken)
+    {
+        if (_workerSettlement is null
+            || !ModeRuntimePolicyRegistry.Has(configuration.RuntimePolicy, ModeRuntimePolicyRegistry.WorkerSettlementFeature))
+            return;
+
+        var request = new WorkerSettlementRequest(
+            task.TaskId,
+            task.Title,
+            task.Status,
+            task.ResultSummary,
+            task.WorkerHandle,
+            task.WorkerAgentSlug,
+            execution.WorkerAgentId ?? task.WorkerAgentId,
+            task.Attempt,
+            task.ToolTurns.Select(turn => turn.ExecutionId).Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id!).ToArray(),
+            archivedEvidenceId);
+
+        WorkerSettlementResult settled;
+        try
+        {
+            settled = await _workerSettlement.SettleAsync(run, configuration, request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.TryLogDebug(ex, "Could not settle task {TaskId} of run {RunId}.", task.TaskId, run.RunId);
+            return;
+        }
+        if (!settled.Applied) return;
+
+        var summary = settled.NodeKind is { } kind
+            ? $"Task '{task.TaskKey}' settled as a {kind} with {settled.EvidenceRefs.Count} evidence ref(s); {settled.IntentsUpdated} plan intent(s) closed."
+            : $"Task '{task.TaskKey}' settled; {settled.IntentsUpdated} plan intent(s) closed.";
+        await AppendEventAsync(runId, "worker.settled", summary, new
+        {
+            task_id = task.TaskId,
+            task_key = task.TaskKey,
+            agent_instance_id = request.WorkerAgentId,
+            status = request.Status,
+            node_kind = settled.NodeKind,
+            evidence_refs = settled.EvidenceRefs,
+            intents_updated = settled.IntentsUpdated
+        }, cancellationToken, task.TaskId,
+            idempotencyKey: $"worker-settled:{task.TaskId:N}:{task.Attempt}").ConfigureAwait(false);
+
+        if (!await ObserveAutonomousEventAsync(run, configuration, GovernanceTopics.WorkerSettled, summary).ConfigureAwait(false))
+        {
+            await RaiseStandingAsync(run, configuration, GovernanceTopics.WorkerSettled, summary,
                 "task", task.TaskId.ToString("N"), cancellationToken).ConfigureAwait(false);
         }
     }
@@ -5184,7 +5260,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
             try
             {
-                checkpoint.MeetingResponse = await GenerateMeetingResponseAsync(configuration, checkpoint, meetingDefinition, context, cancellationToken).ConfigureAwait(false);
+                checkpoint.MeetingResponse = await GenerateMeetingResponseAsync(run, configuration, checkpoint, meetingDefinition, context, cancellationToken).ConfigureAwait(false);
             }
             catch (ModelInvocationExhaustedException modelFailure) when (CanUseMeetingEvidenceFallback(checkpoint, modelFailure))
             {
@@ -5756,6 +5832,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     }
 
     private async Task<string> GenerateMeetingResponseAsync(
+        RunState run,
         FrozenRunConfigurationV1 configuration,
         FullDuplexCheckpointV1 checkpoint,
         RuntimeAgentDefinition meetingDefinition,
@@ -5770,8 +5847,12 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             ? "\n\nIMPORTANT: supervision escalated this run. Explain the unresolved decision clearly and ask the user for direction."
             : string.Empty;
         var evidence = string.Join("\n", checkpoint.Tasks.Select(FormatTaskEvidenceForMeeting));
-        var instructions = assembly.Instructions + "\n\nYou are the conversation agent responsible for this run's reply. Reply directly and honestly in the user's language. Summarize completed work, evidence, limits, and next action. Do not claim tools ran if evidence does not say so." + escalation;
-        var prompt = $"Current user goal:\n{checkpoint.UserGoal}\n\nExecution evidence:\n{evidence}";
+        var findings = await ExplorationFindingsForMeetingAsync(run, configuration, cancellationToken).ConfigureAwait(false);
+        var instructions = assembly.Instructions + "\n\nYou are the conversation agent responsible for this run's reply. Reply directly and honestly in the user's language. Summarize completed work, evidence, limits, and next action. Do not claim tools ran if evidence does not say so."
+            + (findings is null ? string.Empty : " Settled findings cite evidence; uncited hints were withheld and must not be presented as conclusions.")
+            + escalation;
+        var prompt = $"Current user goal:\n{checkpoint.UserGoal}\n\nExecution evidence:\n{evidence}"
+            + (findings is null ? string.Empty : $"\n\nSettled exploration findings:\n{findings}");
         var turn = await Maf18RuntimeAdapter.RunGovernanceTurnAsync(
             await factory.CreateAsync(resolution, cancellationToken).ConfigureAwait(false),
             "operation.meeting",
@@ -5787,6 +5868,57 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             throw new MeetingResponseUnavailableException("empty_model_response", "Meeting agent returned no output.");
         }
         return turn.AnswerText;
+    }
+
+    private const int MeetingFindingLimit = 12;
+    private const int MeetingFindingChars = 600;
+
+    /// <summary>
+    /// B4: the run's cited conclusions, for the one user-facing answer. A <c>hint</c> has no
+    /// citation, so it is never shown as a conclusion — only counted, so the reader knows
+    /// material was withheld and why. Null when the policy or the graph is absent.
+    /// </summary>
+    private async Task<string?> ExplorationFindingsForMeetingAsync(
+        RunState run,
+        FrozenRunConfigurationV1 configuration,
+        CancellationToken cancellationToken)
+    {
+        if (_exploration is null
+            || !ModeRuntimePolicyRegistry.Has(configuration.RuntimePolicy, ModeRuntimePolicyRegistry.WorkerSettlementFeature)
+            || !Guid.TryParse(run.TenantId, out var tenantId) || !Guid.TryParse(run.WorkspaceId, out var workspaceId)
+            || !Guid.TryParse(run.SessionId, out var sessionId) || !Guid.TryParse(run.RunId, out var runId))
+            return null;
+
+        IReadOnlyList<ExplorationNode> nodes;
+        try
+        {
+            nodes = await _exploration.QueryAsync(new ExplorationScope(tenantId, workspaceId, sessionId, runId),
+                new ExplorationQuery(RunId: runId, Limit: 64), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.TryLogDebug(ex, "Could not read the exploration findings of run {RunId}.", run.RunId);
+            return null;
+        }
+
+        var cited = nodes
+            .Where(node => node.Kind is ExplorationNodeKinds.Fact or ExplorationNodeKinds.Finding)
+            .OrderByDescending(node => node.CreatedAt)
+            .Take(MeetingFindingLimit)
+            .ToArray();
+        var withheld = nodes.Count(node => node.Kind == ExplorationNodeKinds.Hint);
+        if (cited.Length == 0 && withheld == 0) return null;
+
+        var lines = cited.Select(node =>
+        {
+            var content = node.Content?.ReplaceLineEndings(" ").Trim();
+            if (content is { Length: > MeetingFindingChars }) content = content[..MeetingFindingChars] + "…";
+            var refs = node.EvidenceRefs.Count == 0 ? "no refs" : string.Join(", ", node.EvidenceRefs.Take(4));
+            return $"- [{node.Kind}] {node.Title}: {content ?? "(no detail)"} (refs: {refs})";
+        }).ToList();
+        if (withheld > 0)
+            lines.Add($"- {withheld} hint(s) had no evidence reference and were withheld from this reply.");
+        return string.Join("\n", lines);
     }
 
     private const int MeetingEvidenceLineLimit = 400;

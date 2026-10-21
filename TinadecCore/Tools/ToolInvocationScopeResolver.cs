@@ -173,7 +173,28 @@ public sealed class ToolInvocationScopeResolver : IToolInvocationScopeResolver
             authorization.AllowedDispatchTargets,
             executionTarget?.RootPath,
             spaceOptions,
-            toolContext);
+            toolContext,
+            ReadFrozenRuntimePolicy(frozen.Content));
+    }
+
+    /// <summary>
+    /// The mode runtime policy frozen at admission, or null on bodies frozen before modes carried
+    /// one. A tool whose mechanism is feature-gated reads it here instead of re-resolving the mode.
+    /// </summary>
+    internal static ModeRuntimePolicyDto? ReadFrozenRuntimePolicy(string content)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(content);
+            if (!document.RootElement.TryGetProperty("runtimePolicy", out var policy)
+                || policy.ValueKind != JsonValueKind.Object)
+                return null;
+            return policy.Deserialize<ModeRuntimePolicyDto>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     internal static ToolExecutionContextDto? ReadFrozenToolContext(string content, Guid? agentDefinitionId)

@@ -175,7 +175,8 @@ public sealed record ToolInvocationScope(
     IReadOnlyList<string>? DispatchTargets = null,
     string? ExecutionRootOverride = null,
     SpaceRunOptions? SpaceOptions = null,
-    ToolExecutionContextDto? ToolExecutionContext = null)
+    ToolExecutionContextDto? ToolExecutionContext = null,
+    ModeRuntimePolicyDto? RuntimePolicy = null)
 {
     /// <summary>The root actually handed to the provider after worktree/environment binding.</summary>
     public string ExecutionRoot => string.IsNullOrWhiteSpace(ExecutionRootOverride) ? WorkspaceRoot : ExecutionRootOverride;
@@ -231,6 +232,17 @@ public interface IToolExecutionCoordinator
 {
     Task<ToolExecutionPreparation> PrepareAsync(ToolExecutionPrepareRequest request, CancellationToken cancellationToken = default);
     Task<ToolExecutionSnapshot?> FindAsync(Guid executionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists a run's tool executions newest first, optionally narrowed to one task or one agent
+    /// instance. The caller's tenant/workspace scope always applies; the bound is clamped.
+    /// </summary>
+    Task<IReadOnlyList<ToolExecutionSnapshot>> ListForRunAsync(
+        Guid runId,
+        Guid? taskId = null,
+        Guid? agentInstanceId = null,
+        int limit = 50,
+        CancellationToken cancellationToken = default);
     /// <param name="allowStaleRunningReset">
     /// True when the caller has established that this process cannot hold the
     /// in-flight call a <c>running</c> row refers to (host restart). A stale

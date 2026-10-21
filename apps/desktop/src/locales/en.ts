@@ -466,7 +466,6 @@ export default {
     newWorkspace: 'New workspace',
     workspaceOptions: 'Workspace options',
     recentConversations: 'Recent conversations',
-    recentConversationsHint: 'Show recent conversations from every workspace at the top of the list',
     tokenUsage: 'Token usage · last {days} days',
     tokenUsageSummary: 'Last {days} days: {tokens} tokens',
     tokenUsageSummaryTruncated: 'Last {days} days: at least {tokens} tokens',

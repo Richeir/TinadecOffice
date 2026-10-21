@@ -56,3 +56,9 @@ function toggle() {
     />
   </button>
 </template>
+
+<style scoped>
+/* The global unlayered `button { border: 0 }` beats Tailwind's layered border utility,
+   which left the unchecked box fully transparent. */
+button[role="checkbox"] { border: 1px solid hsl(var(--primary)); }
+</style>

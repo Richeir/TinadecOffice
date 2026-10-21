@@ -682,7 +682,6 @@ export default {
     newWorkspace: "新增工作區",
     workspaceOptions: "工作區選項",
     recentConversations: "最近對話",
-    recentConversationsHint: "在列表頂端顯示所有工作區的最近對話",
     tokenUsage: '近 {days} 天 token 用量',
     tokenUsageSummary: '最近 {days} 天共 {tokens} tokens',
     tokenUsageSummaryTruncated: '最近 {days} 天至少 {tokens} tokens',

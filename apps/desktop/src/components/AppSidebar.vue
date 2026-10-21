@@ -35,7 +35,7 @@ import TinadecCalligraphy from '@/components/TinadecCalligraphy.vue'
 import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
 import InlineRenameInput from '@/components/InlineRenameInput.vue'
 import RowContextMenu, { type RowMenuItem } from '@/components/RowContextMenu.vue'
-import { UiButton, UiSelectField } from '@/components/ui'
+import { UiButton, UiCheckbox, UiSelectField } from '@/components/ui'
 import { useNotifications } from '@/composables/useNotifications'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { errorCodeMessage } from '@/lib/apiError'
@@ -305,15 +305,6 @@ const recentConversations = computed(() => {
   return recentSessionRows(rows, RECENT_CONVERSATION_LIMIT)
     .map(session => ({ session, workspace: source.get(selectionKey(session)) ?? '' }))
 })
-function toggleRecentConversations() {
-  list.setRecent(!list.state.value.recent)
-  // The panel sits exactly where the new rows appear, so it steps aside: the change is the
-  // feedback, and the gear keeps focus the way the view chooser does.
-  optionsMenu.value?.hidePopover()
-  optionsMenuTrigger?.focus({ preventScroll: true })
-}
-const optionsMenu = ref<HTMLDivElement | null>(null)
-let optionsMenuTrigger: HTMLButtonElement | null = null
 const optionsMenuId = `sidebar-workspace-options-${useId()}`
 const optionsMenuOpen = ref(false)
 const optionsMenuStyle = ref({ left: '0px', top: '0px' })
@@ -322,8 +313,8 @@ const optionsMenuStyle = ref({ left: '0px', top: '0px' })
 const OPTIONS_MENU_WIDTH = 236
 function openOptionsMenu(event: MouseEvent) {
   // The native invoker performs the toggle; this only positions the panel under the gear.
-  optionsMenuTrigger = event.currentTarget as HTMLButtonElement
-  const rect = optionsMenuTrigger.getBoundingClientRect()
+  const trigger = event.currentTarget as HTMLButtonElement
+  const rect = trigger.getBoundingClientRect()
   optionsMenuStyle.value = {
     left: `${Math.max(8, Math.min(rect.right - OPTIONS_MENU_WIDTH, window.innerWidth - OPTIONS_MENU_WIDTH - 8))}px`,
     top: `${rect.bottom + 6}px`,
@@ -729,7 +720,6 @@ watch([nickname, () => props.collapsed], async () => {
     </div>
     <div
       :id="optionsMenuId"
-      ref="optionsMenu"
       popover
       class="sidebar-workspace-options"
       :style="optionsMenuStyle"
@@ -738,19 +728,14 @@ watch([nickname, () => props.collapsed], async () => {
       @beforetoggle="updateOptionsMenuState"
     >
       <p class="sidebar-workspace-options-title">{{ t('sidebar.workspaceOptions') }}</p>
-      <button
-        type="button"
-        class="sidebar-option"
-        role="switch"
-        :aria-checked="list.state.value.recent"
-        @click="toggleRecentConversations"
-      >
-        <span class="sidebar-option-copy">
-          <span class="sidebar-option-label">{{ t('sidebar.recentConversations') }}</span>
-          <span class="sidebar-option-hint">{{ t('sidebar.recentConversationsHint') }}</span>
-        </span>
-        <span class="sidebar-option-switch" aria-hidden="true"></span>
-      </button>
+      <label class="sidebar-option">
+        <UiCheckbox
+          :model-value="list.state.value.recent"
+          :aria-label="t('sidebar.recentConversations')"
+          @update:model-value="list.setRecent($event)"
+        />
+        <span class="sidebar-option-label">{{ t('sidebar.recentConversations') }}</span>
+      </label>
     </div>
     <dialog ref="migrationDialog" class="sidebar-migration-dialog" aria-labelledby="migration-title" @close="migrationSession = null">
       <form @submit.prevent="submitMigration">
@@ -765,6 +750,10 @@ watch([nickname, () => props.collapsed], async () => {
 </template>
 
 <style scoped>
+/* Native popovers/dialogs live in the top layer, where the panel root's
+   backdrop-filter and material background do not reach. They inherit the
+   surface tokens but must apply the raised filter themselves. */
+.sidebar-view-menu, .sidebar-workspace-options, .sidebar-migration-dialog { backdrop-filter: var(--material-filter-raised, none); -webkit-backdrop-filter: var(--material-filter-raised, none); }
 .sidebar-view-menu { position: fixed; inset: auto; margin: 0; width: 200px; padding: 6px; border: 1px solid var(--border-muted); border-radius: 12px; background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-card-subtle); opacity: 0; transform: translateY(6px) scale(0.98); transform-origin: bottom left; pointer-events: none; transition: opacity 160ms ease-out, transform 160ms ease-out, display 160ms allow-discrete, overlay 160ms allow-discrete; }
 .sidebar-view-menu:popover-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
 @starting-style {
@@ -782,16 +771,9 @@ watch([nickname, () => props.collapsed], async () => {
 @starting-style { .sidebar-workspace-options:popover-open { opacity: 0; transform: translateY(-6px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .sidebar-workspace-options { transition: none; transform: none; } }
 .sidebar-workspace-options-title { margin: 4px 8px 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-muted); }
-.sidebar-option { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 9px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.sidebar-option:hover { background: var(--surface-hover); }
-.sidebar-option:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
-.sidebar-option-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.sidebar-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 8px; border-radius: 8px; background: transparent; color: var(--text-primary); cursor: pointer; }
+.sidebar-option:hover, .sidebar-option:focus-within { background: var(--surface-hover); }
 .sidebar-option-label { font-size: 12px; color: var(--text-primary); }
-.sidebar-option-hint { font-size: 11px; line-height: 1.35; color: var(--text-muted); }
-.sidebar-option-switch { position: relative; flex: 0 0 auto; width: 26px; height: 15px; margin-top: 2px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 40%, transparent); transition: background 140ms ease; }
-.sidebar-option-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--text-secondary); transition: transform 140ms ease, background 140ms ease; }
-.sidebar-option[aria-checked="true"] .sidebar-option-switch { background: var(--accent-primary); }
-.sidebar-option[aria-checked="true"] .sidebar-option-switch::after { transform: translateX(11px); background: rgb(255 255 255 / 0.94); }
 .sidebar-migration-dialog { width: min(560px, calc(100vw - 32px)); border: 1px solid var(--border-muted); border-radius: 12px; padding: 24px; background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--shadow-card-subtle); }
 .sidebar-migration-dialog::backdrop { background: color-mix(in srgb, var(--bg-overlay) 65%, transparent); }
 .sidebar-migration-dialog form, .sidebar-migration-dialog label { display: grid; gap: 12px; }

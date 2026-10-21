@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppSidebar from './AppSidebar.vue'
+import sidebarSource from './AppSidebar.vue?raw'
 import type { ProjectDto, SessionDto } from '../api'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { freeWorkspaceKey, workspaceListStorageKey } from '@/composables/useWorkspaceList'
@@ -198,11 +199,10 @@ describe('AppSidebar lifecycle management', () => {
     expect(trigger.attributes('aria-expanded')).toBe('true')
 
     const option = wrapper.get('.sidebar-option')
-    expect(option.attributes('aria-checked')).toBe('false')
-    const hideOptions = vi.fn(() => dispatchViewToggle(menu.element, 'closed'))
-    Object.defineProperty(menu.element, 'hidePopover', { configurable: true, value: hideOptions })
+    const checkbox = option.get('[role="checkbox"]')
+    expect(checkbox.attributes('aria-checked')).toBe('false')
     await option.trigger('click')
-    expect(option.attributes('aria-checked')).toBe('true')
+    expect(checkbox.attributes('aria-checked')).toBe('true')
 
     // Every workspace contributes — the free conversation included — newest first, and each row
     // names the workspace it came from so a flat list never loses "where am I".
@@ -211,10 +211,8 @@ describe('AppSidebar lifecycle management', () => {
     expect(rows.map(row => row.get('.recent-conversation-source').text())).toEqual(['Second', 'Demo project', 'chat.freeConversation'])
     expect(rows[0]!.classes()).toContain('active')
 
-    // The panel covers the rows it just revealed, so picking closes it and hands focus back.
-    expect(hideOptions).toHaveBeenCalledTimes(1)
-    expect(trigger.attributes('aria-expanded')).toBe('false')
-    expect(document.activeElement).toBe(trigger.element)
+    // A checkbox list stays open so more options can be toggled.
+    expect(trigger.attributes('aria-expanded')).toBe('true')
     expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).recent).toBe(true)
 
     // A recents row opens that conversation without expanding its workspace first.
@@ -230,7 +228,7 @@ describe('AppSidebar lifecycle management', () => {
   it('comes back with the recent list already on after a remount', () => {
     localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: true }))
     const wrapper = factory()
-    expect(wrapper.get('.sidebar-option').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('.sidebar-option [role="checkbox"]').attributes('aria-checked')).toBe('true')
     expect(wrapper.findAll('.recent-conversation-row')).toHaveLength(1)
     wrapper.unmount()
   })
@@ -582,6 +580,13 @@ describe('AppSidebar footer identity', () => {
     await settle(wrapper)
     expect(wrapper.get('.sidebar-profile').classes()).not.toContain('sidebar-profile--named')
     wrapper.unmount()
+  })
+})
+
+describe('AppSidebar material surfaces', () => {
+  it('applies the raised material filter to its top-layer surfaces', () => {
+    // The panel root's backdrop-filter cannot reach native popovers/dialogs in the top layer.
+    expect(sidebarSource).toMatch(/\.sidebar-view-menu, \.sidebar-workspace-options, \.sidebar-migration-dialog \{[^}]*backdrop-filter: var\(--material-filter-raised, none\);[^}]*\}/)
   })
 })
 

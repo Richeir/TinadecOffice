@@ -1,5 +1,13 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-21 工作区选项改为单行复选列表
+
+`工作区选项` 弹层不再使用右侧开关 + 说明文字，改为左侧 `UiCheckbox`、右侧「最近对话」标签的单行复选列表；勾选后弹层保持打开，方便继续增加选项。`recentConversationsHint` 五语键随说明一起删除。此前为半透明轨道做的开关样式与守卫已随组件删除。
+
+共享 `UiCheckbox` 的未选中态此前其实完全透明：全局无层 `button { border: 0 }` 压过了 Tailwind 分层的 `border` 工具类。组件内补了显式 `border: 1px solid hsl(var(--primary))`，`components/ui/checkbox.test.ts` 用两例钉住点击发射与这条边框。已在 Vite 渲染器的 1440×900 预览页复看弹层（Electron 真机未复看）。
+
+侧栏两个原生 popover（视图选择、工作区选项）与迁移 `<dialog>` 处在浏览器 top layer，祖先面板的 `backdrop-filter` 到不了它们；它们原先只继承 `--surface-*`，所以模糊档只剩 50% 半透明。现在三者各自应用 `--material-filter-raised`（面板模糊的 35%），Chromium 预览实测 `blur(2.8px) saturate(108%)`（面板 8px）。`AppSidebar.test.ts` 的源码守卫钉住这条规则。
+
 ## 2026-10-21 侧栏 token 用量图
 
 `AppSidebar` 的用量图从 Core `GET /api/v1/model-invocations` 读取当前存储作用域最近 7 个本地日的记录（`from` + 游标，最多 5×200 条），按日汇总 `total_tokens`（缺省回退 `input_tokens + output_tokens`）。未上报绝不当 0：某日只有调用而无用量时 `tokens = null`，整窗都未上报时显示说明而不是空柱。柱高按窗口峰值归一，颜色只表示相对强度（统一强调色，不把最忙的一天画成错误红）；调用被截断时总量带 `≥` 并在标题说明只统计最近 1000 次。挂载、run 结束（`busy` true→false）与存储作用域切换时重读，切换期间迟到的响应按代次丢弃；折叠轨隐藏整块。纯聚合在 `lib/sidebarUsage.ts`（6 例），组件 5 例覆盖渲染、未上报、刷新与迟到响应。未在真 Electron 里做像素级复看；读取失败时静默隐藏（个人页仍负责可见错误）。

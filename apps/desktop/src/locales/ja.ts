@@ -682,7 +682,6 @@ export default {
     newWorkspace: "新しいワークスペース",
     workspaceOptions: "ワークスペースのオプション",
     recentConversations: "最近の会話",
-    recentConversationsHint: "すべてのワークスペースの最近の会話をリストの先頭に表示します",
     tokenUsage: '直近{days}日間のトークン使用量',
     tokenUsageSummary: '直近{days}日間で合計{tokens}トークン',
     tokenUsageSummaryTruncated: '直近{days}日間で少なくとも{tokens}トークン',

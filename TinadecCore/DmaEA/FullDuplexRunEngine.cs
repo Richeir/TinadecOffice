@@ -107,6 +107,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     private readonly AutonomousExplorationCoordinator? _autonomousPlanning;
     /// <summary>The session's exploration graph (B4), read for the close-out findings section.</summary>
     private readonly IExplorationGraph? _exploration;
+    /// <summary>The cold-subgraph fold (B7), when the host registered the exploration module.</summary>
+    private readonly IContextDigest? _contextDigest;
     /// <summary>Worker settlement (B4), when the host registered the exploration module.</summary>
     private readonly WorkerSettlementService? _workerSettlement;
     /// <summary>
@@ -210,6 +212,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         _planLedger = services.GetService(typeof(IPlanLedger)) as IPlanLedger;
         _autonomousPlanning = services.GetService(typeof(AutonomousExplorationCoordinator)) as AutonomousExplorationCoordinator;
         _exploration = services.GetService(typeof(IExplorationGraph)) as IExplorationGraph;
+        _contextDigest = services.GetService(typeof(IContextDigest)) as IContextDigest;
         _workerSettlement = services.GetService(typeof(WorkerSettlementService)) as WorkerSettlementService;
         _resourceLeases = services.GetService(typeof(IResourceLeaseService)) as IResourceLeaseService;
         _projection = services.GetService(typeof(RunStreamProjection)) as RunStreamProjection;
@@ -1360,7 +1363,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 }, cancellationToken, soloTask.TaskId).ConfigureAwait(false);
             return checkpoint;
         }
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, context, cancellationToken).ConfigureAwait(false);
         await AppendEventAsync(Guid.Parse(run.RunId), "context.packed", "Planner context assembled.", new
         {
@@ -2789,7 +2792,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 + (task.WriteScope is { Count: > 0 } scope
                     ? $"\nWrite scope (reserved for you; change files only inside it — changes elsewhere are reported to the reviewer): {string.Join("; ", scope)}"
                     : string.Empty)),
-            cancellationToken).ConfigureAwait(false);
+            checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var promptConfiguration = SpacePromptConfiguration(configuration, checkpoint);
         var assembly = await AssemblePromptAsync(promptConfiguration, workerDefinition, context, cancellationToken).ConfigureAwait(false);
         var agent = new AgentDefinition
@@ -4467,7 +4470,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 ValidateFrozenAgent(supervisorDefinition, "supervisor");
                 var supervisorInstance = await EnsureSupervisorAgentAsync(run, configuration, checkpoint, supervisorDefinition, cancellationToken).ConfigureAwait(false);
                 checkpoint.SupervisorAgentId = supervisorInstance.Id;
-                var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+                var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
                 var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, context, cancellationToken).ConfigureAwait(false);
                 var supervisor = new SupervisionAgent(CreateModelFactory(configuration, checkpoint, supervisorDefinition,
                     supervisorInstance.Id, supervisorInstance.ParentInstanceId, AnswerStreaming.None), _logger);
@@ -4884,7 +4887,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         checkpoint.PlannerAgentId = author.Id;
         var plannerDefinition = RequiredConversationAgent(configuration);
 
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), plannerDefinition, context, cancellationToken).ConfigureAwait(false);
         var instructions = SupervisionReplanInstructions(checkpoint, assembly.Instructions, verdict, reviseIndexes);
         // Revise indexes address the pre-replan list, which the merge below
@@ -5028,7 +5031,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         CancellationToken cancellationToken)
     {
         var meetingDefinition = RequiredConversationAgent(configuration);
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         // An interaction reply is answered to the person, so it streams like the meeting answer
         // does: without this the follow-up path emitted no answer.started/delta at all and the
         // visible reply only appeared when the final delta landed.
@@ -5308,7 +5311,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             }
             await PersistRunEvidenceAsync(runId, run, checkpoint, cancellationToken).ConfigureAwait(false);
             var meetingDefinition = RequiredConversationAgent(configuration);
-            var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+            var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), meetingDefinition, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
             try
             {
                 checkpoint.MeetingResponse = await GenerateMeetingResponseAsync(run, configuration, checkpoint, meetingDefinition, context, cancellationToken).ConfigureAwait(false);
@@ -5766,7 +5769,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         }
     }
 
-    private async Task<ContextPack> BuildContextAsync(RunState run, FrozenRunConfigurationV1 config, RuntimeAgentDefinition agentDefinition, string taskContext, CancellationToken cancellationToken)
+    private async Task<ContextPack> BuildContextAsync(RunState run, FrozenRunConfigurationV1 config, RuntimeAgentDefinition agentDefinition, string taskContext, string? goal, CancellationToken cancellationToken)
     {
         var agentId = agentDefinition.Id;
         var definitionId = agentDefinition.AgentDefinitionId;
@@ -5791,7 +5794,65 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             AllowedToolIds = agentDefinition.AllowedTools,
         }, cancellationToken).ConfigureAwait(false);
         var withReports = await WithOpenReportsAsync(run, config, agentId, pack, cancellationToken).ConfigureAwait(false);
-        return await WithPlanLedgerAsync(run, config, agentDefinition, withReports, cancellationToken).ConfigureAwait(false);
+        var withLedger = await WithPlanLedgerAsync(run, config, agentDefinition, withReports, cancellationToken).ConfigureAwait(false);
+        return await WithExplorationDigestAsync(run, config, goal, withLedger, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Puts the cold part of the session's exploration graph in front of every agent once the run's
+    /// policy asks for structured compaction (B7). The digest is evidence, not a replacement for the
+    /// graph tools: it names the folded material's citations so a conclusion can still be checked.
+    /// </summary>
+    private async Task<ContextPack> WithExplorationDigestAsync(
+        RunState run,
+        FrozenRunConfigurationV1 config,
+        string? goal,
+        ContextPack pack,
+        CancellationToken cancellationToken)
+    {
+        if (_contextDigest is not { } digest
+            || !ModeRuntimePolicyRegistry.Has(config.RuntimePolicy, ModeRuntimePolicyRegistry.StructuredContextCompactionFeature)
+            || config.RuntimePolicy is not { } policy)
+            return pack;
+        if (!Guid.TryParse(run.TenantId, out var tenantId) || !Guid.TryParse(run.WorkspaceId, out var workspaceId)
+            || !Guid.TryParse(run.SessionId, out var sessionId) || !Guid.TryParse(run.RunId, out var runId))
+            return pack;
+        ContextDigestResult? result;
+        try
+        {
+            result = await digest.CompactAsync(new ContextDigestRequest(
+                new ExplorationScope(tenantId, workspaceId, sessionId, runId),
+                AutonomousExplorationSettings.From(policy.Settings),
+                goal), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.TryLogDebug(ex, "Could not fold the exploration graph of run {RunId}.", run.RunId);
+            return pack;
+        }
+        return result is null ? pack : WithDigestEvidence(pack, result);
+    }
+
+    /// <summary>Appends the digest as evidence without touching the budget the context provider already spent.</summary>
+    internal static ContextPack WithDigestEvidence(ContextPack pack, ContextDigestResult digest)
+    {
+        if (string.IsNullOrWhiteSpace(digest.Text)) return pack;
+        var evidence = new ContextEvidence
+        {
+            Source = "exploration-digest",
+            Content = digest.Text,
+            EstimatedTokens = Math.Max(1, digest.Text.Length / 2)
+        };
+        return new ContextPack
+        {
+            SessionId = pack.SessionId,
+            RunId = pack.RunId,
+            TokenBudget = pack.TokenBudget,
+            EstimatedTokens = pack.EstimatedTokens + evidence.EstimatedTokens,
+            Evidence = [.. pack.Evidence, evidence],
+            Dropped = pack.Dropped,
+            Metadata = pack.Metadata
+        };
     }
 
     /// <summary>
@@ -6415,7 +6476,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             return;
         }
 
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         if (context.EstimatedTokens < configuration.Triggers.ContextTokenThreshold)
         {
             await AppendEventAsync(runId, "context.compaction.skipped", "Compression skipped: context is below the token threshold.", new
@@ -6496,7 +6557,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         CancellationToken cancellationToken)
     {
         var runId = Guid.Parse(run.RunId);
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
@@ -6607,7 +6668,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         }
 
         var runId = Guid.Parse(run.RunId);
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");
@@ -6746,7 +6807,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         if (!touchedGit) return;
 
         var runId = Guid.Parse(run.RunId);
-        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), cancellationToken).ConfigureAwait(false);
+        var context = await BuildContextAsync(run, SpacePromptConfiguration(configuration, checkpoint), match.Agent, WithSpaceContext(checkpoint, checkpoint.UserGoal), checkpoint.UserGoal, cancellationToken).ConfigureAwait(false);
         var factory = CreateModelFactory(configuration, checkpoint, match.Agent, null, null, AnswerStreaming.None, observeOutput: false, interruptible: false);
         var resolution = await factory.ResolveChatAsync("chat", cancellationToken).ConfigureAwait(false);
         if (!resolution.IsAvailable) throw new InvalidOperationException(resolution.Error ?? "Chat route is unavailable.");

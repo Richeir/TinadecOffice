@@ -165,6 +165,27 @@ public sealed class ExplorationGraphService(IDbContextFactory<ExplorationDbConte
         }
     }
 
+    public async Task<IReadOnlyList<ExplorationEdge>> QueryEdgesAsync(
+        ExplorationScope scope,
+        string? kind = null,
+        int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(scope);
+        if (kind is { Length: > 0 } && !ExplorationEdgeKinds.IsKnown(kind))
+            throw new ArgumentException($"'{kind}' is not an exploration edge kind; use {string.Join(", ", ExplorationEdgeKinds.All)}.", nameof(kind));
+        var take = Math.Clamp(limit, 1, 200);
+
+        await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var rows = db.Edges.AsNoTracking()
+            .Where(row => row.TenantId == scope.TenantId && row.WorkspaceId == scope.WorkspaceId && row.SessionId == scope.SessionId);
+        if (kind is { Length: > 0 }) rows = rows.Where(row => row.Kind == kind);
+        var selected = await rows.OrderByDescending(row => row.CreatedAtUnixMs)
+            .Take(take)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return selected.Select(ToEdge).ToArray();
+    }
+
     public async Task<ExplorationAsset> UpsertAssetAsync(ExplorationScope scope, ExplorationAssetDraft asset, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(asset);

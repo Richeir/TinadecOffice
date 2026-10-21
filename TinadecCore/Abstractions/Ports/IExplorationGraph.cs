@@ -165,6 +165,9 @@ public interface IExplorationGraph
     /// <summary>Links two nodes of the same session. Both must exist in the caller's scope; the same link is kept once.</summary>
     Task<ExplorationEdge> AppendEdgeAsync(ExplorationScope scope, ExplorationEdgeDraft edge, CancellationToken cancellationToken = default);
 
+    /// <summary>Reads links of the caller's session, newest first, optionally narrowed to one kind.</summary>
+    Task<IReadOnlyList<ExplorationEdge>> QueryEdgesAsync(ExplorationScope scope, string? kind = null, int limit = 100, CancellationToken cancellationToken = default);
+
     /// <summary>Registers an asset (the coverage denominator) or refreshes its kind/title.</summary>
     Task<ExplorationAsset> UpsertAssetAsync(ExplorationScope scope, ExplorationAssetDraft asset, CancellationToken cancellationToken = default);
 

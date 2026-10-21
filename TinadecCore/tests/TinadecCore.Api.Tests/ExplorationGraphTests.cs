@@ -118,6 +118,10 @@ public sealed class ExplorationGraphTests : IAsyncLifetime
         var link = await graph.AppendEdgeAsync(scope, new ExplorationEdgeDraft(fact.Id, finding.Id, ExplorationEdgeKinds.Supports, "same file"));
         var replay = await graph.AppendEdgeAsync(scope, new ExplorationEdgeDraft(fact.Id, finding.Id, ExplorationEdgeKinds.Supports));
         Assert.Equal(link.Id, replay.Id);
+        // Links are readable in the same scope and narrowed by kind; another tenant sees none.
+        Assert.Equal(link.Id, Assert.Single(await graph.QueryEdgesAsync(scope, ExplorationEdgeKinds.Supports)).Id);
+        Assert.Empty(await graph.QueryEdgesAsync(scope, ExplorationEdgeKinds.Contradicts));
+        Assert.Empty(await graph.QueryEdgesAsync(new ExplorationScope(Guid.NewGuid(), workspace, scope.SessionId)));
 
         var elsewhere = await graph.AppendNodeAsync(
             new ExplorationScope(tenant, workspace, Guid.NewGuid()), new ExplorationNodeDraft(ExplorationNodeKinds.Fact, "foreign"));

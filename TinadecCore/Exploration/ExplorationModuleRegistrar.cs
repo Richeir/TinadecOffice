@@ -23,12 +23,16 @@ public sealed class ExplorationModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<IExplorationGraph>(sp => sp.GetRequiredService<ExplorationGraphService>());
         builder.Services.AddSingleton<PlanLedgerService>();
         builder.Services.AddSingleton<IPlanLedger>(sp => sp.GetRequiredService<PlanLedgerService>());
+        builder.Services.AddSingleton(sp => new ContextDigestService(
+            sp.GetRequiredService<IExplorationGraph>(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        builder.Services.AddSingleton<IContextDigest>(sp => sp.GetRequiredService<ContextDigestService>());
         builder.RegisterModule(new ModuleDescriptor
         {
             ModuleId = ModuleId,
             Version = "0.1.0",
             Dependencies = ["abstractions", "persistence", "agent_graph"],
-            Capabilities = ["exploration_graph", "asset_coverage", "exploration_digest", "plan_ledger"],
+            Capabilities = ["exploration_graph", "asset_coverage", "exploration_digest", "plan_ledger", "context_digest"],
             Language = "C#",
             MafPrimitives = [],
             RegistrationStatus = ModuleRegistrationStatus.Registered

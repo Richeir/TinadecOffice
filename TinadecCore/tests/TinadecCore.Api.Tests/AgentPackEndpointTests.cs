@@ -954,6 +954,54 @@ public sealed class AgentPackEndpointTests
     }
 
     [Fact]
+    public async Task ExplorationToolWithoutItsRuntimeFeatureIsRejected()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope(mutate: manifest =>
+        {
+            var browser = manifest["resources"]!["agents"]!.AsArray()
+                .Single(item => item!["resource_key"]!.GetValue<string>() == "worker.browser")!.AsObject();
+            browser["tool_scope"] = new JsonArray("browser.search", "browser.fetch", "exploration_view");
+        });
+
+        // The binding is the data, not the mode's name: no slug appears in the check.
+        await AssertPackRejectedAsync(
+            client, envelope,
+            "mode 'conversation.ask' declares tool 'exploration_view' but its runtime_policy does not enable 'exploration_graph'.");
+    }
+
+    [Fact]
+    public async Task ExplorationToolIsAdmittedWhenTheModeDeclaresItsFeature()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope(mutate: manifest =>
+        {
+            manifest["compatibility"]!["required_core_capabilities"]!.AsArray()
+                .Add(ModeRuntimePolicyRegistry.AutonomousExplorationCapability);
+            var browser = manifest["resources"]!["agents"]!.AsArray()
+                .Single(item => item["resource_key"]!.GetValue<string>() == "worker.browser")!.AsObject();
+            browser["tool_scope"] = new JsonArray("browser.search", "browser.fetch", "exploration_view");
+            // Every mode that binds worker.browser must back the tool with its feature.
+            foreach (var item in manifest["resources"]!["modes"]!.AsArray())
+            {
+                item!["runtime_policy"] = new JsonObject
+                {
+                    ["kind"] = ModeRuntimePolicyRegistry.AutonomousExplorationKind,
+                    ["version"] = ModeRuntimePolicyRegistry.AutonomousExplorationVersion,
+                    ["features"] = new JsonArray(ModeRuntimePolicyRegistry.ExplorationGraphFeature)
+                };
+            }
+        });
+
+        using var response = await client.PostAsJsonAsync("/api/v1/agent-packs/install-preview", envelope);
+        var preview = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, preview.ToString());
+        Assert.Equal("install", preview.GetProperty("action").GetString());
+    }
+
+    [Fact]
     public async Task PromptVersionIsNotRecreatedWhenOnlyThePackVersionChanges()
     {
         using var factory = new AgentPackFactory();

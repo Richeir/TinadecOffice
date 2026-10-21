@@ -63,6 +63,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
 
     /// <summary>The session's evidence archive behind <c>recall_evidence</c>. Optional like the graph.</summary>
     private readonly IEvidenceArchive? _evidence;
+    /// <summary>The session's exploration graph behind <c>exploration_*</c>. Optional: a trimmed host simply does not offer them.</summary>
+    private readonly IExplorationGraph? _exploration;
     /// <summary>The environment steward's registry behind <c>environment_*</c>. Optional like the archive.</summary>
     private readonly IEnvironmentRegistry? _environments;
     /// <summary>Standing approvals a person gave (todo E7): command prefixes honored at prepare, shell's per-session delegation opt-in re-checked at the gates.</summary>
@@ -94,7 +96,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         IApprovalRules? approvalRules = null,
         ISessionOrganization? organization = null,
         IToolConfigurationResolver? toolSettings = null,
-        IScopeStorageLocations? storageLocations = null)
+        IScopeStorageLocations? storageLocations = null,
+        IExplorationGraph? exploration = null)
     {
         _provider = provider;
         _scopeResolver = scopeResolver;
@@ -118,6 +121,7 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         _organization = organization;
         _toolSettings = toolSettings;
         _storageLocations = storageLocations;
+        _exploration = exploration;
     }
 
     public Task<ToolDispatchResultDto> ExecuteAsync(ToolDispatchRequestDto request, CancellationToken cancellationToken = default) =>
@@ -874,6 +878,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             return await ExecuteEnvironmentToolAsync(scope, wire, cancellationToken).ConfigureAwait(false);
         }
 
+        if (CoreVirtualToolPolicy.IsExploration(wire.ToolId))
+        {
+            return await ExecuteExplorationToolAsync(scope, wire, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!scope.SerializeWorkspaceWrites || !execution.MutatesWorkspace)
         {
             return streaming is not null
@@ -1346,6 +1355,146 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         catch (EnvironmentRegistryException ex)
         {
             return new ToolWireResponseDto { CallId = wire.ToolCallId, IsSuccess = false, Error = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// Serves the exploration graph's tools (B1) inside the caller's own session: what has been recorded,
+    /// how much of the declared asset inventory is covered, and digests whose source stays in the evidence
+    /// archive. Tenant, workspace, session and run are the scope's, never arguments.
+    /// </summary>
+    private async Task<ToolWireResponseDto> ExecuteExplorationToolAsync(ToolInvocationScope scope, ToolWireRequestDto wire, CancellationToken cancellationToken)
+    {
+        if (_exploration is not { } graph)
+            return new ToolWireResponseDto { CallId = wire.ToolCallId, IsSuccess = false, Error = "The exploration graph is not available in this host." };
+        var parameters = wire.Params ?? default;
+        ToolWireResponseDto Ok(object result) => new() { CallId = wire.ToolCallId, IsSuccess = true, Result = JsonSerializer.SerializeToElement(result) };
+        ToolWireResponseDto Error(string error) => new() { CallId = wire.ToolCallId, IsSuccess = false, Error = error };
+        string? Text(string name) =>
+            parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                && value.GetString()?.Trim() is { Length: > 0 } text ? text : null;
+        var exploration = new ExplorationScope(scope.TenantId, scope.WorkspaceId, scope.SessionId, scope.RunId, scope.TaskId, scope.AgentInstanceId);
+
+        static object DescribeNode(ExplorationNode node) => new
+        {
+            id = node.Id.ToString("N"),
+            kind = node.Kind,
+            title = node.Title,
+            content = node.Content,
+            asset_key = node.AssetKey,
+            evidence_refs = node.EvidenceRefs,
+            run_id = node.RunId?.ToString("N"),
+            task_id = node.TaskId?.ToString("N"),
+            agent_instance_id = node.AgentInstanceId?.ToString("N"),
+            author = node.Author,
+            created_at = node.CreatedAt
+        };
+        static object DescribeAsset(ExplorationAsset asset) => new { key = asset.Key, kind = asset.Kind, title = asset.Title };
+        static object DescribeCoverage(ExplorationCoverage coverage) => new
+        {
+            total = coverage.Total,
+            covered = coverage.Covered,
+            ratio = coverage.Ratio,
+            uncovered = coverage.Uncovered.Select(DescribeAsset).ToArray()
+        };
+
+        try
+        {
+            if (string.Equals(wire.ToolId, CoreVirtualToolPolicy.ExplorationViewToolId, StringComparison.OrdinalIgnoreCase))
+            {
+                Guid? runId = null;
+                if (Text("run_id") is { } runText)
+                {
+                    if (!Guid.TryParse(runText, out var parsed)) return Error($"'{runText}' is not a run id from exploration_view.");
+                    runId = parsed;
+                }
+                var limit = 20;
+                if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("limit", out var limitValue))
+                {
+                    if (limitValue.ValueKind != JsonValueKind.Number || !limitValue.TryGetInt32(out limit) || limit is < 1 or > 100)
+                        return Error("limit must be a number between 1 and 100.");
+                }
+                var nodes = await graph.QueryAsync(exploration,
+                    new ExplorationQuery(Text("kind"), runId, Text("asset_key"), limit), cancellationToken).ConfigureAwait(false);
+                return Ok(new { nodes = nodes.Select(DescribeNode).ToArray(), count = nodes.Count });
+            }
+
+            if (string.Equals(wire.ToolId, CoreVirtualToolPolicy.ExplorationRecordToolId, StringComparison.OrdinalIgnoreCase))
+            {
+                if (Text("kind") is not { } kind) return Error("exploration_record needs the kind of node: intent, fact, finding or hint.");
+                if (Text("title") is not { } title) return Error("exploration_record needs a title.");
+                string[]? refs = null;
+                if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("evidence_refs", out var refsValue))
+                {
+                    if (refsValue.ValueKind != JsonValueKind.Array) return Error("evidence_refs must be an array of strings.");
+                    var values = new List<string>();
+                    foreach (var item in refsValue.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.String) return Error("evidence_refs must be an array of strings.");
+                        values.Add(item.GetString()!);
+                    }
+                    refs = values.ToArray();
+                }
+
+                // Assets declared by this call are the denominator; the recorded node may also name one it
+                // looked at. A node that cites no evidence can still be recorded, but only as a hint.
+                if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("assets", out var assetsValue))
+                {
+                    if (assetsValue.ValueKind != JsonValueKind.Array) return Error("assets must be an array of objects with key, kind and title.");
+                    foreach (var asset in assetsValue.EnumerateArray())
+                    {
+                        if (asset.ValueKind != JsonValueKind.Object) return Error("assets must be an array of objects with key, kind and title.");
+                        var key = asset.TryGetProperty("key", out var keyValue) && keyValue.ValueKind == JsonValueKind.String ? keyValue.GetString()?.Trim() : null;
+                        if (string.IsNullOrEmpty(key)) return Error("Each declared asset needs a key.");
+                        var assetKind = asset.TryGetProperty("kind", out var kindValue) && kindValue.ValueKind == JsonValueKind.String ? kindValue.GetString() : null;
+                        var assetTitle = asset.TryGetProperty("title", out var titleValue) && titleValue.ValueKind == JsonValueKind.String ? titleValue.GetString() : null;
+                        await graph.UpsertAssetAsync(exploration,
+                            new ExplorationAssetDraft(key, assetKind ?? ExplorationAssetKinds.Other, assetTitle), cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                var node = await graph.AppendNodeAsync(exploration, new ExplorationNodeDraft(
+                    kind, title, Text("content"), Text("asset_key"), refs, Text("source_key")), cancellationToken).ConfigureAwait(false);
+                if (node.AssetKey is { } assetKey)
+                {
+                    await graph.UpsertAssetAsync(exploration,
+                        new ExplorationAssetDraft(assetKey, Text("asset_kind") ?? ExplorationAssetKinds.Other, title), cancellationToken).ConfigureAwait(false);
+                }
+                var coverage = await graph.CoverageAsync(exploration, cancellationToken).ConfigureAwait(false);
+                return Ok(new { recorded = true, node = DescribeNode(node), coverage = DescribeCoverage(coverage) });
+            }
+
+            if (string.Equals(wire.ToolId, CoreVirtualToolPolicy.ExplorationLinkToolId, StringComparison.OrdinalIgnoreCase))
+            {
+                if (Text("from_node_id") is not { } fromText || !Guid.TryParse(fromText, out var fromId))
+                    return Error("exploration_link needs from_node_id, an id exploration_view returned.");
+                if (Text("to_node_id") is not { } toText || !Guid.TryParse(toText, out var toId))
+                    return Error("exploration_link needs to_node_id, an id exploration_view returned.");
+                if (Text("kind") is not { } kind) return Error($"exploration_link needs a kind: {string.Join(", ", ExplorationEdgeKinds.All)}.");
+                var edge = await graph.AppendEdgeAsync(exploration,
+                    new ExplorationEdgeDraft(fromId, toId, kind, Text("label"), Text("source_key")), cancellationToken).ConfigureAwait(false);
+                return Ok(new { linked = true, edge = new { id = edge.Id.ToString("N"), from_node_id = edge.FromNodeId.ToString("N"), to_node_id = edge.ToNodeId.ToString("N"), kind = edge.Kind, label = edge.Label } });
+            }
+
+            if (string.Equals(wire.ToolId, CoreVirtualToolPolicy.ExplorationCoverageToolId, StringComparison.OrdinalIgnoreCase))
+            {
+                var coverage = await graph.CoverageAsync(exploration, cancellationToken).ConfigureAwait(false);
+                return Ok(DescribeCoverage(coverage));
+            }
+
+            if (Text("title") is not { } digestTitle) return Error("exploration_digest needs a title.");
+            if (Text("text") is not { } digestText) return Error("exploration_digest needs the text it folds.");
+            var digest = await graph.DigestAsync(exploration,
+                new ExplorationDigestDraft(digestTitle, digestText, Text("summary"), Text("source_key")), cancellationToken).ConfigureAwait(false);
+            return Ok(new { node_id = digest.NodeId.ToString("N"), evidence_id = digest.EvidenceId.ToString("N") });
+        }
+        catch (ArgumentException ex)
+        {
+            return Error(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message);
         }
     }
 

@@ -251,6 +251,7 @@ public sealed class ToolManifestSnapshotResolver : IToolManifestSnapshotResolver
         : CoreVirtualToolPolicy.IsReadAttachment(toolId) ? CoreAttachmentReadTool.ManifestEntry()
         : TinaChatVirtualTools.ManifestEntry(toolId)
         ?? OrganizationVirtualTools.ManifestEntry(toolId)
+        ?? ExplorationVirtualTools.ManifestEntry(toolId)
         ?? throw new InvalidOperationException($"Core-owned virtual tool '{toolId}' has no manifest entry.");
 
     private static FrozenToolManifestEntry ToFrozen(ToolManifestEntryDto tool) => new(

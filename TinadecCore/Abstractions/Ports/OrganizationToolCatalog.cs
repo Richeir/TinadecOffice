@@ -110,7 +110,7 @@ public static class OrganizationToolCatalog
             + "said, or to find whether something was already tried. Semantic when an embedding model is configured, keyword otherwise; the result "
             + "says which, and each hit names its run, task and author so you can cite it.",
             Obj(("query", Str("What to look for: keywords, a path, a handle like search#1, or a sentence.")),
-                ("kinds", ArrEnum("Only these kinds of evidence.", EvidenceKinds.TaskResult, EvidenceKinds.Report, EvidenceKinds.MemberTurn, EvidenceKinds.Summary)),
+                ("kinds", ArrEnum("Only these kinds of evidence.", EvidenceKinds.TaskResult, EvidenceKinds.Report, EvidenceKinds.MemberTurn, EvidenceKinds.Summary, EvidenceKinds.ExplorationDigest)),
                 ("run_id", Str("Optional: only evidence from this run (an id from graph_view).")),
                 ("limit", Int("How many hits (default 8, at most 20)."))),
             Writes: false),

@@ -1734,6 +1734,7 @@ public sealed class AgentPackService : IAgentPackService
                 Invalid($"mode '{mode.ResourceKey}' requires at least one execution-layer agent (or a relationship agent_types whitelist for a free-form director).");
 
             ValidateModeBindings(mode, resources.Agents.Select(agent => agent.Slug!).ToHashSet(StringComparer.Ordinal));
+            ValidateExplorationTools(mode, agents);
             foreach (var edge in mode.Edges)
             {
                 if (edge.Condition.ValueKind is not (JsonValueKind.Object or JsonValueKind.Undefined)) Invalid($"mode '{mode.ResourceKey}' edge '{edge.EdgeKey}' condition must be an object.");
@@ -1791,6 +1792,40 @@ public sealed class AgentPackService : IAgentPackService
             if (binding.ToolSwitches is { } switchesElement && switchesElement.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)) Invalid($"mode '{mode.ResourceKey}' binding '{binding.NodeKey}' tool_switches must be an object.");
             if (binding.InstanceNaming is { } namingElement && namingElement.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)) Invalid($"mode '{mode.ResourceKey}' binding '{binding.NodeKey}' instance_naming must be an object or null.");
         }
+    }
+
+    /// <summary>
+    /// Declared exploration tools must be backed by the policy feature that makes
+    /// them meaningful. The check covers every tool a mode can actually hand to a
+    /// worker: node configs intersected with each agent's scope (node bindings can
+    /// only switch tools off) and the node-less bindings that arm spawnable
+    /// templates. Install-time rejection keeps a pack from freezing a tool that
+    /// would fail closed on first call.
+    /// </summary>
+    private static void ValidateExplorationTools(AgentPackModeResourceDto mode, IReadOnlyDictionary<string, AgentPackAgentResourceDto> agents)
+    {
+        var agentKeyByNode = mode.Nodes.ToDictionary(
+            node => node.NodeKey!,
+            node => ReferenceKey(node.AgentRef!, "agent", $"mode '{mode.ResourceKey}' node '{node.NodeKey}' agent_ref"),
+            StringComparer.Ordinal);
+        var switchesByNode = (mode.Bindings ?? [])
+            .Where(binding => binding.NodeKey is { Length: > 0 })
+            .ToDictionary(binding => binding.NodeKey!, binding => binding.ToolSwitches, StringComparer.Ordinal);
+        var tools = new List<string>();
+        foreach (var node in mode.Nodes)
+        {
+            var effective = EffectiveTools(agents[agentKeyByNode[node.NodeKey!]].ToolScope, node.Config);
+            if (switchesByNode.TryGetValue(node.NodeKey!, out var switches) && switches is { } switchesElement)
+                effective = effective.Where(tool => !IsSwitchedOff(switchesElement, tool)).ToArray();
+            tools.AddRange(effective);
+        }
+        foreach (var binding in (mode.Bindings ?? []).Where(item => item.NodeKey is not { Length: > 0 }))
+        {
+            var agent = agents[ReferenceKey(binding.AgentRef!, "agent", $"mode '{mode.ResourceKey}' node-less binding agent_ref")];
+            foreach (var tool in agent.ToolScope)
+                if (binding.ToolSwitches is not { } switches || !IsSwitchedOff(switches, tool)) tools.Add(tool);
+        }
+        if (ExplorationToolPolicy.Validate(mode.RuntimePolicy, tools, $"mode '{mode.ResourceKey}'") is { } error) Invalid(error);
     }
 
     /// <summary>

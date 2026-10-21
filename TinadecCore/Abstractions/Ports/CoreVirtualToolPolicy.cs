@@ -166,6 +166,25 @@ public static class CoreVirtualToolPolicy
     public static bool IsEnvironment(string? toolId) =>
         toolId is not null && EnvironmentToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The exploration graph's tools (B1): read what has been recorded, record a node, link two nodes,
+    /// ask how much of the declared asset inventory is covered, and fold material into a digest whose
+    /// source is archived verbatim. Core state only; each tool's feature is validated at pack admission.
+    /// </summary>
+    public const string ExplorationViewToolId = "exploration_view";
+    public const string ExplorationRecordToolId = "exploration_record";
+    public const string ExplorationLinkToolId = "exploration_link";
+    public const string ExplorationCoverageToolId = "exploration_coverage";
+    public const string ExplorationDigestToolId = "exploration_digest";
+
+    public static readonly IReadOnlyList<string> ExplorationToolIds =
+    [
+        ExplorationViewToolId, ExplorationRecordToolId, ExplorationLinkToolId, ExplorationCoverageToolId, ExplorationDigestToolId,
+    ];
+
+    public static bool IsExploration(string? toolId) =>
+        toolId is not null && ExplorationToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase);
+
     public static bool IsGraphView(string? toolId) =>
         string.Equals(toolId, GraphViewToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -178,7 +197,8 @@ public static class CoreVirtualToolPolicy
     public static bool IsCoreVirtual(string? toolId) =>
         IsCreateWorkspace(toolId) || IsTaskDispatch(toolId) || IsTaskWait(toolId) || IsPlanUpdate(toolId) || IsSpecPropose(toolId)
         || IsCorrectionTrace(toolId) || IsReadAttachment(toolId)
-        || IsTinaChat(toolId) || IsOrganization(toolId) || IsGraphView(toolId) || IsRecallEvidence(toolId) || IsEnvironment(toolId);
+        || IsTinaChat(toolId) || IsOrganization(toolId) || IsGraphView(toolId) || IsRecallEvidence(toolId) || IsEnvironment(toolId)
+        || IsExploration(toolId);
 
     /// <summary>
     /// True when a call-time gate may demand that the tool appear in the TinadecTools child-process

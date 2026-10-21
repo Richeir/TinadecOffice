@@ -259,8 +259,8 @@ public interface IToolExecutionCoordinator
     /// reports no embedded outcome. The dispatch status stays
     /// <c>completed</c>; this is an audit-honesty flag, not a control-flow one.
     /// </param>
-    Task<ToolExecutionSnapshot> CompleteAsync(Guid executionId, string resultJson, bool? toolSuccess = null, CancellationToken cancellationToken = default);
-    Task<ToolExecutionSnapshot> FailAsync(Guid executionId, string status, string errorCategory, string safeMessage, CancellationToken cancellationToken = default);
+    Task<ToolExecutionSnapshot> CompleteAsync(Guid executionId, string resultJson, bool? toolSuccess = null, CancellationToken cancellationToken = default, ToolOutcomeAttribution? attribution = null);
+    Task<ToolExecutionSnapshot> FailAsync(Guid executionId, string status, string errorCategory, string safeMessage, CancellationToken cancellationToken = default, ToolOutcomeAttribution? attribution = null);
     Task<ToolExecutionSnapshot> BindAuthorizationAsync(
         Guid executionId,
         Guid? permissionRequestId,
@@ -349,6 +349,26 @@ public sealed record ToolExecutionPrepareRequest(
 /// <param name="Source">Why the approval was minted: pre_authorized or full_access_auto_mint.</param>
 public sealed record PreAuthorizationMintResult(ToolExecutionSnapshot Snapshot, string Source);
 
+/// <summary>
+/// B5 attribution of a terminal tool execution: <c>ok</c> when the call ran and reported success,
+/// <c>blocked</c> when policy or an approval refused it, <c>error</c> when it ran and failed.
+/// <see cref="Retryable"/> answers whether repeating the same call is useful; a blocked call is
+/// never retryable. <see cref="PolicyRef"/> names the decision that blocked it and
+/// <see cref="AgentGuidance"/> is the sentence the worker model should be told instead of guessing.
+/// </summary>
+public sealed record ToolOutcomeAttribution(
+    string Outcome,
+    bool? Retryable = null,
+    string? PolicyRef = null,
+    string? AgentGuidance = null);
+
+public static class ToolOutcomes
+{
+    public const string Ok = "ok";
+    public const string Blocked = "blocked";
+    public const string Error = "error";
+}
+
 public sealed record ToolExecutionSnapshot(
     Guid Id,
     Guid TenantId,
@@ -386,7 +406,12 @@ public sealed record ToolExecutionSnapshot(
     /// success field (e.g. <c>shell</c> reported a non-zero exit). Null when the
     /// tool reports no embedded outcome. Independent of <see cref="Status"/>.
     /// </summary>
-    bool? ToolSuccess = null);
+    bool? ToolSuccess = null,
+    /// <summary>B5: <c>ok</c>, <c>blocked</c> or <c>error</c>; null for rows written before attribution existed.</summary>
+    string? Outcome = null,
+    bool? Retryable = null,
+    string? PolicyRef = null,
+    string? AgentGuidance = null);
 
 /// <summary>
 /// Result of durably admitting one logical tool call. Replaying the same

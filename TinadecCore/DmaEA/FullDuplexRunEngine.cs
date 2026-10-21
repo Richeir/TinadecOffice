@@ -2104,7 +2104,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                     // budgets — not by killing the task at the first failure.
                     pendingTurn.DispatchStatus = dispatch.Status;
                     pendingTurn.ErrorCategory ??= category;
-                    pendingTurn.ResultJson = ToolCallFailureJson(pendingTurn.ToolId, category, summary);
+                    pendingTurn.ResultJson = ToolCallFailureJson(pendingTurn.ToolId, category, summary, dispatch);
                     ClearPendingToolExecution(task);
                     checkpoint = await SaveCheckpointAsync(checkpoint, checkpoint.CheckpointRevision, "tool-failure", cancellationToken).ConfigureAwait(false);
                     await AppendEventAsync(Guid.Parse(run.RunId), "worker.tool_failed",
@@ -3404,7 +3404,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             definition.PromptGraphJson)
         {
             Workspace = configuration.Workspace,
-            ResponseLocale = configuration.InterfaceLocale
+            ResponseLocale = configuration.InterfaceLocale,
+            RuntimePolicy = configuration.RuntimePolicy
         }, cancellationToken).ConfigureAwait(false);
     }
 
@@ -3693,7 +3694,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     }
 
     /// <summary>A finished task in full: status, who worked it, the answer, the evidence and every criterion verdict.</summary>
-    internal static string TaskEvidenceText(DurableTaskNode task)
+    internal static string TaskEvidenceText(DurableTaskNode task, bool citeEvidenceRefs = false)
     {
         var text = new System.Text.StringBuilder();
         text.Append("Status: ").AppendLine(task.Status);
@@ -3712,8 +3713,18 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         {
             text.AppendLine("Criteria:");
             foreach (var verdict in task.CriteriaVerdicts)
-                text.Append(verdict.Satisfied ? "- ✓ " : "- ✗ ").Append(verdict.Criterion)
-                    .AppendLine(string.IsNullOrWhiteSpace(verdict.Evidence) ? string.Empty : " — " + verdict.Evidence);
+            {
+                text.Append(verdict.Satisfied ? "- ✓ " : "- ✗ ").Append(verdict.Criterion);
+                if (citeEvidenceRefs)
+                {
+                    text.Append(" — refs: ")
+                        .AppendLine(verdict.EvidenceRefs is { Count: > 0 } refs ? string.Join(", ", refs) : "(none)");
+                }
+                else
+                {
+                    text.AppendLine(string.IsNullOrWhiteSpace(verdict.Evidence) ? string.Empty : " — " + verdict.Evidence);
+                }
+            }
         }
         return text.ToString();
     }
@@ -3789,7 +3800,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 verdict.Satisfied,
                 verdict.Evidence,
                 $"worker:{execution.WorkerAgentId?.ToString("N") ?? "unknown"}",
-                checkpoint.SupervisionRound));
+                checkpoint.SupervisionRound,
+                verdict.EvidenceRefs));
         }
         task.CompletedAt = execution.Status is "completed" or "failed" or "blocked" ? DateTimeOffset.UtcNow : null;
         if (execution.WorkerAgentId is { } workerId) task.WorkerAgentId = workerId;
@@ -3805,7 +3817,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             if (task.WorkerAgentId is { } finishedWorker) await SetMemberOfflineAsync(finishedWorker, cancellationToken).ConfigureAwait(false);
             // The result is kept verbatim, per attempt: the meeting and the summaries compress it, the archive never does.
             var archivedEvidenceId = await ArchiveEvidenceAsync(run, task.TaskId, EvidenceKinds.TaskResult, task.Title, task.WorkerHandle ?? task.WorkerAgentSlug,
-                TaskEvidenceText(task), $"task:{task.TaskId:N}:{task.Attempt}", cancellationToken).ConfigureAwait(false);
+                TaskEvidenceText(task, ModeRuntimePolicyRegistry.Has(configuration.RuntimePolicy, ModeRuntimePolicyRegistry.EvidenceRefsRequiredFeature)), $"task:{task.TaskId:N}:{task.Attempt}", cancellationToken).ConfigureAwait(false);
             // A terminal task never carries a pending execution into later ticks:
             // without this, a failed task would be resumed (and re-evented) on every
             // wake for the rest of the run.
@@ -4008,11 +4020,24 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
 
     /// <summary>
     /// The structured tool error stored on a turn whose call did not complete.
-    /// It mirrors the provider wire contract (<c>error_category</c> + message) so
-    /// Core, the tools process, and the model all describe a failure the same way.
+    /// It mirrors the provider wire contract (<c>error_category</c> + message) and
+    /// carries the same attribution the durable row does, so a blocked call is
+    /// visibly not retryable instead of looking like any other error.
     /// </summary>
-    private static string ToolCallFailureJson(string toolId, string category, string message) =>
-        JsonSerializer.Serialize(new { tool_id = toolId, error_category = category, message });
+    private static string ToolCallFailureJson(string toolId, string category, string message, ToolDispatchResultDto? dispatch = null)
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["tool_id"] = toolId,
+            ["error_category"] = category,
+            ["message"] = message,
+        };
+        if (dispatch?.Outcome is { Length: > 0 } outcome) body["outcome"] = outcome;
+        if (dispatch?.Retryable is { } retryable) body["retryable"] = retryable;
+        if (!string.IsNullOrWhiteSpace(dispatch?.PolicyRef)) body["policy_ref"] = dispatch!.PolicyRef;
+        if (!string.IsNullOrWhiteSpace(dispatch?.AgentGuidance)) body["agent_guidance"] = dispatch!.AgentGuidance;
+        return JsonSerializer.Serialize(body);
+    }
 
     /// <summary>Dispatch status of a call a hard insert kept from starting (todo D2).</summary>
     internal const string NotRunAfterInterrupt = "not_run";
@@ -4400,6 +4425,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     {
         var runId = Guid.Parse(run.RunId);
         await TrySetRunStatusAsync(run.RunId, "reviewing", null, cancellationToken).ConfigureAwait(false);
+        var evidenceRefsRequired = ModeRuntimePolicyRegistry.Has(
+            configuration.RuntimePolicy, ModeRuntimePolicyRegistry.EvidenceRefsRequiredFeature);
         var plans = checkpoint.Tasks.Select(ToPlannedTask).ToArray();
         var results = checkpoint.Tasks.Select(item => new StepResult
         {
@@ -4444,7 +4471,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 var assembly = await AssemblePromptAsync(SpacePromptConfiguration(configuration, checkpoint), supervisorDefinition, context, cancellationToken).ConfigureAwait(false);
                 var supervisor = new SupervisionAgent(CreateModelFactory(configuration, checkpoint, supervisorDefinition,
                     supervisorInstance.Id, supervisorInstance.ParentInstanceId, AnswerStreaming.None), _logger);
-                verdict = await supervisor.ReviewAsync(checkpoint.UserGoal, plans, results, checkpoint.SupervisionRound, assembly.Instructions, cancellationToken).ConfigureAwait(false);
+                verdict = await supervisor.ReviewAsync(checkpoint.UserGoal, plans, results, checkpoint.SupervisionRound, assembly.Instructions, cancellationToken, evidenceRefsRequired).ConfigureAwait(false);
                 checkpoint.ModelUsage = Maf18RuntimeAdapter.AddUsage(checkpoint.ModelUsage, supervisor.LastUsage);
             }
         }
@@ -4488,7 +4515,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 verdict,
                 checkpoint.SupervisionRound,
                 configuration.Supervision.MaxRevisionRounds,
-                requireSupervisorEvidence: !supervisionSkipped);
+                requireSupervisorEvidence: !supervisionSkipped,
+                evidenceRefsRequired: evidenceRefsRequired);
         }
         verdict = EnforceRevisionBudget(
             verdict,
@@ -4677,7 +4705,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         int revisionRound,
         int maxRevisionRounds,
         bool supervisorRequired,
-        bool supervisorAvailable)
+        bool supervisorAvailable,
+        bool evidenceRefsRequired = false)
     {
         var completed = tasks.Count(task => string.Equals(task.Status, "completed", StringComparison.Ordinal));
         var blocked = tasks.Count(task => string.Equals(task.Status, "blocked", StringComparison.Ordinal));
@@ -4687,7 +4716,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         var unmetCriteria = tasks
             .Where(task => string.Equals(task.Status, "completed", StringComparison.Ordinal))
             .Sum(task => task.SuccessCriteria.Count(criterion =>
-                !HasSatisfiedCriterionEvidence(task, criterion, revisionRound, requireSupervisorEvidence)));
+                !HasSatisfiedCriterionEvidence(task, criterion, revisionRound, requireSupervisorEvidence, evidenceRefsRequired)));
         return new SupervisionReviewBrief(
             tasks.Count,
             completed,
@@ -4712,9 +4741,11 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         SupervisionVerdict verdict,
         int revisionRound,
         int maxRevisionRounds,
-        bool requireSupervisorEvidence)
+        bool requireSupervisorEvidence,
+        bool evidenceRefsRequired = false)
     {
         var issues = new List<(int Index, string Reason)>();
+        var missingRefs = false;
         for (var index = 0; index < tasks.Count; index++)
         {
             var task = tasks[index];
@@ -4722,6 +4753,12 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             foreach (var criterion in task.SuccessCriteria)
             {
                 var latest = LatestCriterionVerdict(task, criterion, revisionRound, requireSupervisorEvidence);
+                if (evidenceRefsRequired && latest is { Satisfied: true } && latest.EvidenceRefs is not { Count: > 0 })
+                {
+                    missingRefs = true;
+                    issues.Add((index, $"criterion:{task.TaskKey}:{criterion} — satisfied verdict cites no evidence_refs"));
+                    continue;
+                }
                 if (latest is { Satisfied: true } && !string.IsNullOrWhiteSpace(latest.Evidence)) continue;
                 var source = requireSupervisorEvidence ? "supervisor" : "worker";
                 var detail = latest is null
@@ -4736,6 +4773,17 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         foreach (var issue in issues)
         {
             if (!reasons.Contains(issue.Reason, StringComparer.Ordinal)) reasons.Add(issue.Reason);
+        }
+        if (missingRefs)
+        {
+            const string refsReason = "A satisfied criterion verdict cites no evidence_refs; evidence_refs_required forbids accepting it and user review is required.";
+            if (!reasons.Contains(refsReason, StringComparer.Ordinal)) reasons.Add(refsReason);
+            return verdict with
+            {
+                Decision = SupervisionDecision.Escalate,
+                Reasons = reasons,
+                ReviseTaskIndexes = []
+            };
         }
         if (verdict.Decision == SupervisionDecision.Escalate)
         {
@@ -4783,10 +4831,12 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         DurableTaskNode task,
         string criterion,
         int revisionRound,
-        bool requireSupervisorEvidence)
+        bool requireSupervisorEvidence,
+        bool evidenceRefsRequired = false)
     {
         var latest = LatestCriterionVerdict(task, criterion, revisionRound, requireSupervisorEvidence);
-        return latest is { Satisfied: true } && !string.IsNullOrWhiteSpace(latest.Evidence);
+        if (latest is not { Satisfied: true } || string.IsNullOrWhiteSpace(latest.Evidence)) return false;
+        return !evidenceRefsRequired || latest.EvidenceRefs is { Count: > 0 };
     }
 
     internal static SupervisionVerdict EnforceRevisionBudget(
@@ -5115,7 +5165,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             checkpoint.SupervisionRound,
             configuration.Supervision.MaxRevisionRounds,
             supervisorRequired,
-            supervisorAvailable);
+            supervisorAvailable,
+            ModeRuntimePolicyRegistry.Has(configuration.RuntimePolicy, ModeRuntimePolicyRegistry.EvidenceRefsRequiredFeature));
         return AppendEventAsync(Guid.Parse(run.RunId), "supervision.user_review.requested",
             "Supervision escalated the run and is waiting for a user decision.", new
             {

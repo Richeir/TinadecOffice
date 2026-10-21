@@ -232,7 +232,13 @@ internal sealed class PromptAssembler : IPromptAssembler
             }
         }
 
-        const string runtimeConstraints = "Runtime constraints: only the meeting agent may produce direct user output. Do not claim an external action unless execution evidence confirms it. Respect Core-owned approval and tool policy.";
+        var runtimeConstraints = "Runtime constraints: only the meeting agent may produce direct user output. Do not claim an external action unless execution evidence confirms it. Respect Core-owned approval and tool policy.";
+        if (ModeRuntimePolicyRegistry.Has(request.RuntimePolicy, ModeRuntimePolicyRegistry.WorkerSettlementFeature))
+        {
+            // B5: with settlement on, the worker reads attributed tool results; the rule must
+            // match what the dispatcher records, not rely on the model's own interpretation.
+            runtimeConstraints += " Tool attribution: a result whose outcome is 'blocked' must not be retried with the same arguments — change the approach or report the blockage. Only a result whose outcome is 'error' and whose retryable flag is true may be retried.";
+        }
         var runtimeTokens = EstimateTokens(runtimeConstraints);
         sections.Add(runtimeConstraints);
         fragmentIds.Add("builtin:runtime-constraints");

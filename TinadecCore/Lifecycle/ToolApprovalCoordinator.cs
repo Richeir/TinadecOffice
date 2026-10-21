@@ -911,13 +911,19 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         return claimed == 1;
     }
 
-    public async Task<ToolExecutionSnapshot> CompleteAsync(Guid executionId, string resultJson, bool? toolSuccess = null, CancellationToken cancellationToken = default)
+    public async Task<ToolExecutionSnapshot> CompleteAsync(
+        Guid executionId,
+        string resultJson,
+        bool? toolSuccess = null,
+        CancellationToken cancellationToken = default,
+        ToolOutcomeAttribution? attribution = null)
     {
         var row = await GetExecutionForWriteAsync(executionId, cancellationToken).ConfigureAwait(false);
         if (row.Status != "running") return await ToSnapshotAsync(row, cancellationToken).ConfigureAwait(false);
         var stored = await StoreResultAsync(row, resultJson, cancellationToken).ConfigureAwait(false);
         row.Status = "completed";
         row.ToolSuccess = toolSuccess;
+        ApplyAttribution(row, attribution);
         row.ResultReference = stored.Value;
         row.ResultHash = stored.Sha256;
         row.ResultLength = stored.Length;
@@ -933,7 +939,8 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         string status,
         string errorCategory,
         string safeMessage,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ToolOutcomeAttribution? attribution = null)
     {
         if (status is not ("failed" or "timed_out" or "outcome_unknown" or "cancelled"))
             throw new ArgumentException("Unsupported tool execution terminal status.", nameof(status));
@@ -944,6 +951,7 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         var stored = await StoreResultAsync(row, body, cancellationToken).ConfigureAwait(false);
         row.Status = status;
         row.ToolSuccess = null;
+        ApplyAttribution(row, attribution);
         row.ResultReference = stored.Value;
         row.ResultHash = stored.Sha256;
         row.ResultLength = stored.Length;
@@ -953,6 +961,20 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         row.CompletedAt = status == "outcome_unknown" ? null : row.UpdatedAt;
         await SaveExecutionAsync(row, cancellationToken).ConfigureAwait(false);
         return await ToSnapshotAsync(row, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// B5: attribution is written with the terminal transition, never after it, so a reader can
+    /// never observe an attributed terminal row mid-update. A null attribution leaves the columns
+    /// as they were (an older caller, or a cancellation with no honest outcome to name).
+    /// </summary>
+    private static void ApplyAttribution(ToolExecutionRecord row, ToolOutcomeAttribution? attribution)
+    {
+        if (attribution is null) return;
+        row.Outcome = Truncate(attribution.Outcome, 16);
+        row.Retryable = attribution.Retryable;
+        row.PolicyRef = attribution.PolicyRef is { Length: > 0 } policyRef ? Truncate(policyRef, 256) : null;
+        row.AgentGuidance = attribution.AgentGuidance is { Length: > 0 } guidance ? Truncate(guidance, 1024) : null;
     }
 
     public async Task<ToolExecutionRecoveryResult> ApplyRecoveryDecisionAsync(Guid executionId, string decision, CancellationToken cancellationToken = default)
@@ -1386,7 +1408,8 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         row.ApprovalId, row.ToolId, row.ToolCallKey, row.Risk, row.MutatesWorkspace, row.RequiresApproval, row.Status, parametersJson,
         row.ParametersHash, row.Attempt, resultJson, row.ErrorCategory, row.SafeErrorMessage, row.CreatedAt, row.UpdatedAt, row.CompletedAt,
         row.PermissionRequestId, row.AuthorizationDecisionId, row.CapabilityLeaseId, row.LeaseUses,
-        row.WorkspaceSnapshotId, row.WorkspaceSnapshotHash, row.LaneKey, row.ToolSuccess);
+        row.WorkspaceSnapshotId, row.WorkspaceSnapshotHash, row.LaneKey, row.ToolSuccess,
+        row.Outcome, row.Retryable, row.PolicyRef, row.AgentGuidance);
 
     // Action approvals carry a server-generated, one-time nonce. Only its hash
     // and a protected-material reference are persisted; the material is never

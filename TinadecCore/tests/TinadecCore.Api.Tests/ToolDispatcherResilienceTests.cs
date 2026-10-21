@@ -502,6 +502,167 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
         Assert.Equal("warning", Assert.IsType<string>(completedEvent.Payload["severity"]));
     }
 
+    // ── B5 attribution: ok / blocked / error, and a blocked call is never retryable ──
+
+    [Fact]
+    public async Task ResumeAsync_CompletedRead_RecordsOkAttribution()
+    {
+        var tools = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(tools, OkResult());
+        var (dispatcher, _, _, _, execution) = await PrepareReadOnlyExecutionAsync(tools, provider, "disp:attr-ok:0:0");
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolDispatchStatus.Completed, result.Status);
+        Assert.Equal(ToolOutcomes.Ok, result.Outcome);
+        await using var verify = await DbFactory().CreateDbContextAsync();
+        var row = await verify.ToolExecutions.AsNoTracking().SingleAsync(x => x.Id == execution.Id);
+        Assert.Equal(ToolOutcomes.Ok, row.Outcome);
+        Assert.Null(row.PolicyRef);
+        Assert.Null(row.AgentGuidance);
+    }
+
+    [Fact]
+    public async Task ResumeAsync_EmbeddedFailure_RecordsNonRetryableErrorAttribution()
+    {
+        var tools = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(tools, (request, _, _) => Task.FromResult(new ToolWireResponseDto
+        {
+            CallId = request.ToolCallId,
+            IsSuccess = true,
+            Result = JsonSerializer.SerializeToElement(new { success = false, note = "business-level tool failure" })
+        }));
+        var (dispatcher, _, _, _, execution) = await PrepareReadOnlyExecutionAsync(tools, provider, "disp:attr-embedded:0:0");
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolOutcomes.Error, result.Outcome);
+        Assert.False(result.Retryable);
+        Assert.Contains("change the request", result.AgentGuidance);
+        await using var verify = await DbFactory().CreateDbContextAsync();
+        var row = await verify.ToolExecutions.AsNoTracking().SingleAsync(x => x.Id == execution.Id);
+        Assert.Equal(ToolOutcomes.Error, row.Outcome);
+        Assert.False(row.Retryable);
+    }
+
+    [Fact]
+    public async Task ResumeAsync_PolicyDenial_RecordsBlockedAttributionWithItsDecision()
+    {
+        var tools = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(tools, OkResult());
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("disp-attr-denied");
+        var run = await InsertRunAsync(sessionId, "executing");
+        var taskId = Guid.NewGuid();
+        var agentId = Guid.NewGuid();
+        var dispatcher = CreateDispatcher(provider,
+            ScopeFor(tools, run, projectId, sessionId, taskId, agentId),
+            authorization: new DenyingAuthorization());
+        var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, taskId, agentId,
+            "disp:attr-denied:0:0", "read_file", risk: "low", mutatesWorkspace: false, requiresApproval: false, Parameters);
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolDispatchStatus.Blocked, result.Status);
+        Assert.Equal(ToolOutcomes.Blocked, result.Outcome);
+        Assert.False(result.Retryable);
+        Assert.StartsWith("authorization_decision:", result.PolicyRef);
+        Assert.Contains("do not retry", result.AgentGuidance, StringComparison.OrdinalIgnoreCase);
+        await using var verify = await DbFactory().CreateDbContextAsync();
+        var row = await verify.ToolExecutions.AsNoTracking().SingleAsync(x => x.Id == execution.Id);
+        Assert.Equal(ToolOutcomes.Blocked, row.Outcome);
+        Assert.False(row.Retryable);
+        Assert.StartsWith("authorization_decision:", row.PolicyRef);
+        Assert.Equal(0, provider.CallCount);
+    }
+
+    [Fact]
+    public async Task ResumeAsync_RuntimeUnavailableRead_RecordsRetryableErrorAttribution()
+    {
+        var tools = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(tools, (_, _, _) =>
+            throw new InvalidDataException("TinadecTools manifest handshake failed."));
+        var (dispatcher, _, _, _, execution) = await PrepareReadOnlyExecutionAsync(tools, provider, "disp:attr-exception:0:0");
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolDispatchStatus.Failed, result.Status);
+        Assert.Equal(ToolOutcomes.Error, result.Outcome);
+        Assert.True(result.Retryable);
+        await using var verify = await DbFactory().CreateDbContextAsync();
+        var row = await verify.ToolExecutions.AsNoTracking().SingleAsync(x => x.Id == execution.Id);
+        Assert.Equal(ToolOutcomes.Error, row.Outcome);
+        Assert.True(row.Retryable);
+    }
+
+    [Fact]
+    public async Task PreAttributionRow_ReadsWithNullAttribution()
+    {
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("disp-attr-old");
+        var scope = TenantAccessor().Current;
+        var run = await InsertRunAsync(sessionId, "executing");
+        var executionId = Guid.NewGuid();
+        await using (var db = await DbFactory().CreateDbContextAsync())
+        {
+            db.ToolExecutions.Add(new ToolExecutionRecord
+            {
+                Id = executionId,
+                TenantId = scope.TenantId,
+                WorkspaceId = scope.WorkspaceId,
+                ProjectId = projectId,
+                SessionId = sessionId,
+                RunId = run.Id,
+                TaskId = Guid.NewGuid(),
+                AgentInstanceId = Guid.NewGuid(),
+                ToolId = "read_file",
+                ToolCallKey = "old-row",
+                Status = "completed",
+                ParametersHash = ToolParametersHash.Compute("{}"),
+                ParametersReference = string.Empty,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+                CompletedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var snapshot = await ExecutionCoordinator().FindAsync(executionId);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal("completed", snapshot.Status);
+        Assert.Null(snapshot.Outcome);
+        Assert.Null(snapshot.Retryable);
+        Assert.Null(snapshot.PolicyRef);
+        Assert.Null(snapshot.AgentGuidance);
+    }
+
+    [Fact]
+    public async Task ToolAttributionConstraint_IsPromptedOnlyWithWorkerSettlement()
+    {
+        var assembler = _factory!.Services.GetRequiredService<IPromptAssembler>();
+        var withSettlement = await assembler.AssembleAsync(new FrozenPromptAssemblyRequest("agent", null)
+        {
+            RuntimePolicy = new ModeRuntimePolicyDto
+            {
+                Kind = ModeRuntimePolicyRegistry.AutonomousExplorationKind,
+                Version = ModeRuntimePolicyRegistry.AutonomousExplorationVersion,
+                Features = ModeRuntimePolicyRegistry.AutonomousExplorationFeatures.ToArray()
+            }
+        });
+        Assert.Contains("Tool attribution:", withSettlement.Instructions, StringComparison.Ordinal);
+        Assert.Contains("must not be retried", withSettlement.Instructions, StringComparison.Ordinal);
+
+        var without = await assembler.AssembleAsync(new FrozenPromptAssemblyRequest("agent", null)
+        {
+            RuntimePolicy = new ModeRuntimePolicyDto
+            {
+                Kind = ModeRuntimePolicyRegistry.StructuredInvestigationKind,
+                Version = ModeRuntimePolicyRegistry.StructuredInvestigationVersion,
+                Features = [CorrectionRuntimePolicy.CausalTraceFeature, CorrectionRuntimePolicy.CompletionContractFeature]
+            }
+        });
+        Assert.DoesNotContain("Tool attribution:", without.Instructions, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ResumeAsync_WireFailureStringResult_PreservesProviderMessage()
     {
@@ -724,11 +885,12 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
     private ToolDispatcher CreateDispatcher(
         IToolProvider provider,
         ToolInvocationScope scope,
-        IToolExecutionCoordinator? executions = null) => new(
+        IToolExecutionCoordinator? executions = null,
+        IAuthorizationService? authorization = null) => new(
         provider,
         new FakeScopeResolver(scope),
         executions ?? ExecutionCoordinator(),
-        new FakeAuthorization(),
+        authorization ?? new FakeAuthorization(),
         _factory!.Services.GetRequiredService<IWorkspaceSnapshotService>(),
         LifecycleManager(),
         _factory.Services.GetRequiredService<ITerminalSessionRegistry>(),
@@ -929,11 +1091,11 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
             return decision;
         }
 
-        public Task<ToolExecutionSnapshot> CompleteAsync(Guid executionId, string resultJson, bool? toolSuccess = null, CancellationToken cancellationToken = default) =>
-            inner.CompleteAsync(executionId, resultJson, toolSuccess, cancellationToken);
+        public Task<ToolExecutionSnapshot> CompleteAsync(Guid executionId, string resultJson, bool? toolSuccess = null, CancellationToken cancellationToken = default, ToolOutcomeAttribution? attribution = null) =>
+            inner.CompleteAsync(executionId, resultJson, toolSuccess, cancellationToken, attribution);
 
-        public Task<ToolExecutionSnapshot> FailAsync(Guid executionId, string status, string errorCategory, string safeMessage, CancellationToken cancellationToken = default) =>
-            inner.FailAsync(executionId, status, errorCategory, safeMessage, cancellationToken);
+        public Task<ToolExecutionSnapshot> FailAsync(Guid executionId, string status, string errorCategory, string safeMessage, CancellationToken cancellationToken = default, ToolOutcomeAttribution? attribution = null) =>
+            inner.FailAsync(executionId, status, errorCategory, safeMessage, cancellationToken, attribution);
 
         public Task<ToolExecutionSnapshot> BindAuthorizationAsync(Guid executionId, Guid? permissionRequestId, Guid? authorizationDecisionId, Guid? capabilityLeaseId, string status, CancellationToken cancellationToken = default) =>
             inner.BindAuthorizationAsync(executionId, permissionRequestId, authorizationDecisionId, capabilityLeaseId, status, cancellationToken);
@@ -1028,6 +1190,35 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), principalId, null, claim,
             null, null, null, null, null,
             "allowed", "allowed", "test authorization", "test", "policy-hash",
+            principalId, null, DateTimeOffset.UtcNow);
+
+        public Task<PolicyBundleSnapshot> CreatePolicyBundleAsync(CreatePolicyBundleCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<PolicyVersionSnapshot> PublishPolicyVersionAsync(PublishPolicyVersionCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<CapabilityGrantSnapshot> GrantCapabilityAsync(GrantCapabilityCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ApprovalDelegationSnapshot> CreateApprovalDelegationAsync(CreateApprovalDelegationCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<PermissionResolution> RequestPermissionAsync(PermissionRequestCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<PermissionResolution> DecidePermissionAsync(PermissionDecisionCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<PermissionResolution?> GetPermissionRequestAsync(Guid permissionRequestId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<PermissionRequestSnapshot>> ListPermissionRequestsAsync(string? status = null, Guid? runId = null, Guid? taskId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<LeaseConsumptionResult> TryConsumeLeaseAsync(LeaseConsumptionCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RevokeGrantAsync(Guid grantId, string reason, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RevokeDelegationAsync(Guid delegationId, string reason, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RevokeLeaseAsync(Guid leaseId, string reason, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RevokePolicyBundleAsync(Guid policyBundleId, string reason, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class DenyingAuthorization : IAuthorizationService
+    {
+        public Task<ToolAuthorizationResult> AuthorizeToolAsync(ToolAuthorizationCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ToolAuthorizationResult("denied", Decision(command.SubjectPrincipalId, command.Claim)));
+
+        public Task<ToolAuthorizationResult> ConsumeToolLeaseAsync(ToolLeaseConsumptionCommand command, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ToolAuthorizationResult("allowed", Decision(command.SubjectPrincipalId, command.Claim)));
+
+        private static AuthorizationDecisionSnapshot Decision(Guid principalId, CapabilityClaim claim) => new(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), principalId, null, claim,
+            null, null, null, null, null,
+            "denied", "approval_denied", "A person rejected this call.", "approval", "policy-hash",
             principalId, null, DateTimeOffset.UtcNow);
 
         public Task<PolicyBundleSnapshot> CreatePolicyBundleAsync(CreatePolicyBundleCommand command, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -21,6 +21,23 @@ public sealed class ToolExecutionPreviewDto
     [JsonPropertyName("error_category")] public string? ErrorCategory { get; init; }
     [JsonPropertyName("safe_error_message")] public string? SafeErrorMessage { get; init; }
 
+    /// <summary>B5 attribution carried into run traces and dossiers; null on pre-attribution rows.</summary>
+    [JsonPropertyName("outcome")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Outcome { get; init; }
+
+    [JsonPropertyName("retryable")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Retryable { get; init; }
+
+    [JsonPropertyName("policy_ref")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PolicyRef { get; init; }
+
+    [JsonPropertyName("agent_guidance")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? AgentGuidance { get; init; }
+
     /// <summary>The same secret-free projection an approval shows; bulk values are sizes and hashes.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonPropertyName("arguments")] public JsonNode? Arguments { get; init; }

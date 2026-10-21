@@ -650,6 +650,82 @@ public sealed class DmaeaOrchestrationTests
         Assert.Contains("证据充分", verdict.Reasons);
     }
 
+    [Fact]
+    public async Task SupervisionAgent_ParsesEvidenceRefsFromVerdict()
+    {
+        var client = new StubChatClient(
+            "{\"decision\":\"pass\",\"reasons\":[],\"revise_task_indexes\":[],\"criteria_verdicts\":[{\"task_key\":\"t\",\"criterion\":\"完成\",\"satisfied\":true,\"evidence\":\"测试通过\",\"evidence_refs\":[\"tool:shell\",\" task:t \",\"\"]}]}");
+        var supervisor = new SupervisionAgent(new FakeFactory(new FakeChatResolver(true), client));
+        var tasks = new[] { new PlannedTask { TaskKey = "t", Title = "任务A", SuccessCriteria = ["完成"] } };
+        var results = new[]
+        {
+            new StepResult { TaskNodeId = Guid.NewGuid(), AgentId = "x", Status = "completed", Summary = "任务A 完成", Evidence = ["完成"] }
+        };
+
+        var verdict = await supervisor.ReviewAsync("用户目标", tasks, results, 0, null, CancellationToken.None, requireEvidenceRefs: true);
+
+        var item = Assert.Single(verdict.CriterionVerdicts!);
+        Assert.Equal(new[] { "tool:shell", "task:t" }, item.EvidenceRefs);
+    }
+
+    [Fact]
+    public async Task SupervisionAgent_RequestsEvidenceRefsOnlyWhenRequired()
+    {
+        var client = new StubChatClient("{\"decision\":\"pass\",\"reasons\":[]}");
+        var supervisor = new SupervisionAgent(new FakeFactory(new FakeChatResolver(true), client));
+        var tasks = new[] { new PlannedTask { TaskKey = "t", Title = "任务A", SuccessCriteria = ["完成"] } };
+        var results = Array.Empty<StepResult>();
+
+        await supervisor.ReviewAsync("用户目标", tasks, results, 0, null, CancellationToken.None, requireEvidenceRefs: true);
+        Assert.Contains("evidence_refs", client.LastInstructions, StringComparison.Ordinal);
+
+        await supervisor.ReviewAsync("用户目标", tasks, results, 0, null, CancellationToken.None);
+        Assert.DoesNotContain("evidence_refs", client.LastInstructions, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// evidence_refs_required: a satisfied verdict must cite at least one reference.
+    /// The missing-citation case escalates immediately — a revision round cannot
+    /// manufacture a citation for evidence the supervisor did not have — while an
+    /// unsatisfied verdict may omit references and keeps the normal revise path.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, true, SupervisionDecision.Pass)]
+    [InlineData(true, false, true, SupervisionDecision.Escalate)]
+    [InlineData(false, false, true, SupervisionDecision.Revise)]
+    [InlineData(false, true, true, SupervisionDecision.Revise)]
+    [InlineData(true, false, false, SupervisionDecision.Pass)]
+    public void EvidenceRefsGate_RequiresCitationsForSatisfiedVerdictsOnly(
+        bool satisfied,
+        bool withRefs,
+        bool refsRequired,
+        SupervisionDecision expected)
+    {
+        var task = new DurableTaskNode
+        {
+            TaskKey = "t",
+            Status = "completed",
+            SuccessCriteria = ["完成"],
+            CriteriaVerdicts =
+            [
+                new CriterionVerdict("完成", satisfied, "worker evidence", "worker:agent", 0,
+                    withRefs ? new[] { "tool:shell" } : null)
+            ]
+        };
+        var pass = new SupervisionVerdict(SupervisionDecision.Pass, [], []);
+
+        var verdict = FullDuplexRunEngine.EnforceCriterionFacts(
+            [task], pass, revisionRound: 0, maxRevisionRounds: 2,
+            requireSupervisorEvidence: false, evidenceRefsRequired: refsRequired);
+
+        Assert.Equal(expected, verdict.Decision);
+        if (satisfied && !withRefs && refsRequired)
+        {
+            Assert.Empty(verdict.ReviseTaskIndexes);
+            Assert.Contains(verdict.Reasons, reason => reason.Contains("evidence_refs", StringComparison.Ordinal));
+        }
+    }
+
     // ──────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────

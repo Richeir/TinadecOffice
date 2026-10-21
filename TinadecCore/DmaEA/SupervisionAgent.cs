@@ -35,7 +35,12 @@ public sealed record SupervisionVerdict(
 }
 
 /// <summary>A per-criterion verdict naming the task it belongs to.</summary>
-public sealed record LaneCriterionVerdict(string TaskKey, string Criterion, bool Satisfied, string? Evidence);
+public sealed record LaneCriterionVerdict(
+    string TaskKey,
+    string Criterion,
+    bool Satisfied,
+    string? Evidence,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? EvidenceRefs = null);
 
 /// <summary>
 /// Supervision-layer agent: reviews planned tasks against execution evidence and returns
@@ -46,6 +51,9 @@ public sealed class SupervisionAgent
 {
     private const string SupervisionInstructions =
         "你是监督智能体。对照任务列表与执行证据给出质量结论。仅输出 JSON 对象，包含 decision（pass/revise/escalate）、reasons（字符串数组）、revise_task_indexes（decision 为 revise 时需要重做的任务下标数组，其他情况为空数组），以及 criteria_verdicts。criteria_verdicts 必须逐条覆盖任务列表中的每一条 success_criteria，每项形如 {\"task_key\":\"...\",\"criterion\":\"原文成功标准\",\"satisfied\":true|false,\"evidence\":\"支持该裁决的具体执行证据\"}；不得省略、改写 criterion，也不得在 evidence 为空时判 satisfied=true。证据不足或存在无法自动处理的风险时选择 revise 或 escalate。不要输出其他文字。";
+
+    private const string EvidenceRefsInstructions =
+        "本轮要求证据引用：每条 satisfied=true 的 criteria_verdicts 必须同时给出 evidence_refs（字符串数组，指向执行证据中的具体来源，如 task:<task_key>、tool:<tool_id> 或 evidence:<file>）；没有 evidence_refs 时不得判 satisfied=true。satisfied=false 可以省略 evidence_refs。";
 
     private static readonly JsonSerializerOptions ParseOptions = new(JsonSerializerDefaults.Web);
 
@@ -69,7 +77,8 @@ public sealed class SupervisionAgent
         IReadOnlyList<StepResult> results,
         int revisionRound,
         string? assembledInstructions,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool requireEvidenceRefs = false)
     {
         var resolution = await _chatClients.ResolveChatAsync("chat", ct).ConfigureAwait(false);
         if (!resolution.IsAvailable)
@@ -89,6 +98,10 @@ public sealed class SupervisionAgent
                     .Take(8)
                     .Select(item => $"  evidence: {item}"))));
             var prompt = $"用户目标:\n{userGoal}\n\n任务列表:\n{taskLines}\n\n执行证据 (第 {revisionRound} 轮修正后):\n{evidenceLines}";
+            var instructions = string.IsNullOrWhiteSpace(assembledInstructions)
+                ? SupervisionInstructions
+                : assembledInstructions.Trim() + "\n\n" + SupervisionInstructions;
+            if (requireEvidenceRefs) instructions += "\n\n" + EvidenceRefsInstructions;
             var turn = await Maf18RuntimeAdapter.RunGovernanceTurnAsync(
                 chatClient,
                 "operation.supervisor",
@@ -96,9 +109,7 @@ public sealed class SupervisionAgent
                 "Reviews execution evidence and emits a non-authoritative quality verdict.",
                 new ChatOptions
                 {
-                    Instructions = string.IsNullOrWhiteSpace(assembledInstructions)
-                        ? SupervisionInstructions
-                        : assembledInstructions.Trim() + "\n\n" + SupervisionInstructions
+                    Instructions = instructions
                 },
                 prompt,
                 ct).ConfigureAwait(false);
@@ -147,7 +158,12 @@ public sealed class SupervisionAgent
                     .ToArray();
                 var criterionVerdicts = (parsed.CriterionVerdicts ?? [])
                     .Where(item => !string.IsNullOrWhiteSpace(item.TaskKey) && !string.IsNullOrWhiteSpace(item.Criterion))
-                    .Select(item => new LaneCriterionVerdict(item.TaskKey!.Trim(), item.Criterion!.Trim(), item.Satisfied, item.Evidence))
+                    .Select(item => new LaneCriterionVerdict(
+                        item.TaskKey!.Trim(),
+                        item.Criterion!.Trim(),
+                        item.Satisfied,
+                        item.Evidence,
+                        NormalizeRefs(item.EvidenceRefs)))
                     .ToList();
                 return new SupervisionVerdict(decision, parsed.Reasons ?? [], decision == SupervisionDecision.Revise ? indexes : [],
                     criterionVerdicts.Count > 0 ? criterionVerdicts : null);
@@ -158,6 +174,18 @@ public sealed class SupervisionAgent
             }
         }
         return null;
+    }
+
+    private static IReadOnlyList<string>? NormalizeRefs(string[]? refs)
+    {
+        var normalized = (refs ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item.Trim())
+            .Where(item => item.Length <= 512)
+            .Distinct(StringComparer.Ordinal)
+            .Take(32)
+            .ToArray();
+        return normalized.Length > 0 ? normalized : null;
     }
 
     private sealed class VerdictBody
@@ -188,5 +216,8 @@ public sealed class SupervisionAgent
 
         [JsonPropertyName("evidence")]
         public string? Evidence { get; set; }
+
+        [JsonPropertyName("evidence_refs")]
+        public string[]? EvidenceRefs { get; set; }
     }
 }

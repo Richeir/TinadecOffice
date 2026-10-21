@@ -13,7 +13,13 @@ namespace TinadecCore.DmaEA.Orchestration;
 /// Round attribute the verdict to a supervision pass; a gate may only
 /// proceed when every recorded verdict is satisfied with evidence.
 /// </summary>
-internal sealed record CriterionVerdict(string Criterion, bool Satisfied, string? Evidence, string? ReviewedBy = null, int Round = 0);
+internal sealed record CriterionVerdict(
+    string Criterion,
+    bool Satisfied,
+    string? Evidence,
+    string? ReviewedBy = null,
+    int Round = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? EvidenceRefs = null);
 
 /// <summary>
 /// A structured cross-lane wait: the owning task is docked behind

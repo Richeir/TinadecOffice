@@ -1,3 +1,5 @@
+using TinadecCore.Contracts.Dtos;
+
 namespace TinadecCore.Abstractions.Ports;
 
 /// <summary>
@@ -35,6 +37,12 @@ public sealed record FrozenPromptAssemblyRequest(
     bool IncludeLiveFragments = false,
     string? ResponseLocale = null)
 {
+    /// <summary>
+    /// The run's frozen mode policy. B5 reads it only to decide whether the tool-attribution
+    /// constraint (blocked calls are not retried) belongs in this prompt.
+    /// </summary>
+    public ModeRuntimePolicyDto? RuntimePolicy { get; init; }
+
     /// <summary>
     /// The run's frozen workspace, when one is bound. It is prompt input, not a
     /// live lookup: the assembler renders the frozen root, git facts, listing and

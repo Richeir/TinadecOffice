@@ -1268,7 +1268,11 @@ public sealed class StorageLifecycleService : IStorageMigrationParticipant
             ["error_category"] = "TEXT NULL",
             ["safe_error_message"] = "TEXT NULL",
             ["workspace_snapshot_id"] = "TEXT NULL",
-            ["workspace_snapshot_hash"] = "TEXT NULL"
+            ["workspace_snapshot_hash"] = "TEXT NULL",
+            ["outcome"] = "TEXT NULL",
+            ["retryable"] = "INTEGER NULL",
+            ["policy_ref"] = "TEXT NULL",
+            ["agent_guidance"] = "TEXT NULL"
         };
 
         foreach (var (column, definition) in required)

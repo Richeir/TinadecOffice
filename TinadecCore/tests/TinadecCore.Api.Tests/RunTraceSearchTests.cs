@@ -77,6 +77,7 @@ public sealed class RunTraceSearchTests : IAsyncLifetime
         var cited = Assert.Single(all.Tools, tool => tool.Preview.ExecutionId == executionA.Id.ToString());
         Assert.DoesNotContain("sk-tool-secret", cited.Preview.Arguments?.ToJsonString() ?? string.Empty, StringComparison.Ordinal);
         Assert.Contains("[redacted]", cited.Preview.Arguments?.ToJsonString() ?? string.Empty, StringComparison.Ordinal);
+        Assert.Equal(ToolOutcomes.Ok, cited.Preview.Outcome);
 
         var byWorker = await trace.SearchAsync(new RunTraceQuery(
             scope.TenantId, scope.WorkspaceId, sessionId, runId, AgentInstanceId: workerA, Limit: 20));
@@ -129,7 +130,7 @@ public sealed class RunTraceSearchTests : IAsyncLifetime
         Assert.Equal("running", (await coordinator.TryStartAsync(preparation.Execution.Id)).Status);
         return await coordinator.CompleteAsync(preparation.Execution.Id,
             """{"success":true,"file_hash":"h","all_contents":[{"content":{"Content":"export const a = 1;","LineNumber":1},"line_hash":"x"}]}""",
-            toolSuccess: true);
+            toolSuccess: true, attribution: new ToolOutcomeAttribution(ToolOutcomes.Ok));
     }
 
     private async Task<(Guid ProjectId, Guid SessionId)> CreateProjectAndSessionAsync()

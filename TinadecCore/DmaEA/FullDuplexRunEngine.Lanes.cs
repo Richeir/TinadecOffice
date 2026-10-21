@@ -764,7 +764,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         foreach (var item in verdict.CriterionVerdicts)
         {
             var task = checkpoint.Tasks.FirstOrDefault(node => string.Equals(node.TaskKey, item.TaskKey, StringComparison.OrdinalIgnoreCase));
-            task?.CriteriaVerdicts.Add(new CriterionVerdict(item.Criterion, item.Satisfied, item.Evidence, "supervisor", checkpoint.SupervisionRound));
+            task?.CriteriaVerdicts.Add(new CriterionVerdict(item.Criterion, item.Satisfied, item.Evidence, "supervisor", checkpoint.SupervisionRound, item.EvidenceRefs));
         }
     }
 

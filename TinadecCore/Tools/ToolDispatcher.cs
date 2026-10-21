@@ -264,7 +264,9 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                 catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or DirectoryNotFoundException)
                 {
                     var blocked = await _executions.FailAsync(execution.Id, "failed", RunErrorTaxonomy.SnapshotFailed,
-                        SafeMessage(ex.Message), cancellationToken).ConfigureAwait(false);
+                        SafeMessage(ex.Message), cancellationToken,
+                        new ToolOutcomeAttribution(ToolOutcomes.Error, Retryable: true,
+                            AgentGuidance: "The call was stopped before it reached the tool because the pre-write snapshot failed; it can be retried once the workspace is readable.")).ConfigureAwait(false);
                     return ResultForFailure(blocked, ToolDispatchStatus.Blocked);
                 }
             }
@@ -316,8 +318,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                         authorization.CapabilityLeaseId,
                         "blocked",
                         cancellationToken).ConfigureAwait(false);
-                    await _executions.FailAsync(execution.Id, "failed", authorization.ErrorCategory ?? RunErrorTaxonomy.NotAuthorized, authorization.Message ?? "Tool authorization was denied.", cancellationToken).ConfigureAwait(false);
-                    return DispatchBlocked(execution, authorization);
+                    var denied = await _executions.FailAsync(execution.Id, "failed", authorization.ErrorCategory ?? RunErrorTaxonomy.NotAuthorized, authorization.Message ?? "Tool authorization was denied.", cancellationToken, BlockedAttribution(authorization)).ConfigureAwait(false);
+                    return DispatchBlocked(denied, authorization);
                 }
                 execution = await _executions.BindAuthorizationAsync(execution.Id,
                     authorization.PermissionRequestId,
@@ -436,21 +438,27 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             if (!MatchesStorageScope(scope))
             {
                 const string scopeFailureMessage = "The frozen run belongs to a different storage scope. Its previous approval cannot be resumed here.";
-                await _executions.FailAsync(execution.Id, "failed", "frozen_storage_scope_mismatch", scopeFailureMessage, cancellationToken).ConfigureAwait(false);
+                await _executions.FailAsync(execution.Id, "failed", "frozen_storage_scope_mismatch", scopeFailureMessage, cancellationToken,
+                    new ToolOutcomeAttribution(ToolOutcomes.Blocked, Retryable: false, "frozen_storage_scope",
+                        "This execution belongs to another storage scope and cannot be resumed here; do not retry it in this run.")).ConfigureAwait(false);
                 return Blocked(scopeFailureMessage, execution, "frozen_storage_scope_mismatch");
             }
             var found = await FindV2ToolAsync(scope, execution.ToolId, cancellationToken).ConfigureAwait(false);
             if (found.Entry is null)
             {
-                await _executions.FailAsync(execution.Id, "failed", "manifest_changed", found.Error!, cancellationToken).ConfigureAwait(false);
-                return new ToolDispatchResultDto { Status = ToolDispatchStatus.Failed, ExecutionId = execution.Id.ToString(), ApprovalId = execution.ApprovalId?.ToString(), ErrorCategory = "manifest_changed", Message = found.Error };
+                await _executions.FailAsync(execution.Id, "failed", "manifest_changed", found.Error!, cancellationToken,
+                    new ToolOutcomeAttribution(ToolOutcomes.Blocked, Retryable: false, "frozen_manifest",
+                        "The frozen tool manifest no longer matches this call; do not retry it in this run.")).ConfigureAwait(false);
+                return new ToolDispatchResultDto { Status = ToolDispatchStatus.Failed, ExecutionId = execution.Id.ToString(), ApprovalId = execution.ApprovalId?.ToString(), ErrorCategory = "manifest_changed", Message = found.Error, Outcome = ToolOutcomes.Blocked, Retryable = false, PolicyRef = "frozen_manifest", AgentGuidance = "The frozen tool manifest no longer matches this call; do not retry it in this run." };
             }
             descriptor = found.Entry;
             if (descriptor.MutatesWorkspace != execution.MutatesWorkspace || (descriptor.RequiresApproval || descriptor.MutatesWorkspace) != execution.RequiresApproval)
             {
                 const string manifestPolicyMessage = "The current manifest no longer matches the persisted tool execution policy.";
-                await _executions.FailAsync(execution.Id, "failed", "manifest_changed", manifestPolicyMessage, cancellationToken).ConfigureAwait(false);
-                return new ToolDispatchResultDto { Status = ToolDispatchStatus.Failed, ExecutionId = execution.Id.ToString(), ApprovalId = execution.ApprovalId?.ToString(), ErrorCategory = "manifest_changed", Message = manifestPolicyMessage };
+                await _executions.FailAsync(execution.Id, "failed", "manifest_changed", manifestPolicyMessage, cancellationToken,
+                    new ToolOutcomeAttribution(ToolOutcomes.Blocked, Retryable: false, "frozen_manifest",
+                        "The frozen tool policy no longer matches this call; do not retry it in this run.")).ConfigureAwait(false);
+                return new ToolDispatchResultDto { Status = ToolDispatchStatus.Failed, ExecutionId = execution.Id.ToString(), ApprovalId = execution.ApprovalId?.ToString(), ErrorCategory = "manifest_changed", Message = manifestPolicyMessage, Outcome = ToolOutcomes.Blocked, Retryable = false, PolicyRef = "frozen_manifest", AgentGuidance = "The frozen tool policy no longer matches this call; do not retry it in this run." };
             }
 
             var authorization = await AuthorizeAsync(scope, descriptor, execution, cancellationToken).ConfigureAwait(false);
@@ -473,7 +481,7 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                     authorization.CapabilityLeaseId,
                     "blocked",
                     cancellationToken).ConfigureAwait(false);
-                var denied = await _executions.FailAsync(execution.Id, "failed", authorization.ErrorCategory ?? RunErrorTaxonomy.NotAuthorized, authorization.Message ?? "Tool authorization was denied.", cancellationToken).ConfigureAwait(false);
+                var denied = await _executions.FailAsync(execution.Id, "failed", authorization.ErrorCategory ?? RunErrorTaxonomy.NotAuthorized, authorization.Message ?? "Tool authorization was denied.", cancellationToken, BlockedAttribution(authorization)).ConfigureAwait(false);
                 return DispatchBlocked(denied, authorization);
             }
             execution = await _executions.BindAuthorizationAsync(execution.Id,
@@ -495,7 +503,9 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                 $"tool-lease:{execution.Id:N}"), cancellationToken).ConfigureAwait(false);
             if (consumedLease.Status != "allowed")
             {
-                var failedLease = await _executions.FailAsync(execution.Id, "failed", consumedLease.Decision.ReasonCode, consumedLease.Decision.Reason, cancellationToken).ConfigureAwait(false);
+                var failedLease = await _executions.FailAsync(execution.Id, "failed", consumedLease.Decision.ReasonCode, consumedLease.Decision.Reason, cancellationToken,
+                    new ToolOutcomeAttribution(ToolOutcomes.Blocked, Retryable: false, $"capability_lease:{leaseId:N}",
+                        "The capability lease for this call was refused; do not retry it with the same arguments.")).ConfigureAwait(false);
                 return DispatchBlocked(failedLease, new DispatchAuthorization(ToolDispatchStatus.Blocked, consumedLease.Decision.PermissionRequestId, consumedLease.Decision.Id, leaseId, consumedLease.Decision.ReasonCode, consumedLease.Decision.Reason));
             }
             if (execution.RequiresApproval && execution.ApprovalId is null)
@@ -640,7 +650,9 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         }
         if (!TryParseParameters(execution.ParametersJson, out var parameters))
         {
-            var failed = await _executions.FailAsync(execution.Id, "failed", "invalid_parameters", "Persisted tool parameters are invalid JSON.", cancellationToken).ConfigureAwait(false);
+            var failed = await _executions.FailAsync(execution.Id, "failed", "invalid_parameters", "Persisted tool parameters are invalid JSON.", cancellationToken,
+                new ToolOutcomeAttribution(ToolOutcomes.Error, Retryable: false,
+                    AgentGuidance: "The stored arguments were not valid JSON; repeating the identical call cannot succeed. Re-issue it with corrected arguments.")).ConfigureAwait(false);
             return ResultForFailure(failed, ToolDispatchStatus.Failed);
         }
 
@@ -652,14 +664,18 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                 if (!validation.IsValid)
                 {
                     var failed = await _executions.FailAsync(execution.Id, "failed", "snapshot_changed",
-                        "The pre-write workspace snapshot no longer matches the current workspace.", cancellationToken).ConfigureAwait(false);
+                        "The pre-write workspace snapshot no longer matches the current workspace.", cancellationToken,
+                        new ToolOutcomeAttribution(ToolOutcomes.Blocked, Retryable: false, "workspace_snapshot",
+                            "The workspace changed after the snapshot was taken; re-read it before repeating this write.")).ConfigureAwait(false);
                     return ResultForFailure(failed, ToolDispatchStatus.Blocked);
                 }
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException or DirectoryNotFoundException)
             {
                 var failed = await _executions.FailAsync(execution.Id, "failed", "snapshot_unavailable",
-                    SafeMessage(ex.Message), cancellationToken).ConfigureAwait(false);
+                    SafeMessage(ex.Message), cancellationToken,
+                    new ToolOutcomeAttribution(ToolOutcomes.Error, Retryable: true,
+                        AgentGuidance: "The pre-write snapshot could not be validated; the call did not reach the tool and may be retried once the workspace is readable.")).ConfigureAwait(false);
                 return ResultForFailure(failed, ToolDispatchStatus.Blocked);
             }
         }
@@ -743,7 +759,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                     // without changing the completed dispatch outcome so the result can
                     // still flow back to the model for correction.
                     var toolSuccess = ReadEmbeddedToolSuccess(descriptor.Id, response.Result);
-                    var completed = await _executions.CompleteAsync(execution.Id, resultJson, toolSuccess, cancellationToken).ConfigureAwait(false);
+                    var completed = await _executions.CompleteAsync(execution.Id, resultJson, toolSuccess, cancellationToken,
+                        toolSuccess == false
+                            ? new ToolOutcomeAttribution(ToolOutcomes.Error, Retryable: false,
+                                AgentGuidance: "The tool ran and reported failure in its result. Read that result and change the request instead of repeating it unchanged.")
+                            : new ToolOutcomeAttribution(ToolOutcomes.Ok)).ConfigureAwait(false);
                     await AppendEventAsync(execution.RunId, "tool.execution.completed",
                         toolSuccess == false ? $"Tool '{descriptor.Id}' completed with an embedded failure." : $"Tool '{descriptor.Id}' completed.", new
                     {
@@ -763,7 +783,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                         ExecutionId = completed.Id.ToString(),
                         ApprovalId = completed.ApprovalId?.ToString(),
                         Attempt = attempt,
-                        Result = response.Result
+                        Result = response.Result,
+                        Outcome = completed.Outcome,
+                        Retryable = completed.Retryable,
+                        PolicyRef = completed.PolicyRef,
+                        AgentGuidance = completed.AgentGuidance
                     };
                 }
 
@@ -803,7 +827,9 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             // legitimately outlives a short default. The pre-write workspace snapshot
             // check and the approval gate are unchanged, so the write still cannot be
             // silently replayed; only the report path changed.
-            var unknown = await _executions.FailAsync(execution.Id, RunErrorTaxonomy.OutcomeUnknown, finalCategory, message, cancellationToken).ConfigureAwait(false);
+            var unknown = await _executions.FailAsync(execution.Id, RunErrorTaxonomy.OutcomeUnknown, finalCategory, message, cancellationToken,
+                new ToolOutcomeAttribution(ToolOutcomes.Error, Retryable: false,
+                    AgentGuidance: "The call may or may not have taken effect. Inspect the workspace before repeating it.")).ConfigureAwait(false);
             await AppendEventAsync(execution.RunId, "tool.execution.outcome_unknown",
                 $"Tool '{descriptor.Id}' finished with an unknown outcome ({finalCategory}); returned to the caller.", new
                 {
@@ -818,7 +844,15 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         }
 
         var failureStatus = finalCategory == RunErrorTaxonomy.ToolTimeout ? "timed_out" : "failed";
-        var failedExecution = await _executions.FailAsync(execution.Id, failureStatus, finalCategory, message, cancellationToken).ConfigureAwait(false);
+        // A read-only transport failure can succeed on a later attempt; a mutating call's
+        // failure is only retryable when Core knows it never reached the tool.
+        var retryable = !execution.MutatesWorkspace
+            && finalCategory is RunErrorTaxonomy.ToolTimeout or RunErrorTaxonomy.ToolProcessExit or RunErrorTaxonomy.ToolRuntimeUnavailable;
+        var failedExecution = await _executions.FailAsync(execution.Id, failureStatus, finalCategory, message, cancellationToken,
+            new ToolOutcomeAttribution(ToolOutcomes.Error, retryable,
+                AgentGuidance: retryable
+                    ? "The call failed before it could produce a result and may be retried."
+                    : "The call failed; repeating it unchanged is not likely to succeed. Change the request or approach.")).ConfigureAwait(false);
         return ResultForFailure(failedExecution, failureStatus == "timed_out" ? ToolDispatchStatus.Timeout : finalCategory == RunErrorTaxonomy.ToolProcessExit ? ToolDispatchStatus.ProcessExit : ToolDispatchStatus.Failed);
     }
 
@@ -2190,7 +2224,15 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         AuthorizationDecisionId = execution.AuthorizationDecisionId?.ToString() ?? authorization.AuthorizationDecisionId?.ToString(),
         Attempt = execution.Attempt,
         ErrorCategory = authorization.ErrorCategory,
-        Message = authorization.Message
+        Message = authorization.Message,
+        Outcome = execution.Outcome ?? (authorization.Status == ToolDispatchStatus.Blocked ? ToolOutcomes.Blocked : null),
+        Retryable = execution.Retryable,
+        PolicyRef = execution.PolicyRef ?? (authorization.AuthorizationDecisionId is { } decision && decision != Guid.Empty
+            ? $"authorization_decision:{decision:N}"
+            : authorization.ErrorCategory is { Length: > 0 } reason ? $"policy:{reason}" : null),
+        AgentGuidance = execution.AgentGuidance ?? (authorization.Status == ToolDispatchStatus.Blocked
+            ? "Policy denied this call; do not retry it with the same arguments. Change the request or report the blockage."
+            : null)
     };
 
     private sealed record DispatchAuthorization(
@@ -2240,8 +2282,21 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         AuthorizationDecisionId = execution.AuthorizationDecisionId?.ToString(),
         Attempt = execution.Attempt,
         ErrorCategory = execution.ErrorCategory,
-        Message = execution.SafeErrorMessage
+        Message = execution.SafeErrorMessage,
+        Outcome = execution.Outcome,
+        Retryable = execution.Retryable,
+        PolicyRef = execution.PolicyRef,
+        AgentGuidance = execution.AgentGuidance
     };
+
+    /// <summary>B5: a policy refusal is never retryable and names the decision that refused it.</summary>
+    private static ToolOutcomeAttribution BlockedAttribution(DispatchAuthorization authorization) => new(
+        ToolOutcomes.Blocked,
+        Retryable: false,
+        authorization.AuthorizationDecisionId is { } decision && decision != Guid.Empty
+            ? $"authorization_decision:{decision:N}"
+            : authorization.ErrorCategory is { Length: > 0 } reason ? $"policy:{reason}" : null,
+        "Policy denied this call; do not retry it with the same arguments. Change the request or report the blockage.");
 
     /// <summary>
     /// Top-level string arguments as a lookup for <see cref="ResourceClaimResolver"/>. Only strings
@@ -2277,7 +2332,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         AuthorizationDecisionId = execution?.AuthorizationDecisionId?.ToString(),
         Attempt = execution?.Attempt ?? 0,
         ErrorCategory = errorCategory,
-        Message = message
+        Message = message,
+        Outcome = execution?.Outcome,
+        Retryable = execution?.Retryable,
+        PolicyRef = execution?.PolicyRef,
+        AgentGuidance = execution?.AgentGuidance
     };
 
     /// <summary>

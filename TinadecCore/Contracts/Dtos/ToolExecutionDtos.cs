@@ -206,6 +206,22 @@ public sealed class ToolDispatchResultDto
     [JsonPropertyName("message")]
     public string? Message { get; init; }
 
+    /// <summary>B5: <c>ok</c>, <c>blocked</c> or <c>error</c>; null when the call did not reach a verdict.</summary>
+    [JsonPropertyName("outcome")]
+    public string? Outcome { get; init; }
+
+    /// <summary>True only when repeating the same call can reasonably succeed (never for blocked).</summary>
+    [JsonPropertyName("retryable")]
+    public bool? Retryable { get; init; }
+
+    /// <summary>The authorization decision or lease that blocked the call.</summary>
+    [JsonPropertyName("policy_ref")]
+    public string? PolicyRef { get; init; }
+
+    /// <summary>What the worker model should do instead of guessing after a non-ok call.</summary>
+    [JsonPropertyName("agent_guidance")]
+    public string? AgentGuidance { get; init; }
+
     /// <summary>
     /// True when the approval decision window elapsed and the execution was
     /// parked. Deliberately not serializable: it is an engine-internal escalation

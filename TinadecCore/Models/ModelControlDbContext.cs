@@ -11,6 +11,7 @@ public sealed class ModelControlDbContext : ConfigurationProjectionDbContext
     public DbSet<ModelRouteRecord> Routes => Set<ModelRouteRecord>();
     public DbSet<ModelRouteVersionRecord> RouteVersions => Set<ModelRouteVersionRecord>();
     public DbSet<ModelRouteCandidateRecord> RouteCandidates => Set<ModelRouteCandidateRecord>();
+    public DbSet<ModelHealthRecord> Health => Set<ModelHealthRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -44,6 +45,15 @@ public sealed class ModelControlDbContext : ConfigurationProjectionDbContext
             entity.HasIndex(x => new { x.RouteVersionId, x.Position }).IsUnique();
             entity.HasIndex(x => new { x.ProviderInstanceId, x.Model });
         });
+        // One row per (scope, provider, model). The breaker state is a property of the pair a route
+        // candidate names, not of the route: two routes pointing at the same provider share an outage.
+        modelBuilder.Entity<ModelHealthRecord>(entity =>
+        {
+            entity.ToTable("model_health"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Model).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.LastCategory).HasMaxLength(64);
+            entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.ProviderInstanceId, x.Model }).IsUnique();
+        });
         modelBuilder.UseTinadecSnakeCase();
     }
 }
@@ -53,3 +63,4 @@ public sealed class ModelProviderVersionRecord { public Guid Id { get; set; } pu
 public sealed class ModelRouteRecord { public Guid Id { get; set; } public Guid TenantId { get; set; } public Guid? WorkspaceId { get; set; } public Guid? ProjectId { get; set; } public string Scope { get; set; } = "workspace"; public string Purpose { get; set; } = string.Empty; public long Revision { get; set; } public Guid CurrentVersionId { get; set; } public Guid CreatedByPrincipalId { get; set; } public Guid UpdatedByPrincipalId { get; set; } public DateTimeOffset CreatedAt { get; set; } public DateTimeOffset UpdatedAt { get; set; } public DateTimeOffset? DeletedAt { get; set; } }
 public sealed class ModelRouteVersionRecord { public Guid Id { get; set; } public Guid RouteId { get; set; } public int Version { get; set; } public Guid CreatedByPrincipalId { get; set; } public DateTimeOffset CreatedAt { get; set; } }
 public sealed class ModelRouteCandidateRecord { public Guid Id { get; set; } public Guid RouteVersionId { get; set; } public int Position { get; set; } public Guid ProviderInstanceId { get; set; } public string? Model { get; set; } }
+public sealed class ModelHealthRecord { public Guid Id { get; set; } public Guid TenantId { get; set; } public Guid WorkspaceId { get; set; } public Guid ProviderInstanceId { get; set; } public string Model { get; set; } = string.Empty; public int ConsecutiveFailures { get; set; } public DateTimeOffset? CoolingUntil { get; set; } public string? LastCategory { get; set; } public DateTimeOffset UpdatedAt { get; set; } }

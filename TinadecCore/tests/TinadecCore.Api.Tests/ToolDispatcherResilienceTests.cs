@@ -795,6 +795,72 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
         Assert.Equal(0, provider.CallCount);
     }
 
+    [Fact]
+    public async Task RunDossier_DeclaredVirtual_ReadsTheRunInsideCore()
+    {
+        // Same freeze shape as task_dispatch: child entries plus the declared virtual entry, hashed
+        // over the child entries alone. "Completed" alone would also be produced by a gate waving the
+        // call through, so the witness is the payload naming THIS run.
+        var live = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(live, OkResult());
+        var declared = RunDossierVirtualTools.ManifestEntry(CoreVirtualToolPolicy.RunDossierToolId);
+        Assert.NotNull(declared);
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("dossier-" + Guid.NewGuid().ToString("N")[..6]);
+        var run = await InsertRunAsync(sessionId, "executing");
+        var taskId = Guid.NewGuid();
+        var agentId = Guid.NewGuid();
+        var dispatcher = CreateDispatcher(
+            provider,
+            ScopeFor([.. live, declared], run, projectId, sessionId, taskId, agentId, liveManifest: live) with
+            {
+                RuntimePolicy = new ModeRuntimePolicyDto
+                {
+                    Kind = ModeRuntimePolicyRegistry.AutonomousExplorationKind,
+                    Version = ModeRuntimePolicyRegistry.AutonomousExplorationVersion,
+                    Features = ModeRuntimePolicyRegistry.AutonomousExplorationFeatures.ToArray()
+                }
+            },
+            runDossier: _factory!.Services.GetRequiredService<IRunDossier>());
+        var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, taskId, agentId,
+            "disp:run-dossier:0:0", CoreVirtualToolPolicy.RunDossierToolId, risk: "low",
+            mutatesWorkspace: false, requiresApproval: false, "{\"limit\":5}");
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolDispatchStatus.Completed, result.Status);
+        Assert.Equal(0, provider.CallCount);
+        Assert.NotNull(result.Result);
+        var runFacts = result.Result!.Value.GetProperty("run");
+        Assert.Equal(run.Id.ToString(), runFacts.GetProperty("run_id").GetString());
+        Assert.Equal("executing", runFacts.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task RunDossier_UndeclaredVirtual_IsStillRefused()
+    {
+        // The exemption is "the run declared this Core-owned tool", not "Core knows this id": a
+        // second virtual tool must not become reachable just because its executor exists in DI.
+        var live = new[] { Tool("read_file") };
+        var provider = new ConfigurableToolProvider(live, OkResult());
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("dossier-" + Guid.NewGuid().ToString("N")[..6]);
+        var run = await InsertRunAsync(sessionId, "executing");
+        var taskId = Guid.NewGuid();
+        var agentId = Guid.NewGuid();
+        var dispatcher = CreateDispatcher(
+            provider,
+            ScopeFor(live, run, projectId, sessionId, taskId, agentId, liveManifest: live),
+            runDossier: _factory!.Services.GetRequiredService<IRunDossier>());
+        var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, taskId, agentId,
+            "disp:run-dossier-undeclared:0:0", CoreVirtualToolPolicy.RunDossierToolId, risk: "low",
+            mutatesWorkspace: false, requiresApproval: false, "{}");
+
+        var result = await dispatcher.ResumeAsync(execution.Id.ToString());
+
+        Assert.Equal(ToolDispatchStatus.Failed, result.Status);
+        Assert.Contains("frozen authorized manifest", result.Message);
+        Assert.Equal(0, provider.CallCount);
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -886,7 +952,8 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
         IToolProvider provider,
         ToolInvocationScope scope,
         IToolExecutionCoordinator? executions = null,
-        IAuthorizationService? authorization = null) => new(
+        IAuthorizationService? authorization = null,
+        IRunDossier? runDossier = null) => new(
         provider,
         new FakeScopeResolver(scope),
         executions ?? ExecutionCoordinator(),
@@ -896,7 +963,8 @@ public sealed class ToolDispatcherResilienceTests : IAsyncLifetime
         _factory.Services.GetRequiredService<ITerminalSessionRegistry>(),
         _factory.Services.GetRequiredService<IInFlightToolCallRegistry>(),
         new ToolDispatchOptions(),
-        NullLogger<ToolDispatcher>.Instance);
+        NullLogger<ToolDispatcher>.Instance,
+        runDossier: runDossier);
 
     private ToolInvocationScope ScopeFor(
         IReadOnlyList<ToolManifestEntryDto> tools,

@@ -580,6 +580,20 @@ public static class DmaeaEndpoints
             }));
         });
 
+        app.MapGet("/api/v1/runs/{runId}/dossier", async (string runId, int? limit, StorageLifecycleService lifecycle, IRunDossier dossier, CancellationToken ct) =>
+        {
+            if (!Guid.TryParse(runId, out var runGuid)) return Results.BadRequest(new { code = "INVALID_RUN_ID", message = "Run id must be a valid Guid." });
+            var run = await lifecycle.FindRunAsync(runGuid, ct);
+            if (run is null) return Results.NotFound(new { code = "NOT_FOUND", message = "Run was not found." });
+
+            var sectionLimit = Math.Clamp(limit ?? 20, 1, CoreVirtualToolPolicy.RunDossierSectionLimit);
+            var result = await dossier.BuildAsync(
+                new RunDossierQuery(run.TenantId, run.WorkspaceId, run.SessionId, runGuid, sectionLimit), ct);
+            return result is null
+                ? Results.NotFound(new { code = "NOT_FOUND", message = "Run was not found." })
+                : Results.Ok(result);
+        });
+
         app.MapGet("/api/v1/sessions/{sessionId}/context-versions", async (string sessionId, string? run_id, string? runId, int? limit, IConversationStore conversations, ProjectSessionStore sessions, CancellationToken ct) =>
         {
             if (!Guid.TryParse(sessionId, out var sessionGuid)) return Results.BadRequest(new { code = "INVALID_SESSION_ID" });
@@ -718,6 +732,9 @@ public static class DmaeaEndpoints
                 {
                     node_key = node.NodeKey,
                     label = authored.ValueKind == JsonValueKind.Object && authored.TryGetProperty("label", out var label) ? label.GetString() : node.AgentSlug,
+                    i18n = authored.ValueKind == JsonValueKind.Object && authored.TryGetProperty("i18n", out var i18n) && i18n.ValueKind == JsonValueKind.Object
+                        ? i18n
+                        : (JsonElement?)null,
                     layer = node.Layer,
                     agent_definition_id = definitions.FirstOrDefault(agent => agent.Id == node.AgentSlug)?.AgentDefinitionId,
                     is_conversation = node.IsConversation,

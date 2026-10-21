@@ -10,6 +10,7 @@ import { isCommandAvailable, slashCommands, type AppCommand, type CommandHost } 
 import { composerSettings, pageDepth, parentPage, permissionChoices, type ComposerPage, type PermissionRisk } from '@/lib/composerCommands'
 import { defaultSpaceOptions } from '@/lib/composerSettings'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
+import { pickLocalized } from '@/lib/packI18n'
 import type { DefaultModel } from '@/composables/useDefaultModel'
 import type { AgentModels, ModelChoice, NamedStrategy } from '@/composables/useAgentModels'
 import type { AgentDirectoryItemDto } from '@/api'
@@ -55,6 +56,11 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
+
+const modeName = (mode: AgentModeTopologyDto) =>
+  pickLocalized(mode.i18n, locale.value, 'display_name', mode.display_name) ?? mode.display_name
+const modeDescription = (mode: AgentModeTopologyDto) =>
+  pickLocalized(mode.i18n, locale.value, 'description', mode.description)?.trim() ?? ''
 const { getPanelStyle, getPanelDataAttributes } = usePanelStyles()
 const panelStyle = computed(() => getPanelStyle())
 const panelDataAttrs = computed(() => getPanelDataAttributes())
@@ -137,7 +143,7 @@ const availableModes = computed(() => {
   const catalog = published(modes.value) ? modes.value : legacyModes.value
   return sortModes(catalog.filter(mode => {
     if (mode.status !== 'published' || !mode.latest_published_mode_version_id) return false
-    const key = mode.display_name.trim().toLowerCase()
+    const key = (mode.slug ?? mode.display_name).trim().toLowerCase()
     if (seen.has(key)) return false
     seen.add(key)
     return true
@@ -146,7 +152,7 @@ const availableModes = computed(() => {
 const selectedMode = computed(() => [...availableModes.value, ...legacyModes.value]
   .find(mode => mode.latest_published_mode_version_id === props.modeVersionId))
 watch([selectedMode, () => props.modeVersionId, loading, locale], () => {
-  emit('mode-label', selectedMode.value?.display_name ?? t('commandPanel.mode'), !!props.modeVersionId && !selectedMode.value && !loading.value, selectedMode.value ? modeIcon(selectedMode.value.slug) : Layers)
+  emit('mode-label', selectedMode.value ? modeName(selectedMode.value) : t('commandPanel.mode'), !!props.modeVersionId && !selectedMode.value && !loading.value, selectedMode.value ? modeIcon(selectedMode.value.slug) : Layers)
 }, { immediate: true })
 // A conversation without a mode gets the first published one (Solo when the pack has it) as
 // soon as the catalog is known, so its runs never fall back to workspace-defaults' choice.
@@ -154,7 +160,10 @@ watch([availableModes, () => props.modeVersionId, loading], ([modes, current, bu
   if (props.spatial || busy || current || props.settingsSaving || !modes.length) return
   emit('update:modeVersionId', modes[0]!.latest_published_mode_version_id!)
 })
-const workflowName = computed(() => availableModes.value.find(mode => mode.latest_published_mode_version_id === space.value.workflow_mode_version_id)?.display_name)
+const workflowName = computed(() => {
+  const mode = availableModes.value.find(mode => mode.latest_published_mode_version_id === space.value.workflow_mode_version_id)
+  return mode ? modeName(mode) : undefined
+})
 const currentPermission = computed(() => permissionChoices.find(choice => choice.value === props.permission) ?? permissionChoices[0])
 const permissionName = computed(() => t(currentPermission.value.label))
 const title = computed(() => {
@@ -209,7 +218,7 @@ function modeRows(workflow: boolean): Row[] {
     run: () => emit('update:spaceOptions', { ...space.value, workflow_mode_version_id: null }),
   }] : []
   return [...off, ...availableModes.value.filter(mode => !workflow || mode.edges.length > 0).map(mode => ({
-    id: mode.latest_published_mode_version_id!, label: mode.display_name, hint: mode.description ?? '',
+    id: mode.latest_published_mode_version_id!, label: modeName(mode), hint: modeDescription(mode),
     icon: modeIcon(mode.slug),
     keywords: mode.slug ?? '', checked: selected === mode.latest_published_mode_version_id,
     disabled: props.settingsSaving,
@@ -332,7 +341,7 @@ const allRows = computed<Row[]>(() => {
     if ('surface' in setting && (setting.surface === 'space') !== Boolean(props.spatial)) continue
     const toggle = 'toggle' in setting ? setting.toggle : null
     const submenu = 'page' in setting ? setting.page : null
-    const currentValue = setting.id === 'model' ? props.defaultModelLabel : setting.id === 'mode' ? selectedMode.value?.display_name ?? t('commandPanel.mode') : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
+    const currentValue = setting.id === 'model' ? props.defaultModelLabel : setting.id === 'mode' ? (selectedMode.value ? modeName(selectedMode.value) : t('commandPanel.mode')) : setting.id === 'permission' ? permissionName.value : setting.id === 'workflow' ? workflowName.value ?? (space.value.workflow_mode_version_id ? t('commandPanel.unavailableSelection') : t('commandPanel.off')) : undefined
     rows.push({
       id: setting.id, label: t(setting.label), hint: t(setting.hint),
       keywords: t(setting.keywords),

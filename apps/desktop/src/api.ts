@@ -2348,6 +2348,8 @@ export interface OrchestrationLaneDto {
 export interface DeclaredGraphNodeDto {
   node_key: string;
   label?: string | null;
+  /** Per-locale node labels carried by the frozen mode snapshot. */
+  i18n?: PackI18n | null;
   layer?: string | null;
   agent_definition_id?: string | null;
   is_conversation: boolean;

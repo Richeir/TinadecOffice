@@ -208,6 +208,28 @@ public static class CoreVirtualToolPolicy
     public static bool IsTraceSearch(string? toolId) =>
         string.Equals(toolId, TraceSearchToolId, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// One run's dossier (B9): what the run was told, what its plan claimed, what its workers closed,
+    /// what the investigation recorded, and what is still open — assembled from records the run
+    /// already left behind. Read-only and run-scoped; the <c>run_dossier</c> feature is declared by
+    /// the mode and checked before serving.
+    ///
+    /// Why it exists: the run's own records are spread across four surfaces (lifecycle, replay journal,
+    /// plan ledger, exploration graph), and a worker told to "summarize where this got to" had to
+    /// reconstruct that from conversation memory. One bounded read replaces an unbounded search.
+    /// </summary>
+    public const string RunDossierToolId = "run_dossier";
+
+    /// <summary>
+    /// Hard ceiling on rows per dossier section. It lives here, next to the id, because two modules
+    /// enforce it: the service clamps its own read with it, and the tool layer refuses to pass a larger
+    /// <c>limit</c> through. A model narrows this read; it can never widen it.
+    /// </summary>
+    public const int RunDossierSectionLimit = 50;
+
+    public static bool IsRunDossier(string? toolId) =>
+        string.Equals(toolId, RunDossierToolId, StringComparison.OrdinalIgnoreCase);
+
     public static bool IsPlanLedgerRead(string? toolId) =>
         string.Equals(toolId, PlanLedgerReadToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -224,7 +246,7 @@ public static class CoreVirtualToolPolicy
         IsCreateWorkspace(toolId) || IsTaskDispatch(toolId) || IsTaskWait(toolId) || IsPlanUpdate(toolId) || IsSpecPropose(toolId)
         || IsCorrectionTrace(toolId) || IsReadAttachment(toolId)
         || IsTinaChat(toolId) || IsOrganization(toolId) || IsGraphView(toolId) || IsRecallEvidence(toolId) || IsEnvironment(toolId)
-        || IsExploration(toolId) || IsPlanLedger(toolId) || IsTraceSearch(toolId);
+        || IsExploration(toolId) || IsPlanLedger(toolId) || IsTraceSearch(toolId) || IsRunDossier(toolId);
 
     /// <summary>
     /// True when a call-time gate may demand that the tool appear in the TinadecTools child-process

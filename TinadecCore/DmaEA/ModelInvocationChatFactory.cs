@@ -210,9 +210,12 @@ internal sealed class ModelInvocationChatFactory : IAgentChatClientFactory
                     var invocationId = await StartAsync(callId, ++attempt, resolution, cancellationToken).ConfigureAwait(false);
                     if (!resolution.IsAvailable)
                     {
+                        // The resolver may know *why* the candidate is out (a whole pool cooling down is a
+                        // different fact from one broken candidate), so carry its category when it has one.
+                        var unavailableCategory = resolution.UnavailableCategory ?? "candidate_unavailable";
                         lastError = new ModelCandidateUnavailableException(resolution.Error ?? "Model candidate is unavailable.");
-                        lastFailure = new ModelInvocationFailure(true, false, "candidate_unavailable", lastError.Message);
-                        await _resolver.CompleteInvocationAsync(invocationId, "failed", errorCategory: "candidate_unavailable",
+                        lastFailure = new ModelInvocationFailure(true, false, unavailableCategory, lastError.Message);
+                        await _resolver.CompleteInvocationAsync(invocationId, "failed", errorCategory: unavailableCategory,
                             safeErrorMessage: lastError.Message, cancellationToken: cancellationToken).ConfigureAwait(false);
                         break;
                     }
@@ -275,9 +278,12 @@ internal sealed class ModelInvocationChatFactory : IAgentChatClientFactory
                     var invocationId = await StartAsync(callId, ++attempt, resolution, cancellationToken).ConfigureAwait(false);
                     if (!resolution.IsAvailable)
                     {
+                        // The resolver may know *why* the candidate is out (a whole pool cooling down is a
+                        // different fact from one broken candidate), so carry its category when it has one.
+                        var unavailableCategory = resolution.UnavailableCategory ?? "candidate_unavailable";
                         lastError = new ModelCandidateUnavailableException(resolution.Error ?? "Model candidate is unavailable.");
-                        lastFailure = new ModelInvocationFailure(true, false, "candidate_unavailable", lastError.Message);
-                        await _resolver.CompleteInvocationAsync(invocationId, "failed", errorCategory: "candidate_unavailable",
+                        lastFailure = new ModelInvocationFailure(true, false, unavailableCategory, lastError.Message);
+                        await _resolver.CompleteInvocationAsync(invocationId, "failed", errorCategory: unavailableCategory,
                             safeErrorMessage: lastError.Message, cancellationToken: cancellationToken).ConfigureAwait(false);
                         break;
                     }

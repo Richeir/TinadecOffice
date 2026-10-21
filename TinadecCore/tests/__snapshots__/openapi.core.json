@@ -6251,6 +6251,12 @@
       },
       "ToolExecutionPreviewDto": {
         "properties": {
+          "agent_guidance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "arguments": {
             "oneOf": [
               {
@@ -6270,6 +6276,18 @@
           "execution_id": {
             "type": "string"
           },
+          "outcome": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "policy_ref": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "preview": {
             "oneOf": [
               {
@@ -6287,6 +6305,12 @@
               "null",
               "integer",
               "string"
+            ]
+          },
+          "retryable": {
+            "type": [
+              "null",
+              "boolean"
             ]
           },
           "run_id": {
@@ -11805,6 +11829,40 @@
         },
         "tags": [
           "CorrectionEndpoints"
+        ]
+      }
+    },
+    "/api/v1/runs/{runId}/dossier": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int32",
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
         ]
       }
     },

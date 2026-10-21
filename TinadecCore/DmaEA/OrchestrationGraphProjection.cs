@@ -48,6 +48,9 @@ internal static class OrchestrationGraphProjection
             {
                 node_key = nodeKey,
                 label = GetString(node, "label"),
+                i18n = node.TryGetProperty("i18n", out var nodeI18n) && nodeI18n.ValueKind == JsonValueKind.Object
+                    ? (object?)nodeI18n
+                    : null,
                 layer = GetString(node, "layer"),
                 agent_definition_id = GetString(node, "agent_definition_id"),
                 is_conversation = IsConversationNode(node),

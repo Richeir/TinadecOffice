@@ -81,6 +81,13 @@ public sealed class ChatResolution
     public string? LaunchArgs { get; init; }
     public string? HomePath { get; init; }
     public string? Error { get; init; }
+    /// <summary>
+    /// Machine-readable reason an unavailable candidate could not be used, so the invocation layer can
+    /// report a category the UI already words instead of a bare sentence.
+    /// <see cref="ModelHealthPolicy.PoolExhaustedCategory"/> is special: it means <em>every</em> candidate
+    /// of the frozen plan is cooling down, which is not the same fact as "this one candidate is broken".
+    /// </summary>
+    public string? UnavailableCategory { get; init; }
     public Guid? ProviderInstanceId { get; init; }
     public Guid? ProviderVersionId { get; init; }
     public Guid? RouteId { get; init; }

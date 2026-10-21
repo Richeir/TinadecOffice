@@ -3,6 +3,17 @@ import manifestJson from './manifest.json'
 export type AgentPackLayer = 'operation' | 'execution'
 export type AgentPackReference<Kind extends 'agent' | 'mode' | 'prompt'> = `${Kind}:${string}`
 
+/** One locale overlay; missing members fall back to the resource's base value. */
+export interface AgentPackI18n {
+  display_name?: string
+  description?: string
+  label?: string
+  system_prompt?: string
+  templates?: Record<string, string>
+}
+
+export type AgentPackI18nMap = Record<string, AgentPackI18n>
+
 /** Five-field per-node duty contract compiled into the role system prompt. */
 export interface AgentPackNodeRelationship {
   duty: string
@@ -20,6 +31,7 @@ export interface AgentPackAgentResource {
   slug: string
   display_name: string
   description: string | null
+  i18n?: AgentPackI18nMap | null
   layer: AgentPackLayer
   role: string
   capabilities: string[]
@@ -35,6 +47,7 @@ export interface AgentPackPromptPipelineResource {
   slug: string
   display_name: string
   description: string | null
+  i18n?: AgentPackI18nMap | null
   graph: {
     nodes: Record<string, unknown>[]
     edges: Record<string, unknown>[]
@@ -46,6 +59,7 @@ export interface AgentPackModeNodeResource {
   agent_ref: AgentPackReference<'agent'>
   layer: AgentPackLayer
   label: string
+  i18n?: AgentPackI18nMap | null
   config: Record<string, unknown>
   relationship?: AgentPackNodeRelationship | null
   position: Record<string, unknown> | null
@@ -78,6 +92,7 @@ export interface AgentPackModeResource {
   slug: string
   display_name: string
   description: string | null
+  i18n?: AgentPackI18nMap | null
   /**
    * Mode-level prompt pipeline (source priority: mode > agent > workspace default).
    * A prompt pipeline is otherwise bound per AGENT, so without this every mode shares
@@ -89,9 +104,10 @@ export interface AgentPackModeResource {
   prompt_pipeline_ref?: AgentPackReference<'prompt'> | null
   /** Host-owned workflow selected by this mode; absent means ordinary behavior. */
   runtime_policy?: {
-    kind: 'structured_investigation'
+    kind: 'structured_investigation' | 'autonomous_exploration'
     version: 1
     features: string[]
+    settings?: Record<string, number>
   } | null
   nodes: AgentPackModeNodeResource[]
   edges: AgentPackModeEdgeResource[]
@@ -138,9 +154,9 @@ export interface AgentPackEnvelope {
 }
 
 export const GRAPH_SEED_PACK_ID = 'tinadec.graph.seed-pack'
-export const GRAPH_SEED_PACK_VERSION = '3.1.2'
+export const GRAPH_SEED_PACK_VERSION = '3.2.0'
 
-export const graphSeedPackManifest = manifestJson as AgentPackManifest
+export const graphSeedPackManifest = manifestJson as unknown as AgentPackManifest
 
 // Filled from the RFC 8785 canonical manifest bytes. A test recalculates this
 // value so any manifest edit must intentionally publish a new digest.
@@ -151,7 +167,7 @@ export const graphSeedPackManifest = manifestJson as AgentPackManifest
 // The digest must be computed over the DTO-closed manifest, i.e. the raw file as
 // written — Core canonicalizes its DTO round-trip of this same body. See
 // packIntegrity.ts for the invariant and the gates that enforce it.
-export const GRAPH_SEED_PACK_DIGEST = 'c3846d1fc94224e1dde7a8142c2b7ceb124bf5df28d49e8257541e9896dae1b3'
+export const GRAPH_SEED_PACK_DIGEST = '788d22f5ccc32697c9810874bd716b9c8fa5294fa6f2d186911a06841d3c296d'
 
 export const graphSeedPackEnvelope: AgentPackEnvelope = {
   manifest: graphSeedPackManifest,

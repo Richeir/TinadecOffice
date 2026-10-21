@@ -55,6 +55,8 @@ public sealed class ModelsModuleRegistrar : IModuleRegistrar
         // interaction router is a factory because a router's pending approvals belong to one session,
         // and Round 2 swaps what that factory returns without rewiring anything.
         builder.Services.AddSingleton(sp => AcpSessionOptions.From(sp.GetService<IConfiguration>()));
+        builder.Services.AddSingleton(sp => ModelHealthOptions.From(sp.GetService<IConfiguration>()));
+        builder.Services.AddSingleton<ModelHealthRegistry>();
         builder.Services.AddSingleton<IAcpInteractionRouterFactory, RefusingAcpInteractionRouterFactory>();
         builder.Services.AddSingleton<AcpSessionHost>();
         builder.Services.AddSingleton<IAcpSessionHost>(sp => sp.GetRequiredService<AcpSessionHost>());
@@ -74,7 +76,7 @@ public sealed class ModelsModuleRegistrar : IModuleRegistrar
             ModuleId = ModuleId,
             Version = "0.1.0",
             Dependencies = ["abstractions", "persistence"],
-            Capabilities = ["provider_management", "model_routing", "credential_references", "error_normalization", "readiness", "embedding_generation", "terminal_hosting", "harness_transports", "headless_harness_turns"],
+            Capabilities = ["provider_management", "model_routing", "credential_references", "error_normalization", "readiness", "embedding_generation", "terminal_hosting", "harness_transports", "headless_harness_turns", "model_health"],
             Language = "C#",
             MafPrimitives = ["agent", "chat_client"],
             RegistrationStatus = ModuleRegistrationStatus.NotConfigured

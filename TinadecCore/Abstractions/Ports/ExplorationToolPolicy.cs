@@ -24,7 +24,7 @@ public static class ExplorationToolPolicy
             [CoreVirtualToolPolicy.PlanLedgerReadToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
             [CoreVirtualToolPolicy.PlanLedgerUpdateToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
             [CoreVirtualToolPolicy.TraceSearchToolId] = ModeRuntimePolicyRegistry.CrossWorkerTraceFeature,
-            ["run_dossier"] = ModeRuntimePolicyRegistry.RunDossierFeature,
+            [CoreVirtualToolPolicy.RunDossierToolId] = ModeRuntimePolicyRegistry.RunDossierFeature,
         };
 
     /// <summary>The feature a tool depends on, or null when the tool is not part of the exploration surface.</summary>

@@ -69,6 +69,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
     private readonly IPlanLedger? _planLedger;
     /// <summary>Cross-worker trace search behind <c>trace_search</c> (B4). Optional like the graph.</summary>
     private readonly IRunTraceSearch? _runTraceSearch;
+    /// <summary>One run's dossier behind <c>run_dossier</c> (B9). Optional like the trace reader.</summary>
+    private readonly IRunDossier? _runDossier;
     /// <summary>The environment steward's registry behind <c>environment_*</c>. Optional like the archive.</summary>
     private readonly IEnvironmentRegistry? _environments;
     /// <summary>Standing approvals a person gave (todo E7): command prefixes honored at prepare, shell's per-session delegation opt-in re-checked at the gates.</summary>
@@ -103,7 +105,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         IScopeStorageLocations? storageLocations = null,
         IExplorationGraph? exploration = null,
         IPlanLedger? planLedger = null,
-        IRunTraceSearch? runTraceSearch = null)
+        IRunTraceSearch? runTraceSearch = null,
+        IRunDossier? runDossier = null)
     {
         _provider = provider;
         _scopeResolver = scopeResolver;
@@ -130,6 +133,7 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         _exploration = exploration;
         _planLedger = planLedger;
         _runTraceSearch = runTraceSearch;
+        _runDossier = runDossier;
     }
 
     public Task<ToolDispatchResultDto> ExecuteAsync(ToolDispatchRequestDto request, CancellationToken cancellationToken = default) =>
@@ -935,6 +939,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             return await ExecuteTraceSearchAsync(scope, wire, cancellationToken).ConfigureAwait(false);
         }
 
+        if (CoreVirtualToolPolicy.IsRunDossier(wire.ToolId))
+        {
+            return await ExecuteRunDossierAsync(scope, wire, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!scope.SerializeWorkspaceWrites || !execution.MutatesWorkspace)
         {
             return streaming is not null
@@ -1714,6 +1723,91 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         {
             return Error(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// B9: one run's dossier, assembled by Core from the run's own records. The feature gate is the
+    /// same one pack admission checks, so a mode that never declared <c>run_dossier</c> cannot reach
+    /// it even if an agent's frozen grant happens to name the id.
+    /// </summary>
+    private async Task<ToolWireResponseDto> ExecuteRunDossierAsync(ToolInvocationScope scope, ToolWireRequestDto wire, CancellationToken cancellationToken)
+    {
+        if (!ModeRuntimePolicyRegistry.Has(scope.RuntimePolicy, ModeRuntimePolicyRegistry.RunDossierFeature))
+            return new ToolWireResponseDto
+            {
+                CallId = wire.ToolCallId,
+                IsSuccess = false,
+                Error = "run_dossier requires the run_dossier runtime feature."
+            };
+        if (_runDossier is not { } dossier)
+            return new ToolWireResponseDto { CallId = wire.ToolCallId, IsSuccess = false, Error = "The run dossier is not available in this host." };
+
+        var parameters = wire.Params ?? default;
+        ToolWireResponseDto Ok(object result) => new() { CallId = wire.ToolCallId, IsSuccess = true, Result = JsonSerializer.SerializeToElement(result) };
+        ToolWireResponseDto Error(string error) => new() { CallId = wire.ToolCallId, IsSuccess = false, Error = error };
+
+        var limit = 20;
+        if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("limit", out var limitValue))
+        {
+            if (limitValue.ValueKind != JsonValueKind.Number || !limitValue.TryGetInt32(out var requested) || requested < 1)
+                return Error("limit must be a positive number.");
+            limit = Math.Min(requested, CoreVirtualToolPolicy.RunDossierSectionLimit);
+        }
+
+        var result = await dossier.BuildAsync(
+            new RunDossierQuery(scope.TenantId, scope.WorkspaceId, scope.SessionId, scope.RunId, limit),
+            cancellationToken).ConfigureAwait(false);
+        if (result is null) return Error("No run with that id is visible from this session.");
+
+        return Ok(new
+        {
+            run = new
+            {
+                run_id = result.Run.RunId,
+                status = result.Run.Status,
+                run_kind = result.Run.RunKind,
+                permission_mode = result.Run.PermissionMode,
+                started_at = result.Run.StartedAt,
+                completed_at = result.Run.CompletedAt,
+                summary = result.Run.Summary,
+                terminal_error_category = result.Run.TerminalErrorCategory,
+            },
+            tasks = result.Tasks.Select(task => new
+            {
+                task_key = task.TaskKey,
+                lane_key = task.LaneKey,
+                status = task.Status,
+                summary = task.Summary,
+                evidence = task.Evidence,
+            }).ToArray(),
+            intents = result.Intents.Select(intent => new
+            {
+                ordinal = intent.Ordinal,
+                title = intent.Title,
+                status = intent.Status,
+                note = intent.Note,
+                evidence_refs = intent.EvidenceRefs,
+            }).ToArray(),
+            findings = result.Findings.Select(finding => new
+            {
+                kind = finding.Kind,
+                title = finding.Title,
+                content = finding.Content,
+                evidence_refs = finding.EvidenceRefs,
+                author = finding.Author,
+            }).ToArray(),
+            open_questions = result.OpenQuestions,
+            notes = result.Notes,
+            totals = new
+            {
+                tasks = result.Totals.Tasks,
+                intents = result.Totals.Intents,
+                findings = result.Totals.Findings,
+                open_questions = result.Totals.OpenQuestions,
+                evidence_refs = result.Totals.EvidenceRefs,
+                truncated = result.Totals.Truncated,
+            },
+        });
     }
 
     /// <summary>

@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import { ClipboardList, Crosshair, FileText, Network, ScanSearch, Sparkles, User, Users, Workflow } from '@lucide/vue'
+import { ClipboardList, Crosshair, FileText, Network, Radar, ScanSearch, Sparkles, User, Users, Workflow } from '@lucide/vue'
 
 /**
  * How a published agent mode looks in the mode pickers: its icon and its place in the list.
@@ -26,6 +26,7 @@ const PRESENTATION = new Map<string, { icon: Component; order: number }>([
   ['correction', { icon: Crosshair, order: 5 }],
   ['vibe_graph', { icon: Network, order: 6 }],
   ['fixed_pipeline', { icon: Workflow, order: 7 }],
+  ['artex', { icon: Radar, order: 8 }],
 ])
 
 export const KNOWN_MODE_SLUGS: readonly string[] = [...PRESENTATION.keys()]

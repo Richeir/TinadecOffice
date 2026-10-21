@@ -254,6 +254,7 @@ public sealed class ToolManifestSnapshotResolver : IToolManifestSnapshotResolver
         ?? ExplorationVirtualTools.ManifestEntry(toolId)
         ?? PlanLedgerVirtualTools.ManifestEntry(toolId)
         ?? RunTraceVirtualTools.ManifestEntry(toolId)
+        ?? RunDossierVirtualTools.ManifestEntry(toolId)
         ?? throw new InvalidOperationException($"Core-owned virtual tool '{toolId}' has no manifest entry.");
 
     private static FrozenToolManifestEntry ToFrozen(ToolManifestEntryDto tool) => new(

@@ -28,6 +28,10 @@ describe('GraphSeedPack', () => {
       'global_engineering',
       'reviewer',
       'governance_reviewer',
+      'artex_director',
+      'artex_planner',
+      'artex_worker',
+      'artex_verifier',
     ])
     expect(agents.every((agent) => Boolean(agent.system_prompt?.trim()))).toBe(true)
 
@@ -101,7 +105,7 @@ describe('GraphSeedPack', () => {
     expect(governance.capabilities).not.toContain('user.respond')
   })
 
-  it('declares eight modes on the four orchestration tiers', () => {
+  it('declares nine modes on the four orchestration tiers', () => {
     const modes = graphSeedPackManifest.resources.modes
     expect(modes.map((mode) => mode.resource_key)).toEqual([
       'free_director',
@@ -112,10 +116,11 @@ describe('GraphSeedPack', () => {
       'review',
       'spec',
       'correction',
+      'artex',
     ])
     // Display names are the familiar words users know from other agents; the slug (the id
     // Core, tests and the icon table key on) stays the resource_key.
-    expect(modes.map((mode) => mode.display_name)).toEqual(['Team', 'Graph', 'Workflow', 'Solo', 'Plan', 'Review', 'Spec', '纠偏'])
+    expect(modes.map((mode) => mode.display_name)).toEqual(['Team', 'Graph', 'Workflow', 'Solo', 'Plan', 'Review', 'Spec', '纠偏', 'ArtEx'])
     for (const mode of modes) {
       expect(mode.slug).toBe(mode.resource_key)
       // The picker shows two lines of description; longer text is cut off mid-sentence.
@@ -214,9 +219,9 @@ describe('GraphSeedPack', () => {
       expect(promptKeys.has(key), `mode '${mode.resource_key}' references unknown pipeline '${key}'`).toBe(true)
       return key
     })
-    // Distinct pipelines, not seven names for one: that is the whole point.
+    // Distinct pipelines, not one name for every mode: that is the whole point.
     expect(new Set(bound).size).toBe(modes.length)
-    expect(bound).toEqual(['free-base', 'vibe-base', 'fixed-base', 'solo-base', 'plan-base', 'review-base', 'spec-base', 'correction-base'])
+    expect(bound).toEqual(['free-base', 'vibe-base', 'fixed-base', 'solo-base', 'plan-base', 'review-base', 'spec-base', 'correction-base', 'artex-base'])
 
     // Each pipeline must actually carry prose — an empty template list assembles to
     // nothing, which would silently ship a mode with no instructions at all.
@@ -366,6 +371,32 @@ describe('GraphSeedPack', () => {
     })
     const correctionBinding = correction.bindings!.find((binding) => binding.node_key === 'meeting')!
     expect(correctionBinding.tool_switches).toEqual({ plan_update: false })
+
+    // ArtEx is configuration, not code: the mode selects the host-owned autonomous policy,
+    // declares every feature, and keeps its planner and workers out of the conversation.
+    const artex = graphSeedPackManifest.resources.modes.find((mode) => mode.resource_key === 'artex')!
+    expect(artex.runtime_policy?.kind).toBe('autonomous_exploration')
+    expect(artex.runtime_policy?.version).toBe(1)
+    for (const feature of ['exploration_graph', 'asset_graph', 'plan_ledger', 'event_driven_planning', 'cross_worker_trace',
+      'worker_settlement', 'evidence_refs_required', 'merged_digest', 'structured_context_compaction', 'model_health_failover',
+      'run_dossier', 'side_question']) {
+      expect(artex.runtime_policy?.features, `artex feature ${feature}`).toContain(feature)
+    }
+    expect(graphSeedPackManifest.compatibility.required_core_capabilities).toContain('autonomous_exploration_v1')
+    expect(artex.nodes.map((node) => node.node_key)).toEqual(['artex_director', 'artex_planner'])
+    expect(artex.edges).toEqual([])
+    expect(artex.nodes[0].config.conversation).toBe(true)
+    expect(artex.nodes[1].relationship?.subscriptions).toEqual(['worker_settled', 'user_steer', 'plan_tick', 'budget_tick'])
+    expect(artex.nodes[1].relationship?.allowed_dispatch_targets).toEqual(['artex_worker', 'artex_verifier'])
+    // The planner drives the ledger and dispatch but never answers the user; the verifier is read-only.
+    const artexPlanner = graphSeedPackManifest.resources.agents.find((agent) => agent.resource_key === 'artex_planner')!
+    expect(artexPlanner.capabilities).not.toContain('user.respond')
+    expect(artexPlanner.tool_scope).toContain('plan_ledger_update')
+    expect(artexPlanner.tool_scope).toContain('task_dispatch')
+    const artexVerifier = graphSeedPackManifest.resources.agents.find((agent) => agent.resource_key === 'artex_verifier')!
+    for (const tool of ['write_file', 'shell', 'web_fetch', 'mcp_invoke', 'plan_ledger_update']) {
+      expect(artexVerifier.tool_scope, `verifier must not hold ${tool}`).not.toContain(tool)
+    }
   })
 
   it('grants the solo master the workspace write it needs to work itself', () => {

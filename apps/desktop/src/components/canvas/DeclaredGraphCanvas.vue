@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useStatusLabels } from '@/lib/statusLabels'
+import { pickNodeLabel } from '@/lib/packI18n'
 import { computed } from 'vue'
 import { VueFlow, Panel, type Node, type Edge } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -56,7 +57,7 @@ const edges = computed<Edge[]>(() =>
 
 const flowSummary = computed(() => (props.flows ?? []).slice(0, 6))
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const { runStatusLabel } = useStatusLabels()
 
 const tierLabel = computed(() => {
@@ -94,7 +95,7 @@ function layerLabel(layer: string): string {
           class="graph-node"
           :class="nodeProps.data.node.is_conversation ? 'graph-node--conversation' : ''"
         >
-          <div class="graph-node__label">{{ nodeProps.data.node.label ?? nodeProps.data.node.node_key }}</div>
+          <div class="graph-node__label">{{ pickNodeLabel(nodeProps.data.node, locale) || nodeProps.data.node.node_key }}</div>
           <div class="graph-node__meta">
             <span>{{ layerLabel(nodeProps.data.node.layer) }}</span>
             <span v-if="nodeProps.data.node.is_conversation">{{ t('orchestrationPanel.identity') }}</span>

@@ -87,9 +87,10 @@ export const PROVIDER_TOOL_IDS = [
 /**
  * Tools Core executes itself, so they never appear in the provider manifest.
  * Mirrors `CoreVirtualToolPolicy` (`create_workspace`, `task_dispatch`, `task_wait`, `plan_update`, `spec_propose`,
- * `read_attachment`, the nine `tina_chat_*` ids, the seven `org_*` organization tools,
- * `graph_view`, `recall_evidence` and the three `environment_*` steward tools) — and `toolPresentation.test.ts` now proves the
- * copy by parsing that file, so a Core virtual tool cannot arrive here as an unknown id.
+ * `update_correction_trace`, `read_attachment`, `run_dossier`, the nine `tina_chat_*` ids, the seven `org_*`
+ * organization tools, `graph_view`, `recall_evidence` and the three `environment_*` steward tools) — and
+ * `toolPresentation.test.ts` now proves the copy by parsing that file, so a Core virtual tool cannot arrive here
+ * as an unknown id.
  */
 export const CORE_VIRTUAL_TOOL_IDS = [
   'create_workspace',
@@ -99,6 +100,15 @@ export const CORE_VIRTUAL_TOOL_IDS = [
   'plan_update',
   'spec_propose',
   'update_correction_trace',
+  'trace_search',
+  'run_dossier',
+  'exploration_view',
+  'exploration_record',
+  'exploration_link',
+  'exploration_coverage',
+  'exploration_digest',
+  'plan_ledger_read',
+  'plan_ledger_update',
   'tina_chat_bind',
   'tina_chat_search_people',
   'tina_chat_list_rooms',
@@ -175,6 +185,15 @@ const KIND_BY_ID: Record<string, ToolKind> = {
   plan_update: 'orchestration',
   spec_propose: 'orchestration',
   update_correction_trace: 'orchestration',
+  trace_search: 'search',
+  run_dossier: 'read',
+  exploration_view: 'orchestration',
+  exploration_record: 'orchestration',
+  exploration_link: 'orchestration',
+  exploration_coverage: 'orchestration',
+  exploration_digest: 'orchestration',
+  plan_ledger_read: 'orchestration',
+  plan_ledger_update: 'orchestration',
   graph_view: 'orchestration',
   recall_evidence: 'search',
   environment_list: 'orchestration',

@@ -23,6 +23,7 @@ internal sealed class AgentModelResolver : IAgentModelResolver
     private readonly ISecretStore _secrets;
     private readonly ITenantContextAccessor _tenant;
     private readonly ISessionLocator _sessions;
+    private readonly ModelHealthRegistry _health;
 
     public AgentModelResolver(
         IDbContextFactory<AgentConfigurationDbContext> agents,
@@ -34,7 +35,8 @@ internal sealed class AgentModelResolver : IAgentModelResolver
         IContentStore content,
         ISecretStore secrets,
         ITenantContextAccessor tenant,
-        ISessionLocator sessions)
+        ISessionLocator sessions,
+        ModelHealthRegistry health)
     {
         _agents = agents;
         _globalConfiguration = globalConfiguration;
@@ -46,6 +48,7 @@ internal sealed class AgentModelResolver : IAgentModelResolver
         _secrets = secrets;
         _tenant = tenant;
         _sessions = sessions;
+        _health = health;
     }
 
     public Task<ModelResolutionPreviewDto> PreviewAsync(ModelResolutionPreviewRequestDto request, CancellationToken cancellationToken = default) =>
@@ -303,9 +306,29 @@ internal sealed class AgentModelResolver : IAgentModelResolver
     }
 
     public async Task<IReadOnlyList<ChatResolution>> ResolveInvocationCandidatesAsync(FrozenModelPlan plan, Guid? parentInstanceId, CancellationToken cancellationToken = default)
-        => await ResolveInvocationCandidatesAsync(plan, parentInstanceId, new HashSet<Guid>(), cancellationToken).ConfigureAwait(false);
+    {
+        // Resolve first, filter second: the health breaker removes candidates from a chain the frozen plan
+        // already authorized, and never adds one. See ApplyModelHealthAsync for why the all-cooling case
+        // reports a category instead of substituting a model.
+        var chain = await ResolveChainAsync(plan, parentInstanceId, new HashSet<Guid>(), cancellationToken).ConfigureAwait(false);
+        return await ApplyModelHealthAsync(chain, cancellationToken).ConfigureAwait(false);
+    }
 
-    private async Task<IReadOnlyList<ChatResolution>> ResolveInvocationCandidatesAsync(
+    private async Task<IReadOnlyList<ChatResolution>> ApplyModelHealthAsync(
+        IReadOnlyList<ChatResolution> chain,
+        CancellationToken cancellationToken)
+    {
+        // The chain arrives from ResolveChainAsync: every entry in it was already authorized by the frozen
+        // plan, so this filter may only remove. The pool-exhausted entry it can return is produced by the
+        // policy itself (one owner for the rule); see ModelHealthPolicy.ApplyCooling.
+        var keys = ModelHealthPolicy.CoolingKeys(chain);
+        if (keys.Count == 0) return chain;
+
+        var cooling = await _health.LoadCoolingAsync(keys, cancellationToken).ConfigureAwait(false);
+        return ModelHealthPolicy.ApplyCooling(chain, cooling);
+    }
+
+    private async Task<IReadOnlyList<ChatResolution>> ResolveChainAsync(
         FrozenModelPlan plan,
         Guid? parentInstanceId,
         HashSet<Guid> visitedParents,
@@ -345,7 +368,7 @@ internal sealed class AgentModelResolver : IAgentModelResolver
                 ?? throw new InvalidDataException($"Parent Agent version '{parent.AgentVersionId}' is absent from the frozen run configuration.");
             var parentPlan = parentDefinition.ModelPlan
                 ?? throw new InvalidDataException($"Parent Agent '{parentDefinition.Id}' has no frozen model plan.");
-            var inheritedCandidates = await ResolveInvocationCandidatesAsync(parentPlan, parent.ParentInstanceId, visitedParents, cancellationToken).ConfigureAwait(false);
+            var inheritedCandidates = await ResolveChainAsync(parentPlan, parent.ParentInstanceId, visitedParents, cancellationToken).ConfigureAwait(false);
             return inheritedCandidates.Select(item => WithSource(item, "parent_frozen_plan")).ToArray();
         }
 
@@ -393,6 +416,18 @@ internal sealed class AgentModelResolver : IAgentModelResolver
         row.TotalTokens = usage?.TotalTokens;
         row.CompletedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // Health is updated after the durable invocation row, so a failure in this step loses a count but can
+        // never leave an invocation unattributed. The registry swallows its own failures by contract.
+        // `cancelled` deliberately records nothing: a stopped run is not evidence about the provider.
+        if (status == "succeeded")
+        {
+            await _health.RecordSuccessAsync(row.ProviderInstanceId, row.Model, cancellationToken).ConfigureAwait(false);
+        }
+        else if (status == "failed")
+        {
+            await _health.RecordFailureAsync(row.ProviderInstanceId, row.Model, errorCategory, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private async Task<FrozenModelPlan> FreezeStrategyAsync(ModelStrategyDto strategy, string source, bool inheritFromParent, CancellationToken ct)

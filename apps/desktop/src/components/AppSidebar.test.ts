@@ -6,13 +6,26 @@ import AppSidebar from './AppSidebar.vue'
 import type { ProjectDto, SessionDto } from '../api'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { freeWorkspaceKey, workspaceListStorageKey } from '@/composables/useWorkspaceList'
+import { setSelectedStorage } from '@/lib/storageScope'
 import { setNickname } from '@/lib/userProfile'
 
 vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: (key: string) => key, te: () => false, locale: { value: 'en' } }),
 }))
 
-const { confirmMock } = vi.hoisted(() => ({ confirmMock: vi.fn(async (..._args: unknown[]) => true) }))
+const { confirmMock, listModelInvocationsMock } = vi.hoisted(() => ({
+  confirmMock: vi.fn(async (..._args: unknown[]) => true),
+  listModelInvocationsMock: vi.fn(async (..._params: unknown[]) => ({
+    items: [] as unknown[],
+    next_cursor: null as string | null,
+  })),
+}))
+
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>()
+  return { ...actual, api: { ...actual.api, listModelInvocations: (...args: unknown[]) => listModelInvocationsMock(...args) } }
+})
+
 vi.mock('@/composables/useNotifications', () => ({
   useNotifications: () => ({
     confirm: (...args: unknown[]) => confirmMock(...args),
@@ -32,6 +45,11 @@ const session: SessionDto = {
   created_at: '2026-08-27T00:00:00Z',
   updated_at: '2026-08-27T00:00:00Z',
 }
+
+beforeEach(() => {
+  listModelInvocationsMock.mockReset()
+  listModelInvocationsMock.mockResolvedValue({ items: [], next_cursor: null })
+})
 
 function factory(overrides: Record<string, unknown> = {}, attachTo?: Element) {
   return mount(AppSidebar, {
@@ -564,5 +582,102 @@ describe('AppSidebar footer identity', () => {
     await settle(wrapper)
     expect(wrapper.get('.sidebar-profile').classes()).not.toContain('sidebar-profile--named')
     wrapper.unmount()
+  })
+})
+
+describe('AppSidebar token usage', () => {
+  function invocation(
+    startedAt: Date,
+    tokens: { total?: number | null; input?: number | null; output?: number | null } = {},
+  ) {
+    return {
+      started_at: startedAt.toISOString(),
+      total_tokens: tokens.total ?? null,
+      input_tokens: tokens.input ?? null,
+      output_tokens: tokens.output ?? null,
+    }
+  }
+
+  function today(hour = 10): Date {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour)
+  }
+
+  it('draws the last seven days and totals only reported usage', async () => {
+    const day = today()
+    const yesterday = new Date(day)
+    yesterday.setDate(day.getDate() - 1)
+    listModelInvocationsMock.mockResolvedValue({
+      items: [
+        invocation(day, { total: 120 }),
+        invocation(new Date(day.getTime() + 3_600_000), { input: 30, output: 10 }),
+        invocation(yesterday),
+      ],
+      next_cursor: null,
+    })
+    const wrapper = factory()
+    await flushPromises()
+
+    const bars = wrapper.findAll('.token-usage-bar')
+    expect(bars).toHaveLength(7)
+    expect(bars[6]!.classes()).toContain('high')
+    expect(bars[6]!.attributes('style')).toContain('height: 100%')
+    expect(bars[5]!.classes()).toContain('empty')
+    expect(bars[5]!.attributes('style')).toContain('height: 2px')
+    expect(wrapper.get('.token-usage-total').text()).toBe('160')
+    expect(wrapper.get('.token-usage-chart').attributes('role')).toBe('img')
+    expect(wrapper.get('.token-usage-chart').attributes('aria-label')).toBe('sidebar.tokenUsageSummary')
+    expect(wrapper.get('.token-usage-area').text()).toContain('sidebar.tokenUsage')
+    expect(listModelInvocationsMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }))
+    wrapper.unmount()
+  })
+
+  it('stays out of the way when nothing was measured', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.find('.token-usage-area').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('says calls reported no usage instead of drawing zero bars', async () => {
+    listModelInvocationsMock.mockResolvedValue({
+      items: [invocation(today())],
+      next_cursor: null,
+    })
+    const wrapper = factory()
+    await flushPromises()
+
+    expect(wrapper.get('.token-usage-unreported').text()).toBe('sidebar.tokenUsageUnreported')
+    expect(wrapper.find('.token-usage-chart').exists()).toBe(false)
+    expect(wrapper.find('.token-usage-total').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('refreshes when a run finishes', async () => {
+    const wrapper = factory()
+    await flushPromises()
+    expect(listModelInvocationsMock).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ busy: true })
+    await wrapper.setProps({ busy: false })
+    await flushPromises()
+    expect(listModelInvocationsMock).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('drops a slow read when the storage scope changes mid-flight', async () => {
+    let resolveFirst: (value: { items: unknown[]; next_cursor: null }) => void = () => {}
+    listModelInvocationsMock.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+    const wrapper = factory()
+    try {
+      setSelectedStorage('project-2')
+      await flushPromises()
+      resolveFirst({ items: [invocation(today(), { total: 999 })], next_cursor: null })
+      await flushPromises()
+      expect(wrapper.find('.token-usage-area').exists()).toBe(false)
+    } finally {
+      wrapper.unmount()
+      setSelectedStorage('user')
+    }
   })
 })

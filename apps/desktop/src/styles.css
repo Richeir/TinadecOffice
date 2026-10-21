@@ -2041,6 +2041,7 @@ button.agent-topology-node:hover,
 .recent-conversation-source { flex: 0 1 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
 /* The rail has no room for a flat chat list, and its section header is gone there too. */
 .sidebar-collapsed .recent-conversations { display: none; }
+.sidebar-collapsed .token-usage-area { display: none; }
 .workspace-section-heading + .sidebar-list--group-collapsed { margin-top: 0; }
 .workspace-color-default { color: var(--text-secondary); }
 .workspace-color-blue { color: var(--accent-info); }
@@ -2440,8 +2441,36 @@ button.agent-topology-node:hover,
 
 /* Token Usage Area */
 .token-usage-area {
-  padding: 12px;
+  padding: 10px 12px 8px;
   border-top: 1px solid var(--border-muted);
+}
+
+.token-usage-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.token-usage-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-usage-total {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.token-usage-unreported {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .token-usage-chart {
@@ -2452,24 +2481,30 @@ button.agent-topology-node:hover,
   height: 60px;
 }
 
+/* One hue, three intensities: the busiest day must not read as an error. */
 .token-usage-bar {
   flex: 1;
   min-width: 4px;
+  min-height: 2px;
   border-radius: 2px 2px 0 0;
-  background: var(--accent-success);
-  transition: background 0.3s;
-}
-
-.token-usage-bar.low {
-  background: var(--accent-success);
+  background: color-mix(in srgb, var(--accent-primary) 50%, transparent);
+  transition: background 0.3s, height 0.28s cubic-bezier(0.2, 0, 0, 1);
 }
 
 .token-usage-bar.medium {
-  background: var(--accent-warning);
+  background: color-mix(in srgb, var(--accent-primary) 72%, transparent);
 }
 
 .token-usage-bar.high {
-  background: var(--accent-danger);
+  background: var(--accent-primary);
+}
+
+.token-usage-bar.empty {
+  background: var(--border-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-usage-bar { transition: none; }
 }
 
 /* Welcome Screen — hero title block only. The composer itself is the persistent

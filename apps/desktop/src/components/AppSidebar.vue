@@ -2,7 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useWorkspaceList, freeWorkspaceKey, recentSessionRows, recentWorkspaceSessions } from '@/composables/useWorkspaceList'
 import { workspaceIcons, type WorkspaceLoadState } from '@/lib/workspaces'
-import { selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
+import { scopedApi, selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
+import { buildSidebarUsage, SIDEBAR_USAGE_DAYS, usageWindow, type SidebarUsage, type SidebarUsageBar } from '@/lib/sidebarUsage'
+import { formatCompactCount } from '@/lib/shareCard'
 import {
   Archive,
   ArrowRightLeft,
@@ -27,7 +29,7 @@ import {
   ArrowDown,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
-import type { ProjectDto, SessionDto } from '../api'
+import { api, type ModelInvocationDto, type ProjectDto, type SessionDto } from '../api'
 import BrandLogo from '@/components/BrandLogo.vue'
 import TinadecCalligraphy from '@/components/TinadecCalligraphy.vue'
 import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
@@ -40,7 +42,7 @@ import { errorCodeMessage } from '@/lib/apiError'
 import { userProfile } from '@/lib/userProfile'
 import { profileNameFits } from '@/lib/profileNameFit'
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const { confirm } = useNotifications()
 const { enabled: debugStudioEnabled, load: loadDebugStudio } = useDebugStudio()
 onMounted(loadDebugStudio)
@@ -369,7 +371,62 @@ const freeSessions = computed(() =>
   props.sessions.filter((s) => !s.project_id && s.title)
 )
 
-const tokenUsage = ref<number[]>([])
+// ---- Token usage (current storage scope, last 7 days) ----
+const USAGE_PAGE_LIMIT = 200
+const USAGE_MAX_PAGES = 5
+const tokenUsage = ref<SidebarUsage | null>(null)
+let tokenUsageGeneration = 0
+
+function formatTokenCount(value: number): string {
+  return value.toLocaleString(locale.value)
+}
+
+function usageDayTitle(bar: SidebarUsageBar): string {
+  const date = bar.date.toLocaleDateString(locale.value, { month: 'short', day: 'numeric' })
+  return bar.tokens === null
+    ? t('sidebar.tokenUsageDayEmpty', { date })
+    : t('sidebar.tokenUsageDay', { date, tokens: formatTokenCount(bar.tokens) })
+}
+
+const tokenUsageTotal = computed(() => {
+  const usage = tokenUsage.value
+  if (!usage || usage.total === null) return ''
+  return `${usage.truncated ? '≥ ' : ''}${formatCompactCount(usage.total, locale.value)}`
+})
+
+const tokenUsageSummary = computed(() => {
+  const usage = tokenUsage.value
+  if (!usage || usage.total === null) return ''
+  const key = usage.truncated ? 'sidebar.tokenUsageSummaryTruncated' : 'sidebar.tokenUsageSummary'
+  return t(key, { days: SIDEBAR_USAGE_DAYS, tokens: formatTokenCount(usage.total) })
+})
+
+async function loadTokenUsage(): Promise<void> {
+  const generation = ++tokenUsageGeneration
+  const storage = selectedStorage.value
+  // Pin the scope across pages: a project switch mid-walk must not stitch two stores together.
+  const usageApi = scopedApi(api, () => storage)
+  const days = usageWindow()
+  const rows: ModelInvocationDto[] = []
+  let cursor: string | undefined
+  try {
+    for (let page = 0; page < USAGE_MAX_PAGES; page += 1) {
+      const result = await usageApi.listModelInvocations({ from: days[0]!.toISOString(), limit: USAGE_PAGE_LIMIT, cursor })
+      rows.push(...result.items)
+      cursor = result.next_cursor ?? undefined
+      if (!cursor || result.items.length === 0) break
+    }
+    if (generation !== tokenUsageGeneration || storage !== selectedStorage.value) return
+    tokenUsage.value = buildSidebarUsage(rows, { truncated: Boolean(cursor) })
+  } catch {
+    // The chart is supplementary; the personal page owns the visible failure state.
+    if (generation === tokenUsageGeneration) tokenUsage.value = null
+  }
+}
+
+onMounted(() => { void loadTokenUsage() })
+watch(() => props.busy, (busy, wasBusy) => { if (wasBusy && !busy) void loadTokenUsage() })
+watch(selectedStorage, () => { void loadTokenUsage() })
 
 function openDebugStudio() {
   if (!debugStudioEnabled.value) return
@@ -446,6 +503,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   footerResizeObserver?.disconnect()
   footerResizeObserver = null
+  tokenUsageGeneration += 1
 })
 watch([nickname, () => props.collapsed], async () => {
   await nextTick()
@@ -572,18 +630,24 @@ watch([nickname, () => props.collapsed], async () => {
       </div>
     </div>
 
-    <div v-if="tokenUsage.length > 0" class="token-usage-area">
-      <div class="token-usage-chart">
+    <div v-if="tokenUsage && tokenUsage.calls > 0" class="token-usage-area">
+      <div class="token-usage-heading">
+        <span class="token-usage-label">{{ t('sidebar.tokenUsage', { days: SIDEBAR_USAGE_DAYS }) }}</span>
+        <span
+          v-if="tokenUsage.total !== null"
+          class="token-usage-total"
+          :title="tokenUsage.truncated ? t('sidebar.tokenUsageTruncated', { count: USAGE_PAGE_LIMIT * USAGE_MAX_PAGES }) : undefined"
+        >{{ tokenUsageTotal }}</span>
+      </div>
+      <div v-if="tokenUsage.total === null" class="token-usage-unreported">{{ t('sidebar.tokenUsageUnreported') }}</div>
+      <div v-else class="token-usage-chart" role="img" :aria-label="tokenUsageSummary">
         <div
-          v-for="(height, index) in tokenUsage"
-          :key="index"
+          v-for="bar in tokenUsage.bars"
+          :key="bar.dayKey"
           class="token-usage-bar"
-          :style="{ height: `${height}%` }"
-          :class="{
-            'low': height < 40,
-            'medium': height >= 40 && height < 70,
-            'high': height >= 70
-          }"
+          :class="bar.level"
+          :style="{ height: bar.tokens === null || bar.tokens === 0 ? '2px' : `${bar.height}%` }"
+          :title="usageDayTitle(bar)"
         />
       </div>
     </div>

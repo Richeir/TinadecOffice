@@ -126,25 +126,87 @@ function dispatchViewToggle(element: Element, newState: 'open' | 'closed') {
 }
 
 describe('AppSidebar lifecycle management', () => {
-  it('reorders workspaces, including the free conversation, and persists the new order', async () => {
+  it('reorders the project rows without letting the free conversation leave its block', async () => {
     localStorage.clear()
     const second = { ...project, id: 'p-2', name: 'Second' }
     const wrapper = factory({ projects: [project, second] })
     const keys = () => wrapper.findAll('.project-group').map(node => node.attributes('data-workspace-key'))
     expect(keys()).toEqual([freeWorkspaceKey, 'p-1', 'p-2'])
 
-    // Move the free conversation below the first project: it is no longer pinned to the top.
+    // The free conversation is a block of its own: its arrows belong to the option order above,
+    // so a row-level reorder has to leave the list exactly as it was.
     await wrapper.get('[data-workspace-key="user::free"] .project-row-main').trigger('keydown', { key: 'ArrowDown', altKey: true })
-    expect(keys()).toEqual(['p-1', freeWorkspaceKey, 'p-2'])
+    expect(keys()).toEqual([freeWorkspaceKey, 'p-1', 'p-2'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).order).toEqual([freeWorkspaceKey, 'p-1', 'p-2'])
 
+    // Projects still reorder among themselves.
     await wrapper.get('[data-workspace-key="p-2"] .project-row-main').trigger('keydown', { key: 'ArrowUp', altKey: true })
-    expect(keys()).toEqual(['p-1', 'p-2', freeWorkspaceKey])
-
-    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).order).toEqual(['p-1', 'p-2', freeWorkspaceKey])
+    expect(keys()).toEqual([freeWorkspaceKey, 'p-2', 'p-1'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).order).toEqual([freeWorkspaceKey, 'p-2', 'p-1'])
 
     // A plain arrow press must not reorder; it stays available to the row's own behaviour.
     await wrapper.get('[data-workspace-key="p-1"] .project-row-main').trigger('keydown', { key: 'ArrowDown' })
-    expect(keys()).toEqual(['p-1', 'p-2', freeWorkspaceKey])
+    expect(keys()).toEqual([freeWorkspaceKey, 'p-2', 'p-1'])
+    wrapper.unmount()
+  })
+
+  it('reorders the option blocks by dragging a row handle', async () => {
+    localStorage.clear()
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: true, projectConversations: true, freeConversation: true }))
+    const wrapper = factory()
+    const blocks = () => Array.from(wrapper.get('.sidebar-list').element.children).map((node) => {
+      const element = node as HTMLElement
+      return element.dataset.workspaceKey
+        ?? (element.classList.contains('recent-conversations') ? 'recent' : element.classList.contains('activity-group') ? 'activity' : '?')
+    })
+    const labels = () => wrapper.findAll('.sidebar-option-label').map(node => node.text())
+
+    // Default order mirrors the shipped list: recents on top, then the free block, then projects.
+    expect(blocks()).toEqual(['recent', freeWorkspaceKey, 'p-1'])
+    expect(labels()).toEqual(['sidebar.recentConversations', 'sidebar.recentActivity', 'chat.freeConversation', 'sidebar.projectConversations'])
+
+    // Drag 自由对话 onto the upper half of 最近对话: the handle is the drag source, the row is the
+    // target, and the panel behind the popover follows the same list.
+    await wrapper.get('[data-section="free"] .sidebar-option-grip').trigger('dragstart')
+    await wrapper.get('[data-section="recent"]').trigger('dragover')
+    await wrapper.get('[data-section="recent"]').trigger('drop')
+    expect(blocks()).toEqual([freeWorkspaceKey, 'recent', 'p-1'])
+    expect(labels()).toEqual(['chat.freeConversation', 'sidebar.recentConversations', 'sidebar.recentActivity', 'sidebar.projectConversations'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['free', 'recent', 'activity', 'projects'])
+
+    // Dropping on the lower half lands the block after the one under the pointer.
+    await wrapper.get('[data-section="free"] .sidebar-option-grip').trigger('dragstart')
+    await wrapper.get('[data-section="projects"]').trigger('dragover', { clientY: 10 })
+    await wrapper.get('[data-section="projects"]').trigger('drop')
+    expect(blocks()).toEqual(['recent', 'p-1', freeWorkspaceKey])
+    wrapper.unmount()
+  })
+
+  it('moves an option block with the keyboard, and a click on the handle is not a toggle', async () => {
+    localStorage.clear()
+    const wrapper = factory()
+    await wrapper.get('[data-section="activity"] [role="checkbox"]').trigger('keydown', { key: 'ArrowUp', altKey: true })
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['activity', 'recent', 'free', 'projects'])
+    expect(wrapper.findAll('.sidebar-option-label').map(node => node.text())[0]).toBe('sidebar.recentActivity')
+
+    // The grip is a drag affordance, not a second toggle.
+    await wrapper.get('[data-section="free"] .sidebar-option-grip').trigger('click')
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).freeConversation).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('returns a hidden block to its own slot, not to the bottom', async () => {
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({
+      collapsed: false, collapsedKeys: [], allKeys: [], order: [],
+      sectionOrder: ['free', 'projects', 'recent', 'activity'],
+      recent: false, projectConversations: true, freeConversation: true,
+    }))
+    const wrapper = factory()
+    const blocks = () => Array.from(wrapper.get('.sidebar-list').element.children)
+      .map(node => (node as HTMLElement).dataset.workspaceKey ?? 'recent')
+    expect(blocks()).toEqual([freeWorkspaceKey, 'p-1'])
+    await wrapper.get('[data-section="recent"]').trigger('click')
+    expect(blocks()).toEqual([freeWorkspaceKey, 'p-1', 'recent'])
     wrapper.unmount()
   })
 

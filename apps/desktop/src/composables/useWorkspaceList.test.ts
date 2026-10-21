@@ -62,6 +62,28 @@ describe('workspace list persistence', () => {
     wrapper.unmount()
   })
 
+  it('remembers the block order the options menu was dragged into', () => {
+    let list!: ReturnType<typeof useWorkspaceList>
+    const component = defineComponent({ setup() { list = useWorkspaceList(); return () => null } })
+    let wrapper = mount(component)
+    expect(list.state.value.sectionOrder).toEqual(['recent', 'activity', 'free', 'projects'])
+    list.moveSection('free', 'recent', false)
+    expect(list.state.value.sectionOrder).toEqual(['free', 'recent', 'activity', 'projects'])
+    wrapper.unmount(); wrapper = mount(component)
+    expect(list.state.value.sectionOrder).toEqual(['free', 'recent', 'activity', 'projects'])
+    list.moveSection('free', 'projects', true)
+    expect(list.state.value.sectionOrder).toEqual(['recent', 'activity', 'projects', 'free'])
+    list.stepSection('free', -1)
+    expect(list.state.value.sectionOrder).toEqual(['recent', 'activity', 'free', 'projects'])
+
+    // A record written before a block existed still renders it: unknown ids are dropped and the
+    // missing ones are appended in their declared order instead of vanishing from the sidebar.
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false, sectionOrder: ['projects', 'nope', 'free'] }))
+    wrapper.unmount(); wrapper = mount(component)
+    expect(list.state.value.sectionOrder).toEqual(['projects', 'free', 'recent', 'activity'])
+    wrapper.unmount()
+  })
+
   it('moves a workspace after the drop target when requested and keeps free conversation ordered', () => {
     let list!: ReturnType<typeof useWorkspaceList>
     const wrapper = mount(defineComponent({ setup() { list = useWorkspaceList(); return () => null } }))

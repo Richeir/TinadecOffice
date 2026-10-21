@@ -681,6 +681,7 @@ export default {
     workspaces: "Рабочие области",
     newWorkspace: "Новая рабочая область",
     workspaceOptions: "Параметры рабочих областей",
+    reorderSection: "Перетащите, чтобы изменить порядок",
     recentConversations: "Недавние разговоры",
     projectConversations: "Разговоры проектов",
     recentActivity: "Недавняя активность",

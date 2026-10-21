@@ -681,6 +681,7 @@ export default {
     workspaces: "工作區",
     newWorkspace: "新增工作區",
     workspaceOptions: "工作區選項",
+    reorderSection: "拖曳調整順序",
     recentConversations: "最近對話",
     projectConversations: "專案對話",
     recentActivity: "最近活動",

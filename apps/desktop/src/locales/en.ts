@@ -465,6 +465,7 @@ export default {
     workspaces: 'Workspaces',
     newWorkspace: 'New workspace',
     workspaceOptions: 'Workspace options',
+    reorderSection: 'Drag to reorder',
     recentConversations: 'Recent conversations',
     projectConversations: 'Project conversations',
     recentActivity: 'Recent activity',

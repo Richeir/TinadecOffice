@@ -681,6 +681,7 @@ export default {
     workspaces: "ワークスペース",
     newWorkspace: "新しいワークスペース",
     workspaceOptions: "ワークスペースのオプション",
+    reorderSection: "ドラッグで並べ替え",
     recentConversations: "最近の会話",
     projectConversations: "プロジェクト会話",
     recentActivity: "最近のアクティビティ",

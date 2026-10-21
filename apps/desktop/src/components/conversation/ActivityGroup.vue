@@ -21,7 +21,7 @@ import ReasoningBlock from './ReasoningBlock.vue'
  */
 const props = defineProps<{ node: ActivityGroupNode; workspaceRoot?: string | null }>()
 const { t } = useI18n()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 
 const { open } = useAutoDisclosure(toRef(() => props.node.exploring))
 const showSpinner = useDelayedLoading(toRef(() => props.node.exploring))
@@ -94,7 +94,7 @@ function toolText(entry: ToolEntry): string {
           <span v-else-if="line.kind === 'tool'">└ {{ toolText(line.entry) }}</span>
           <span v-else class="conversation-group-wait">
             <Hourglass class="conversation-meta-glyph" aria-hidden="true" />
-            {{ t(line.entry.status === 'waiting' ? 'conversation.wait.waiting' : 'conversation.wait.resolved', { names: line.entry.awaited.map((item) => displayName(item.handle ?? item.taskKey)).join(t('conversation.listSeparator')) }) }}
+            {{ t(line.entry.status === 'waiting' ? 'conversation.wait.waiting' : 'conversation.wait.resolved', { names: line.entry.awaited.map((item) => nameFor(item.handle ?? item.taskKey)).join(t('conversation.listSeparator')) }) }}
           </span>
         </li>
       </ul>

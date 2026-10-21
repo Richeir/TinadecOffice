@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { api } from '@/api'
 import { homeController } from '@/controllers/HomeController'
 import { useNotifications } from '@/composables/useNotifications'
+import { interfaceLocale } from '@/lib/interfaceLocale'
 import type { SupervisionDecisionOption, SupervisionReview } from '@/lib/conversation/supervision'
 
 /**
@@ -71,6 +72,7 @@ async function decide(option: SupervisionDecisionOption) {
         client_message_id: crypto.randomUUID(),
         dispatch_mode: 'insert',
         target_run_id: runId,
+        interface_locale: interfaceLocale(),
       })
     } else {
       await api.controlRun(runId, option === 'continue' ? 'resume' : 'cancel')

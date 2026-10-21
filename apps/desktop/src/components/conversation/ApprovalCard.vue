@@ -9,6 +9,7 @@ import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import { useDelayedLoading } from '@/composables/useDelayedLoading'
 import { useNotifications } from '@/composables/useNotifications'
 import { entrySentence, verbKey } from '@/lib/conversation/toolSentence'
+import { interfaceLocale } from '@/lib/interfaceLocale'
 import type { SubAgent, ToolEntry } from '@/lib/conversation/reducer'
 
 /**
@@ -29,7 +30,7 @@ const props = defineProps<{
 }>()
 const { t } = useI18n()
 const { notify } = useNotifications()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 
 type Action = 'approve' | 'approveRun' | 'reject' | 'instead' | 'rule'
 const pending = ref<Action | null>(null)
@@ -45,7 +46,7 @@ const command = computed(() => props.approval?.command ?? props.entry.command)
 const directory = computed(() => props.approval?.cwd ?? props.entry.cwd)
 const target = computed(() => (command.value ? null : props.approval?.resource_path ?? props.entry.resourcePath))
 const approvalId = computed(() => props.approval?.id ?? props.entry.approvalId)
-const requesterName = computed(() => (props.requester ? displayName(props.requester.handle ?? props.requester.agentSlug) : ''))
+const requesterName = computed(() => (props.requester ? nameFor(props.requester.handle ?? props.requester.agentSlug) : ''))
 const commandPrefix = computed(() => (sentence.value.verb === 'run' && command.value ? command.value.trim().split(/\s+/)[0] ?? null : null))
 
 async function act(action: Action, work: (id: string) => Promise<unknown>) {
@@ -76,7 +77,7 @@ const sendCorrection = () => act('instead', async (id) => {
   const sessionId = homeController.currentSession.value?.id
   if (!content || !sessionId) return
   await homeController.decideApprovalById(id, 'rejected')
-  await api.createInteraction(sessionId, { content, client_message_id: crypto.randomUUID(), dispatch_mode: 'insert', target_run_id: props.runId })
+  await api.createInteraction(sessionId, { content, client_message_id: crypto.randomUUID(), dispatch_mode: 'insert', target_run_id: props.runId, interface_locale: interfaceLocale() })
   correcting.value = false
   correction.value = ''
 })

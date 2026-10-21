@@ -6,6 +6,7 @@ import { UiButton, UiInput, UiTextarea } from '@/components/ui'
 import EvidenceSearch from './EvidenceSearch.vue'
 import EnvironmentList from './EnvironmentList.vue'
 import { useNotifications } from '@/composables/useNotifications'
+import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import {
   api,
   type OrganizationDto,
@@ -45,6 +46,7 @@ const NOTICE_KEY = 'organization-panel'
 
 const { t, te, locale } = useI18n()
 const { notify, status, dismissByKey } = useNotifications()
+const { items: agentDirectory, nameFor } = useAgentDirectory()
 const active = inject<MaybeRefOrGetter<boolean>>('uie:active', true)
 
 const section = ref<Section>('members')
@@ -112,7 +114,7 @@ async function toggleVisibility(member: OrganizationMemberDto): Promise<void> {
       ...organization.value,
       members: organization.value.members.map((row) => (row.id === updated.id ? updated : row)),
     })
-    if (next === 'own') notify.warning({ title: t('organization.visibilityMuteShort'), message: t('organization.visibilityMuted', { name: member.display_name }) })
+    if (next === 'own') notify.warning({ title: t('organization.visibilityMuteShort'), message: t('organization.visibilityMuted', { name: memberDisplayName(member) }) })
   } catch (cause) {
     if (at !== epoch) return
     if (problemOf(cause).code === 'organization_archived') void refresh()
@@ -145,11 +147,20 @@ function subjectStateLabel(state: OrganizationSubjectStateDto): string {
 }
 
 function memberName(id?: string | null): string {
-  return (id && membersById.value.get(id)?.display_name) || t('organization.unknownMember')
+  const member = id ? membersById.value.get(id) : undefined
+  return member ? memberDisplayName(member) : t('organization.unknownMember')
+}
+
+/** Machine members carry the pack agent slug; a human member keeps Core's display name. */
+function memberDisplayName(member: Pick<OrganizationMemberDto, 'display_name' | 'agent_slug'>): string {
+  if (!member.agent_slug) return member.display_name
+  const known = agentDirectory.value.some((row) => row.slug === member.agent_slug)
+  return known ? nameFor(member.agent_slug) : member.display_name
 }
 
 function mentionName(handle: string): string {
-  return members.value.find((member) => member.handle === handle)?.display_name ?? handle
+  const member = members.value.find((row) => row.handle === handle)
+  return member ? memberDisplayName(member) : handle
 }
 
 function presenceLabel(member: OrganizationMemberDto): string {
@@ -162,7 +173,7 @@ function leaseHolder(lease: TopologyLeaseDto): string | null {
   const task = lease.task_id ? view.runs.flatMap((run) => run.tasks).find((row) => row.task_id === lease.task_id) : undefined
   if (task) return task.handle || task.title
   const holder = lease.agent_instance_id ? view.members.find((row) => row.agent_instance_id === lease.agent_instance_id) : undefined
-  return holder?.display_name ?? null
+  return holder ? memberDisplayName(holder) : null
 }
 
 function timeOf(value?: string | null): number {
@@ -562,7 +573,7 @@ onBeforeUnmount(() => {
               <span class="presence-dot" :class="{ online: member.presence === 'online' }" role="img" :aria-label="presenceLabel(member)" />
               <div class="org-member-main">
                 <div class="org-member-name">
-                  <strong>{{ member.display_name }}</strong>
+                  <strong>{{ memberDisplayName(member) }}</strong>
                   <span v-if="member.id === organization.you_participant_id">{{ t('organization.you') }}</span>
                   <span v-if="member.presence !== 'online'" class="org-offline">{{ t('organization.offlineSuffix') }}</span>
                 </div>
@@ -578,7 +589,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="org-visibility-toggle"
                 :disabled="mutingVisibility === member.id"
-                :aria-label="member.visibility_scope === 'own' ? t('organization.visibilityRestore', { name: member.display_name }) : t('organization.visibilityMute', { name: member.display_name })"
+                :aria-label="member.visibility_scope === 'own' ? t('organization.visibilityRestore', { name: memberDisplayName(member) }) : t('organization.visibilityMute', { name: memberDisplayName(member) })"
                 :data-visibility-toggle="member.id"
                 @click="toggleVisibility(member)"
               >
@@ -696,7 +707,7 @@ onBeforeUnmount(() => {
               :data-handle="member.handle"
               @click="toggleMention(member.handle)"
             >
-              {{ member.display_name }}<small>{{ member.handle }}</small>
+              {{ memberDisplayName(member) }}<small>{{ member.handle }}</small>
             </button>
           </div>
         </form>

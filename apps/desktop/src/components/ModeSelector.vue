@@ -6,9 +6,10 @@ import { usePanelStyles } from '@/composables/usePanelStyles'
 import { api as baseApi, type AgentModeTopologyDto } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
+import { pickLocalized } from '@/lib/packI18n'
 
 const globalApi = scopedApi(baseApi, () => 'user')
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { getPanelStyle, getPanelDataAttributes } = usePanelStyles()
 const panelStyle = computed(() => getPanelStyle())
 const panelDataAttrs = computed(() => getPanelDataAttributes())
@@ -39,8 +40,8 @@ const availableVersions = computed(() => {
   return sortModes(catalog.filter((v) => {
     if (v.status !== 'published' || !v.latest_published_mode_version_id) return false
     // 同一模式可能存在多行 published（运维/夹具安装各一条，Core 把去重责任下放给
-    // 客户端）；按用户可见的 display_name 去重——两行名字相同，用户就分不出来。
-    const key = v.display_name.trim().toLowerCase()
+    // 客户端）；按用户可见的（本地化）display_name 去重——两行名字相同，用户就分不出来。
+    const key = modeName(v).trim().toLowerCase()
     if (seen.has(key)) return false
     seen.add(key)
     return true
@@ -54,10 +55,14 @@ const selectedVersion = computed(() =>
 // 已选 version 失效（被禁用/卸载/跨工作区残留）时不再高亮；发送时 mode_version_id
 // 仍然带着，服务端会以 pack_disabled / invalid_request 显式失败，绝不静默回落。
 const selectionStale = computed(() => !!props.modeVersionId && !selectedVersion.value)
-const triggerLabel = computed(() => selectedVersion.value?.display_name ?? t('chat.followDefault'))
+const triggerLabel = computed(() => selectedVersion.value ? modeName(selectedVersion.value) : t('chat.followDefault'))
+
+function modeName(version: AgentModeTopologyDto): string {
+  return pickLocalized(version.i18n, locale.value, 'display_name', version.display_name) ?? version.display_name
+}
 
 function versionSummary(version: AgentModeTopologyDto): string {
-  return version.description?.trim() || ''
+  return pickLocalized(version.i18n, locale.value, 'description', version.description)?.trim() ?? ''
 }
 
 async function loadModeVersions() {
@@ -183,12 +188,12 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             :key="m.id"
             class="mode-selector-item"
             :class="{ active: m.latest_published_mode_version_id === modeVersionId }"
-            :title="versionSummary(m) || m.display_name"
+            :title="versionSummary(m) || modeName(m)"
             @click="selectVersion(m.latest_published_mode_version_id!)"
           >
             <component :is="modeIcon(m.slug)" :size="14" class="mode-selector-item-icon" />
             <span class="mode-selector-item-copy">
-              <strong>{{ m.display_name }}</strong>
+              <strong>{{ modeName(m) }}</strong>
               <small v-if="versionSummary(m)">{{ versionSummary(m) }}</small>
             </span>
           </button>

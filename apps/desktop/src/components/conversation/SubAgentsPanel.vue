@@ -21,7 +21,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'roster-size': [count: number] }>()
 const { t } = useI18n()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 
 interface RosterItem { runId: string; node: SubAgentNode; order: number }
 
@@ -69,7 +69,7 @@ function choose(item: RosterItem) {
           @keydown.enter.prevent="choose(item)"
           @keydown.space.prevent="choose(item)"
         >
-          <span class="conversation-sub-agents-name">{{ displayName(item.node.agent.handle ?? item.node.agent.agentSlug) }}</span>
+          <span class="conversation-sub-agents-name">{{ nameFor(item.node.agent.handle ?? item.node.agent.agentSlug) }}</span>
           <span class="conversation-sub-agent-badge" :data-status="item.node.status">{{ t(`conversation.agents.status.${item.node.status}`) }}</span>
         </li>
       </ul>

@@ -1260,10 +1260,24 @@ export interface AgentModeUsageDto {
   model_strategy_override?: Record<string, unknown> | null;
 }
 
+/** One locale's overlay for a pack resource; every field is optional and empty means absent. */
+export interface PackI18nOverlay {
+  display_name?: string | null;
+  description?: string | null;
+  label?: string | null;
+  system_prompt?: string | null;
+  templates?: Record<string, string> | null;
+}
+
+/** Per-locale overlays keyed by Core locale (`zh-CN`, `zh-TW`, `en`, `ja`, `ru`). */
+export type PackI18n = Record<string, PackI18nOverlay>
+
 export interface AgentDirectoryItemDto {
   id: string;
   slug: string;
   display_name: string;
+  /** Per-locale overlays; absent for rows that ship none. */
+  i18n?: PackI18n | null;
   layer: 'operation' | 'execution' | string;
   role: string;
   source_kind: 'custom' | 'pack' | 'bootstrap' | 'missing_reference' | string;
@@ -1336,6 +1350,8 @@ export interface AgentDefinitionDto {
   /** Versioned AgentDefinition shape (Core ToAgentDto). */
   slug?: string;
   display_name?: string;
+  /** Per-locale overlays; absent for rows that ship none. */
+  i18n?: PackI18n | null;
   layer: 'operation' | 'execution' | string;
   /** Legacy flat shape. */
   agent_type?: string;
@@ -1481,6 +1497,8 @@ export interface AgentModeNodeDto {
   lane: 'operation' | 'execution';
   position: { x: number; y: number };
   label?: string | null;
+  /** Per-locale overlays; absent for nodes that ship none. */
+  i18n?: PackI18n | null;
   model_strategy_override?: { kind: 'inherit' | 'route' | 'fixed'; route_purpose?: string; provider_instance_id?: string; model?: string | null } | null;
   /** Core node_key for published projections; write-back uses it before id. */
   node_key?: string;
@@ -1545,6 +1563,8 @@ export interface AgentModeTopologyDto {
   latest_published_mode_version_id?: string | null;
   /** User-facing one-liner: what the mode does and when to pick it. */
   description?: string | null;
+  /** Per-locale overlays; absent for modes that ship none. */
+  i18n?: PackI18n | null;
   runtime_policy?: AgentModeRuntimePolicy | null;
   nodes: AgentModeNodeDto[];
   edges: AgentModeEdgeDto[];
@@ -2301,6 +2321,8 @@ export interface AgentLineageEntryDto {
   task_id?: string | null;
   layer: string;
   role: string;
+  /** Pack agent definition behind this instance; absent for ad-hoc roles. */
+  agent_definition_id?: string | null;
   generation_depth: number;
   generated: boolean;
   status: string;
@@ -3435,10 +3457,10 @@ export const api = {
   /** Effective policy ceilings of this scope (read-only; edited through the runtime document). */
   getAgentRuntimePolicy: () => request<AgentRuntimePolicyDto>('/api/v1/agent-runtime-policy'),
   // interactions (queued/insert/parallel)
-  createInteraction: (sessionId: string, body: { content: string; client_message_id: string; mode_version_id?: string | null; permission_mode?: string | null; dispatch_mode: DispatchMode; target_run_id?: string | null; meeting_model_override?: MeetingModelOverrideDto | null; clear_meeting_model_override?: boolean; expected_settings_revision?: number; space_options?: SpaceOptionsDto | null; attachment_ids?: string[]; interrupt?: boolean }) => request<SessionInteractionDto>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/interactions`, { method: 'POST', body: JSON.stringify(body) }),
+  createInteraction: (sessionId: string, body: { content: string; client_message_id: string; mode_version_id?: string | null; permission_mode?: string | null; dispatch_mode: DispatchMode; target_run_id?: string | null; meeting_model_override?: MeetingModelOverrideDto | null; clear_meeting_model_override?: boolean; expected_settings_revision?: number; space_options?: SpaceOptionsDto | null; attachment_ids?: string[]; interrupt?: boolean; interface_locale?: string }) => request<SessionInteractionDto>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/interactions`, { method: 'POST', body: JSON.stringify(body) }),
   getCorrection: (runId: string) => request<Record<string, unknown>>(`/api/v1/runs/${encodeURIComponent(runId)}/correction`),
   answerCorrectionQuestion: (runId: string, questionId: string, body: { answer: string; option_id?: string | null; client_request_id: string }) => request<Record<string, unknown>>(`/api/v1/runs/${encodeURIComponent(runId)}/correction/questions/${encodeURIComponent(questionId)}/answer`, { method: 'POST', body: JSON.stringify(body) }),
-  submitCorrectionFeedback: (runId: string, body: { kind: 'reproduced' | 'resolved'; note?: string | null; client_request_id: string }) => request<Record<string, unknown>>(`/api/v1/runs/${encodeURIComponent(runId)}/correction/feedback`, { method: 'POST', body: JSON.stringify(body) }),
+  submitCorrectionFeedback: (runId: string, body: { kind: 'reproduced' | 'resolved'; note?: string | null; client_request_id: string; interface_locale?: string }) => request<Record<string, unknown>>(`/api/v1/runs/${encodeURIComponent(runId)}/correction/feedback`, { method: 'POST', body: JSON.stringify(body) }),
   reassignInteraction: (sessionId: string, interactionId: string, body: { target_run_id: string }) => request<InteractionActionDto>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/interactions/${encodeURIComponent(interactionId)}/reassign`, { method: 'POST', body: JSON.stringify(body) }),
   cancelInteraction: (sessionId: string, interactionId: string) => request<InteractionActionDto>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/interactions/${encodeURIComponent(interactionId)}/cancel`, { method: 'POST' }),
   // --- Attachments ---

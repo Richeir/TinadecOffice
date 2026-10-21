@@ -5,8 +5,9 @@ import { VueFlow, Panel, useVueFlow, type Node, type Edge, type Connection } fro
 import { Background } from '@vue-flow/background'
 import { Workflow, Cpu } from '@lucide/vue'
 import type { AgentModeNodeDto, AgentModeEdgeDto, AgentDefinitionDto } from '@/api'
+import { pickLocalized, pickNodeLabel } from '@/lib/packI18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const props = defineProps<{
   nodes: AgentModeNodeDto[]
   edges: AgentModeEdgeDto[]
@@ -44,15 +45,18 @@ const vfNodes = computed<Node[]>(() =>
     const cap = (ag?.capabilities ?? []).slice(0, 2).join(' · ')
     const tools = (ag?.allowed_tools ?? []).length
     const isSel = selectedId.value === n.id
+    const agentName = ag
+      ? pickLocalized(ag.i18n, locale.value, 'display_name', ag.display_name ?? ag.name) ?? ag.id
+      : n.agent_id?.slice(0, 8) ?? t('canvas.unbound')
     return {
       id: n.id,
       type: 'custom',
       position: n.position,
       data: {
-        label: n.label ?? ag?.name ?? n.agent_id ?? '',
+        label: pickNodeLabel(n, locale.value) || ag?.name || n.agent_id || '',
         agent_id: n.agent_id,
         lane: normalizeLane(n.lane),
-        agentName: ag?.name ?? n.agent_id?.slice(0, 8) ?? t('canvas.unbound'),
+        agentName,
         role: ag?.agent_type ?? '—',
         cap: cap || '—',
         toolCount: tools,

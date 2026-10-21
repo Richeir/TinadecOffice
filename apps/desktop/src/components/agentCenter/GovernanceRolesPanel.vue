@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { GitBranch, ShieldCheck } from '@lucide/vue'
 import { api as baseApi, type AgentDefinitionDto, type WorkspaceDefaultsDto } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
+import { pickLocalized } from '@/lib/packI18n'
 const api = scopedApi(baseApi, () => 'user')
 
 /**
@@ -15,7 +16,7 @@ const api = scopedApi(baseApi, () => 'user')
  * manifest-provided catalog; tools missing from the live provider render as
  * "provider unavailable" instead of being silently dropped.
  */
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
 const layerLabel = (layer: string) => (te(`orchestrationPanel.layer.${layer}`) ? t(`orchestrationPanel.layer.${layer}`) : layer)
 const statusLabel = (status: string) => (te(`agentCenter.filter.${status}`) ? t(`agentCenter.filter.${status}`) : status)
 
@@ -38,7 +39,8 @@ const roleAgents = computed(() =>
 )
 
 function displayName(agent: AgentDefinitionDto): string {
-  return agent.display_name ?? agent.slug ?? agent.name ?? agent.id
+  const baseline = agent.display_name ?? agent.slug ?? agent.name ?? agent.id
+  return pickLocalized(agent.i18n, locale.value, 'display_name', baseline) ?? baseline
 }
 
 /** Core stores model_strategy as JSON ({ kind: ... }) or a bare string. */

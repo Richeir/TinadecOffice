@@ -13,12 +13,12 @@ import type { OrganizationDto, OrganizationMemberDto, OrganizationMessageDto, Or
 
 const mocks = vi.hoisted(() => ({
   getOrganization: vi.fn(), readRoom: vi.fn(), post: vi.fn(), reports: vi.fn(), decide: vi.fn(), topology: vi.fn(), setVisibility: vi.fn(),
-  success: vi.fn(), warning: vi.fn(), error: vi.fn(), statusError: vi.fn(), dismiss: vi.fn(),
+  listAgents: vi.fn(), success: vi.fn(), warning: vi.fn(), error: vi.fn(), statusError: vi.fn(), dismiss: vi.fn(),
 }))
 vi.mock('@/api', () => ({ api: {
   getOrganization: mocks.getOrganization, readOrganizationRoom: mocks.readRoom, postOrganizationMessage: mocks.post,
   listOrganizationReports: mocks.reports, decideOrganizationReport: mocks.decide, getSessionTopology: mocks.topology,
-  setOrganizationMemberVisibility: mocks.setVisibility,
+  setOrganizationMemberVisibility: mocks.setVisibility, listAgents: mocks.listAgents,
 } }))
 vi.mock('@/composables/useNotifications', () => ({ useNotifications: () => ({
   notify: { success: mocks.success, warning: mocks.warning, error: mocks.error },
@@ -92,6 +92,7 @@ async function openRoom(wrapper: ReturnType<typeof panel>, id: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.listAgents.mockResolvedValue([])
   mocks.getOrganization.mockResolvedValue(organization())
   mocks.readRoom.mockResolvedValue({ items: [], next_cursor: 0 })
   mocks.reports.mockResolvedValue({ items: [], truncated: false })

@@ -4,6 +4,7 @@ import { Check, RotateCcw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api'
 import { useNotifications } from '@/composables/useNotifications'
+import { interfaceLocale } from '@/lib/interfaceLocale'
 import { UiButton } from '@/components/ui'
 
 const props = withDefaults(defineProps<{
@@ -25,6 +26,7 @@ async function submit(kind: 'reproduced' | 'resolved') {
     await api.submitCorrectionFeedback(props.runId, {
       kind,
       client_request_id: crypto.randomUUID(),
+      interface_locale: interfaceLocale(),
     })
     notify.success({ message: t(kind === 'reproduced' ? 'conversation.correction.reopened' : 'conversation.correction.resolved') })
   } catch (error) {

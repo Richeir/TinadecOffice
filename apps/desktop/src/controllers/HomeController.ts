@@ -26,6 +26,7 @@ import { getDispatchPref } from '@/lib/dispatchPref'
 import { attachmentsForSend, pendingAttachments, readyAttachmentCount, settleSentAttachments } from '@/lib/pendingAttachments'
 import { followSession, subscribeToSessionEvents, suspendFollowingSession } from '@/lib/sessionEventBus'
 import { isAbortError } from '@/lib/isAbortError'
+import { interfaceLocale } from '@/lib/interfaceLocale'
 import { useAgentActivity } from '@/composables/useAgentActivity'
 import { useConversationFeed } from '@/composables/useConversationFeed'
 import { projectRunReply } from '@/lib/runReply'
@@ -904,6 +905,7 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
         permission_mode: requestedPermission,
         dispatch_mode: dispatchMode,
         target_run_id: targetRunId,
+        interface_locale: interfaceLocale(),
         ...(dispatchMode !== 'insert' ? {
           ...(requestedSettingsRevision !== undefined ? { expected_settings_revision: requestedSettingsRevision } : {}),
           meeting_model_override: meetingModelOverride,
@@ -1057,6 +1059,7 @@ async function steerQueued(id: string, targetRunId: string, interrupt = false) {
       mode_version_id: null,
       dispatch_mode: 'insert',
       target_run_id: targetRunId,
+      interface_locale: interfaceLocale(),
       ...(interrupt ? { interrupt: true } : {}),
     })
     sent = true
@@ -1083,6 +1086,7 @@ async function promoteQueued(id: string) {
       dispatch_mode: 'parallel',
       target_run_id: null,
       permission_mode: item.permission_mode ?? permission,
+      interface_locale: interfaceLocale(),
       meeting_model_override: item.meeting_model_override ?? null,
       ...(item.clear_meeting_model_override ? { clear_meeting_model_override: true } : {}),
       ...(item.space_options ? { space_options: { ...item.space_options } } : {}),

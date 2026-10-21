@@ -182,7 +182,7 @@ describe('HomeController session families', () => {
     homeController.setSelectedSession('flat-family')
     homeController.updateDraft('next task')
     await homeController.sendMessage({ mode_version_id: 'different-mode', dispatch_mode: 'parallel' })
-    expect(h.createInteraction.mock.calls.at(-1)?.[1]).toMatchObject({ mode_version_id: 'different-mode' })
+    expect(h.createInteraction.mock.calls.at(-1)?.[1]).toMatchObject({ mode_version_id: 'different-mode', interface_locale: 'zh-CN' })
   })
   it('keeps the draft when creating its new conversation fails', async () => {
     homeController.sessions.value = []

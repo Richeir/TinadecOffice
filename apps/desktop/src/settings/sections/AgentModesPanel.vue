@@ -5,11 +5,12 @@ import { History, Plus, RefreshCw, Search, Trash2 } from '@lucide/vue'
 import { UiBadge, UiButton, UiCheckbox, UiInput, UiLabel, UiSelectField, UiSheet, UiTextarea } from '@/components/ui'
 import AgentModeCanvas from '@/components/canvas/AgentModeCanvas.vue'
 import GovernanceRolesPanel from '@/components/agentCenter/GovernanceRolesPanel.vue'
-import { api as baseApi, type AgentDefinitionDto, type AgentModeEdgeDto, type AgentModeNodeDto, type AgentModeRuntimePolicy, type AgentModeRuntimePolicyDefinition, type AgentModeTopologyDto, type ModeVersionDto, type ModelProviderInstanceDto, type ModelRouteDto } from '@/api'
+import { api as baseApi, type AgentDefinitionDto, type AgentModeEdgeDto, type AgentModeNodeDto, type AgentModeRuntimePolicy, type AgentModeRuntimePolicyDefinition, type AgentModeTopologyDto, type ModeVersionDto, type ModelProviderInstanceDto, type ModelRouteDto, type PackI18n } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
 const api = scopedApi(baseApi, () => 'user')
 import { useNotifications } from '@/composables/useNotifications'
 import { modeIcon, sortModes } from '@/lib/modePresentation'
+import { pickLocalized } from '@/lib/packI18n'
 import { consumeRequest, pendingModeId } from '@/lib/pageRequests'
 
 const { t, te, locale } = useI18n()
@@ -54,9 +55,20 @@ const filteredModes = computed(() => {
   const q = modeQuery.value.trim().toLowerCase()
   const sorted = sortModes(modes.value)
   if (!q) return sorted
-  return sorted.filter((m) => `${m.display_name} ${m.description ?? ''}`.toLowerCase().includes(q))
+  return sorted.filter((m) => `${modeName(m)} ${modeDescription(m)}`.toLowerCase().includes(q))
 })
 const selectedMode = computed(() => modes.value.find((m) => m.id === selectedModeId.value) ?? null)
+
+/** Displayed names follow the reader's language; edits still write the baseline fields. */
+function modeName(mode: AgentModeTopologyDto): string {
+  return pickLocalized(mode.i18n, locale.value, 'display_name', mode.display_name) ?? mode.display_name
+}
+function modeDescription(mode: AgentModeTopologyDto): string {
+  return pickLocalized(mode.i18n, locale.value, 'description', mode.description) ?? ''
+}
+function agentName(agent: AgentDefinitionDto): string {
+  return pickLocalized(agent.i18n, locale.value, 'display_name', agent.display_name) ?? agent.display_name ?? agent.name ?? agent.id
+}
 const selectedModeReadOnly = computed(() => {
   const m = selectedMode.value
   return Boolean(selectedModeId.value && (!m || m.managed || m.status === 'published' || m.status === 'archived'))
@@ -194,6 +206,7 @@ async function selectMode(id: string) {
         // Published projections carry null positions; give VueFlow a stable two-lane layout.
         position: (n.position as { x: number; y: number } | null) ?? { x: 60 + (slot % 4) * 230, y: 30 },
         label: (n.label as string) ?? '',
+        i18n: (n.i18n as PackI18n | null | undefined) ?? null,
         model_strategy_override: (n.model_strategy_override as AgentModeNodeDto['model_strategy_override']) ?? null,
       }
     }) as AgentModeNodeDto[]
@@ -563,9 +576,9 @@ defineExpose({ loadModes })
             @click="selectMode(m.id)"
           >
             <component :is="modeIcon(m.slug)" :size="14" class="ac-mode-icon" />
-            <span class="ac-mode-meta" :title="m.description ?? undefined">
-              <strong>{{ m.display_name }}</strong>
-              <small>{{ m.description || t('agentCenter.revisionShort', { revision: m.revision ?? '—' }) }}</small>
+            <span class="ac-mode-meta" :title="modeDescription(m) || undefined">
+              <strong>{{ modeName(m) }}</strong>
+              <small>{{ modeDescription(m) || t('agentCenter.revisionShort', { revision: m.revision ?? '—' }) }}</small>
             </span>
             <UiBadge :variant="readinessVariant(m.status)">{{ m.status ? definitionStatusLabel(m.status) : t('common.draft') }}</UiBadge>
           </button>
@@ -604,7 +617,7 @@ defineExpose({ loadModes })
           <UiLabel>{{ t('settings.boundAgent') }}</UiLabel>
           <UiSelectField
             v-model="nodeOverride.agent_id"
-            :options="agents.map((a) => ({ value: a.id, label: `${a.display_name ?? a.name} (${normalizeLayer(a.layer)})` }))"
+            :options="agents.map((a) => ({ value: a.id, label: `${agentName(a)} (${normalizeLayer(a.layer)})` }))"
           />
         </div>
         <div>
@@ -660,7 +673,7 @@ defineExpose({ loadModes })
 
     <UiSheet :open="showVersionDrawer" side="right" @update:open="showVersionDrawer = $event">
       <div class="ac-sheet-body">
-        <h3>{{ t('settings.modeVersionHistory', { name: selectedMode?.display_name ?? '—' }) }}</h3>
+        <h3>{{ t('settings.modeVersionHistory', { name: selectedMode ? modeName(selectedMode) : '—' }) }}</h3>
         <UiButton size="sm" variant="outline" :disabled="modeVersionsLoading" @click="loadModeVersions">{{ t('settings.refreshHistory') }}</UiButton>
         <div v-if="modeVersionsLoading" class="quiet">{{ t('common.loading') }}</div>
         <div v-else class="ac-version-list">

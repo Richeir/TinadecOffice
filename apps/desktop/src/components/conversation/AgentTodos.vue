@@ -12,7 +12,7 @@ import type { PlanEntry, PlanStep } from '@/lib/conversation/reducer'
  */
 const props = defineProps<{ entry: PlanEntry }>()
 const { t } = useI18n()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 const LIMIT = 6
 
 const expanded = ref(false)
@@ -21,7 +21,7 @@ const previous = computed(() => new Set((props.entry.previous ?? []).map((step) 
 const visible = computed(() => (expanded.value ? props.entry.steps : props.entry.steps.slice(0, LIMIT)))
 const hidden = computed(() => props.entry.steps.length - visible.value.length)
 const isNew = (step: PlanStep) => props.entry.previous !== null && !previous.value.has(step.step)
-const who = computed(() => (props.entry.handle ? displayName(props.entry.handle) : ''))
+const who = computed(() => (props.entry.handle ? nameFor(props.entry.handle) : ''))
 </script>
 
 <template>

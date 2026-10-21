@@ -21,10 +21,10 @@ defineOptions({ name: 'TurnActivity' })
  */
 defineProps<{ nodes: FeedNode[]; runId: string; workspaceRoot?: string | null }>()
 const { t } = useI18n()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 
 function waitNames(entry: WaitEntry): string {
-  return entry.awaited.map((item) => displayName(item.handle ?? item.taskKey)).filter(Boolean).join(t('conversation.listSeparator'))
+  return entry.awaited.map((item) => nameFor(item.handle ?? item.taskKey)).filter(Boolean).join(t('conversation.listSeparator'))
 }
 </script>
 

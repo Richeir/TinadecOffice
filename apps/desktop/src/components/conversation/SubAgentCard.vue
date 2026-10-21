@@ -28,7 +28,7 @@ const props = defineProps<{
   inPanel?: boolean
 }>()
 const { t } = useI18n()
-const { displayName } = useAgentDirectory()
+const { nameFor } = useAgentDirectory()
 const { notify } = useNotifications()
 
 const open = ref(Boolean(props.expanded))
@@ -37,8 +37,8 @@ const working = computed(() => props.node.status === 'running' || props.node.sta
 const showSpinner = useDelayedLoading(working)
 const name = computed(() => {
   const handle = agent.value.handle
-  const display = displayName(agent.value.agentSlug)
-  return handle && display && handle.split('#')[0] !== display ? `${handle} · ${display}` : displayName(handle ?? agent.value.agentSlug) || agent.value.taskKey || agent.value.taskId
+  const display = nameFor(agent.value.agentSlug)
+  return handle && display && handle.split('#')[0] !== display ? `${handle} · ${display}` : nameFor(handle ?? agent.value.agentSlug) || agent.value.taskKey || agent.value.taskId
 })
 const latest = computed(() => (working.value ? describeEntry(props.node.latest, t, props.workspaceRoot) : null))
 const detailId = computed(() => `sub-agent-${agent.value.taskId}`)

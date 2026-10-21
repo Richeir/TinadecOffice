@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref } from 'vue'
+import i18n from '@/i18n'
 
 const api = vi.hoisted(() => ({
   getToolExecutionPreview: vi.fn(),
@@ -151,27 +152,71 @@ describe('useAgentDirectory', () => {
     api.listAgents.mockReset()
   })
 
+  afterEach(() => {
+    i18n.global.locale.value = 'zh-CN'
+  })
+
   it('maps slugs and handles to display names, read once', async () => {
     api.listAgents.mockResolvedValue([{ slug: 'search', display_name: 'Search' }, { slug: 'global_engineering', display_name: 'Engineer' }])
-    const { displayName } = useAgentDirectory()
+    const { nameFor } = useAgentDirectory()
     useAgentDirectory()
     await Promise.resolve()
     await Promise.resolve()
-    expect(displayName('search')).toBe('Search')
-    expect(displayName('global_engineering#2')).toBe('Engineer #2')
-    expect(displayName('unknown')).toBe('unknown')
+    expect(nameFor('search')).toBe('Search')
+    expect(nameFor('global_engineering#2')).toBe('Engineer #2')
+    expect(nameFor('unknown')).toBe('unknown')
     expect(api.listAgents).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to slugs when the directory cannot be read, and retries next time', async () => {
     api.listAgents.mockRejectedValueOnce(new Error('slow')).mockResolvedValueOnce([{ slug: 'search', display_name: 'Search' }])
-    const { displayName } = useAgentDirectory()
+    const { nameFor } = useAgentDirectory()
     await Promise.resolve()
     await Promise.resolve()
-    expect(displayName('search#1')).toBe('search #1')
+    expect(nameFor('search#1')).toBe('search #1')
     useAgentDirectory()
     await Promise.resolve()
     await Promise.resolve()
-    expect(displayName('search#1')).toBe('Search #1')
+    expect(nameFor('search#1')).toBe('Search #1')
+  })
+
+  it('localizes names on read and follows a locale switch without refetching', async () => {
+    api.listAgents.mockResolvedValue([{
+      id: 'agent-1',
+      slug: 'search',
+      display_name: '搜索',
+      description: '基础版',
+      i18n: {
+        'zh-CN': { display_name: '搜索', description: '基础版' },
+        en: { display_name: 'Search', description: 'Baseline edition' },
+        'zh-TW': { display_name: '搜尋' },
+      },
+    }])
+    const { nameFor, descriptionFor } = useAgentDirectory()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    i18n.global.locale.value = 'en'
+    expect(nameFor('search')).toBe('Search')
+    expect(nameFor('agent-1')).toBe('Search')
+    expect(descriptionFor('search')).toBe('Baseline edition')
+
+    i18n.global.locale.value = 'zh-TW'
+    expect(nameFor('search')).toBe('搜尋')
+    // zh-TW misses the description overlay, so Core's chain lands on the zh-CN overlay.
+    expect(descriptionFor('search')).toBe('基础版')
+
+    i18n.global.locale.value = 'ja'
+    // ja has no overlay: the baseline name, not the zh-TW or zh-CN overlay.
+    expect(nameFor('search')).toBe('搜索')
+    expect(api.listAgents).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the caller fallback for an unknown definition id', async () => {
+    api.listAgents.mockResolvedValue([{ id: 'agent-1', slug: 'search', display_name: 'Search' }])
+    const { nameFor } = useAgentDirectory()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(nameFor('missing-agent', 'planner')).toBe('planner')
   })
 })

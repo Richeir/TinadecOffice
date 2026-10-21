@@ -8,6 +8,8 @@
 
 侧栏两个原生 popover（视图选择、工作区选项）与迁移 `<dialog>` 处在浏览器 top layer，祖先面板的 `backdrop-filter` 到不了它们；它们原先只继承 `--surface-*`，所以模糊档只剩 50% 半透明。现在三者各自应用 `--material-filter-raised`（面板模糊的 35%），Chromium 预览实测 `blur(2.8px) saturate(108%)`（面板 8px）。`AppSidebar.test.ts` 的源码守卫钉住这条规则。
 
+「工作区选项」现在有两个分组显示开关：「项目对话」与「自由对话」，都默认勾选、左侧复选框右侧文字。它们只控制侧栏分组行是否渲染：`workspaces` 仍保留全部行供排序与最近列表使用，渲染走 `visibleWorkspaces`；因此扁平「最近对话」（若开启）仍能进入项目或自由会话，Composer/设置里的项目选择、创建、编辑、归档也都不受影响。两者分别持久化为 `projectConversations` / `freeConversation`，旧记录缺键按 `true` 处理；两个都关闭时侧栏只剩分区标题与操作入口。
+
 ## 2026-10-21 侧栏 token 用量图
 
 `AppSidebar` 的用量图从 Core `GET /api/v1/model-invocations` 读取当前存储作用域最近 7 个本地日的记录（`from` + 游标，最多 5×200 条），按日汇总 `total_tokens`（缺省回退 `input_tokens + output_tokens`）。未上报绝不当 0：某日只有调用而无用量时 `tokens = null`，整窗都未上报时显示说明而不是空柱。柱高按窗口峰值归一，颜色只表示相对强度（统一强调色，不把最忙的一天画成错误红）；调用被截断时总量带 `≥` 并在标题说明只统计最近 1000 次。挂载、run 结束（`busy` true→false）与存储作用域切换时重读，切换期间迟到的响应按代次丢弃；折叠轨隐藏整块。纯聚合在 `lib/sidebarUsage.ts`（6 例），组件 5 例覆盖渲染、未上报、刷新与迟到响应。未在真 Electron 里做像素级复看；读取失败时静默隐藏（个人页仍负责可见错误）。

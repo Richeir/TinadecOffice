@@ -225,6 +225,53 @@ describe('AppSidebar lifecycle management', () => {
     wrapper.unmount()
   })
 
+  it('hides project conversation groups without disabling projects or the recent shortcut', async () => {
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: true, projectConversations: true }))
+    const second = { ...project, id: 'p-2', name: 'Second' }
+    const free: SessionDto = { ...session, id: 's-free', project_id: null, title: 'Free chat', updated_at: '2026-09-05T00:00:00Z' }
+    const projectSession: SessionDto = { ...session, id: 's-p2', project_id: 'p-2', title: 'Project chat', updated_at: '2026-09-04T00:00:00Z' }
+    const wrapper = factory({ projects: [project, second], sessions: [session, free, projectSession] })
+
+    const projectOption = () => wrapper.get('[aria-label="sidebar.projectConversations"]')
+    expect(projectOption().attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-workspace-key="p-2"]').exists()).toBe(true)
+
+    await projectOption().trigger('click')
+    expect(projectOption().attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-workspace-key="p-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-workspace-key="p-2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-workspace-key="user::free"]').exists()).toBe(true)
+
+    // Only the grouped list is hidden: the flat recent list still reaches project chats,
+    // and the project feature itself stays registered (no unregister/trash action).
+    expect(wrapper.findAll('.recent-conversation-row .session-title').map(node => node.text())).toContain('Project chat')
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).projectConversations).toBe(false)
+    expect(wrapper.emitted('unregister-workspace')).toBeUndefined()
+    expect(wrapper.emitted('trash-project')).toBeUndefined()
+
+    await projectOption().trigger('click')
+    expect(wrapper.find('[data-workspace-key="p-2"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('hides the free conversation row independently', async () => {
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false, projectConversations: true, freeConversation: true }))
+    const second = { ...project, id: 'p-2', name: 'Second' }
+    const wrapper = factory({ projects: [project, second] })
+
+    const freeOption = () => wrapper.get('[aria-label="chat.freeConversation"]')
+    expect(freeOption().attributes('aria-checked')).toBe('true')
+    await freeOption().trigger('click')
+    expect(freeOption().attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-workspace-key="user::free"]').exists()).toBe(false)
+    expect(wrapper.find('[data-workspace-key="p-1"]').exists()).toBe(true)
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).freeConversation).toBe(false)
+
+    await freeOption().trigger('click')
+    expect(wrapper.find('[data-workspace-key="user::free"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('comes back with the recent list already on after a remount', () => {
     localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: true }))
     const wrapper = factory()

@@ -682,6 +682,7 @@ export default {
     newWorkspace: "Новая рабочая область",
     workspaceOptions: "Параметры рабочих областей",
     recentConversations: "Недавние разговоры",
+    projectConversations: "Разговоры проектов",
     tokenUsage: 'Расход токенов за {days} дней',
     tokenUsageSummary: 'За последние {days} дн.: {tokens} токенов',
     tokenUsageSummaryTruncated: 'За последние {days} дн.: не менее {tokens} токенов',

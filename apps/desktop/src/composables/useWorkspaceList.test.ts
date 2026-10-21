@@ -39,6 +39,29 @@ describe('workspace list persistence', () => {
     expect(list.state.value.collapsedKeys).toEqual(['a::p']); expect(list.state.value.allKeys).toEqual(['b::p'])
     expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!)).toEqual(list.state.value); wrapper.unmount()
   })
+  it('keeps conversation groups visible by default and remembers hiding them', () => {
+    let list!: ReturnType<typeof useWorkspaceList>
+    const component = defineComponent({ setup() { list = useWorkspaceList(); return () => null } })
+    let wrapper = mount(component)
+    expect(list.state.value.projectConversations).toBe(true)
+    expect(list.state.value.freeConversation).toBe(true)
+    list.setProjectConversations(false)
+    list.setFreeConversation(false)
+    const saved = JSON.parse(localStorage.getItem(workspaceListStorageKey)!)
+    expect(saved.projectConversations).toBe(false)
+    expect(saved.freeConversation).toBe(false)
+    wrapper.unmount(); wrapper = mount(component)
+    expect(list.state.value.projectConversations).toBe(false)
+    expect(list.state.value.freeConversation).toBe(false)
+
+    // Older records predate both options; they must keep rendering every group.
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false }))
+    wrapper.unmount(); wrapper = mount(component)
+    expect(list.state.value.projectConversations).toBe(true)
+    expect(list.state.value.freeConversation).toBe(true)
+    wrapper.unmount()
+  })
+
   it('moves a workspace after the drop target when requested and keeps free conversation ordered', () => {
     let list!: ReturnType<typeof useWorkspaceList>
     const wrapper = mount(defineComponent({ setup() { list = useWorkspaceList(); return () => null } }))

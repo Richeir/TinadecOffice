@@ -6,13 +6,13 @@ export const freeWorkspaceKey = 'user::free'
 export const workspaceListStorageKey = 'tinadec.sidebar.workspaces.v1'
 const revealEvent = 'tinadec:workspace-reveal'
 export function revealWorkspace(key: string) { window.dispatchEvent(new CustomEvent(revealEvent, { detail: key })) }
-interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[]; recent: boolean }
-const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false })
+interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[]; recent: boolean; projectConversations: boolean; freeConversation: boolean }
+const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false, projectConversations: true, freeConversation: true })
 function read(): ListState {
   try {
     const value = JSON.parse(localStorage.getItem(workspaceListStorageKey) ?? 'null')
     if (!value || typeof value !== 'object') return defaults()
-    return { collapsed: value.collapsed === true, recent: value.recent === true, ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
+    return { collapsed: value.collapsed === true, recent: value.recent === true, projectConversations: value.projectConversations !== false, freeConversation: value.freeConversation !== false, ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
   } catch { return defaults() }
 }
 const byRecency = (a: SessionDto, b: SessionDto) =>
@@ -72,7 +72,9 @@ export function useWorkspaceList() {
     if (index < 0 || target < 0 || target >= order.length) return
     ;[order[index], order[target]] = [order[target]!, order[index]!]; state.value.order = order
   }
-  /** Section-level options (currently only 最近对话) ride the same persisted record. */
+  /** Section-level options ride the same persisted record. */
   function setRecent(value: boolean) { state.value.recent = value }
-  return { state, reconcile, toggle, move, step, setRecent }
+  function setProjectConversations(value: boolean) { state.value.projectConversations = value }
+  function setFreeConversation(value: boolean) { state.value.freeConversation = value }
+  return { state, reconcile, toggle, move, step, setRecent, setProjectConversations, setFreeConversation }
 }

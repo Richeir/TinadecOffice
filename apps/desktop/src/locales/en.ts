@@ -466,6 +466,7 @@ export default {
     newWorkspace: 'New workspace',
     workspaceOptions: 'Workspace options',
     recentConversations: 'Recent conversations',
+    projectConversations: 'Project conversations',
     tokenUsage: 'Token usage · last {days} days',
     tokenUsageSummary: 'Last {days} days: {tokens} tokens',
     tokenUsageSummaryTruncated: 'Last {days} days: at least {tokens} tokens',

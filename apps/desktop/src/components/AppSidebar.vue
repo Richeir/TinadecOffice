@@ -278,6 +278,12 @@ const workspaces = computed(() => {
   for (const workspace of candidates) if (remaining.has(workspace.key)) ordered.push(workspace)
   return ordered
 })
+// The two toggles hide only the grouped rows. The flat recents list still walks every
+// workspace, so conversations remain reachable when their groups are hidden.
+const visibleWorkspaces = computed(() => workspaces.value.filter(workspace => workspace.project
+  ? list.state.value.projectConversations
+  : list.state.value.freeConversation,
+))
 function allSessions(key: string): SessionDto[] { return key === freeWorkspaceKey ? freeSessions.value : getProjectSessions(key) }
 function shownSessions(key: string) {
   const active = props.sessions.find(isActiveSession)
@@ -285,11 +291,11 @@ function shownSessions(key: string) {
 }
 function isActiveSession(session: SessionDto) { return session.id === props.selectedSessionId && (!session.storage_id || session.storage_id === selectedStorage.value) }
 
-// ---- Section options (currently: 最近对话) ----
+// ---- Section options (最近对话, 项目对话) ----
 // The recents list is what Codex/WorkBuddy lead with: newest conversations across every
 // workspace, so a chat is one click away without knowing which project it lives in. It is
-// built from the same group rows the list renders, which keeps the workspace/scope filters
-// (and the free conversation) as the single definition of "a conversation I can see".
+// built from every workspace row rather than only the groups currently rendered, because
+// hiding project conversations removes the grouped list, not this flat shortcut.
 const RECENT_CONVERSATION_LIMIT = 8
 const recentConversations = computed(() => {
   const source = new Map<string, string>()
@@ -586,7 +592,7 @@ watch([nickname, () => props.collapsed], async () => {
           </div>
           <div v-if="!recentConversations.length" class="session-empty">{{ t('sidebar.noSessions') }}</div>
         </div>
-        <template v-if="!list.state.value.collapsed"><div v-for="workspace in workspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
+        <template v-if="!list.state.value.collapsed"><div v-for="workspace in visibleWorkspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
           <div class="project-row" :class="{
               active: workspace.project ? workspace.project.id === selectedProjectId && (!workspace.project.storage_id || workspace.project.storage_id === selectedStorage) : !selectedProjectId,
               'drag-source': draggedWorkspace === workspace.key,
@@ -735,6 +741,22 @@ watch([nickname, () => props.collapsed], async () => {
           @update:model-value="list.setRecent($event)"
         />
         <span class="sidebar-option-label">{{ t('sidebar.recentConversations') }}</span>
+      </label>
+      <label class="sidebar-option">
+        <UiCheckbox
+          :model-value="list.state.value.projectConversations"
+          :aria-label="t('sidebar.projectConversations')"
+          @update:model-value="list.setProjectConversations($event)"
+        />
+        <span class="sidebar-option-label">{{ t('sidebar.projectConversations') }}</span>
+      </label>
+      <label class="sidebar-option">
+        <UiCheckbox
+          :model-value="list.state.value.freeConversation"
+          :aria-label="t('chat.freeConversation')"
+          @update:model-value="list.setFreeConversation($event)"
+        />
+        <span class="sidebar-option-label">{{ t('chat.freeConversation') }}</span>
       </label>
     </div>
     <dialog ref="migrationDialog" class="sidebar-migration-dialog" aria-labelledby="migration-title" @close="migrationSession = null">

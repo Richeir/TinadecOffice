@@ -21,8 +21,8 @@ public static class ExplorationToolPolicy
             [CoreVirtualToolPolicy.ExplorationLinkToolId] = ModeRuntimePolicyRegistry.ExplorationGraphFeature,
             [CoreVirtualToolPolicy.ExplorationCoverageToolId] = ModeRuntimePolicyRegistry.AssetGraphFeature,
             [CoreVirtualToolPolicy.ExplorationDigestToolId] = ModeRuntimePolicyRegistry.MergedDigestFeature,
-            ["plan_ledger_read"] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
-            ["plan_ledger_update"] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
+            [CoreVirtualToolPolicy.PlanLedgerReadToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
+            [CoreVirtualToolPolicy.PlanLedgerUpdateToolId] = ModeRuntimePolicyRegistry.PlanLedgerFeature,
             ["trace_search"] = ModeRuntimePolicyRegistry.CrossWorkerTraceFeature,
             ["run_dossier"] = ModeRuntimePolicyRegistry.RunDossierFeature,
         };

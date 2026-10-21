@@ -185,6 +185,22 @@ public static class CoreVirtualToolPolicy
     public static bool IsExploration(string? toolId) =>
         toolId is not null && ExplorationToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The run's shared plan ledger (B2): read every intent with its owner and state, then claim,
+    /// complete or block the one this worker owns. Core state only; the <c>plan_ledger</c> feature
+    /// has to be declared by the mode, and the ledger itself enforces claim ownership.
+    /// </summary>
+    public const string PlanLedgerReadToolId = "plan_ledger_read";
+    public const string PlanLedgerUpdateToolId = "plan_ledger_update";
+
+    public static readonly IReadOnlyList<string> PlanLedgerToolIds = [PlanLedgerReadToolId, PlanLedgerUpdateToolId];
+
+    public static bool IsPlanLedger(string? toolId) =>
+        toolId is not null && PlanLedgerToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase);
+
+    public static bool IsPlanLedgerRead(string? toolId) =>
+        string.Equals(toolId, PlanLedgerReadToolId, StringComparison.OrdinalIgnoreCase);
+
     public static bool IsGraphView(string? toolId) =>
         string.Equals(toolId, GraphViewToolId, StringComparison.OrdinalIgnoreCase);
 
@@ -198,7 +214,7 @@ public static class CoreVirtualToolPolicy
         IsCreateWorkspace(toolId) || IsTaskDispatch(toolId) || IsTaskWait(toolId) || IsPlanUpdate(toolId) || IsSpecPropose(toolId)
         || IsCorrectionTrace(toolId) || IsReadAttachment(toolId)
         || IsTinaChat(toolId) || IsOrganization(toolId) || IsGraphView(toolId) || IsRecallEvidence(toolId) || IsEnvironment(toolId)
-        || IsExploration(toolId);
+        || IsExploration(toolId) || IsPlanLedger(toolId);
 
     /// <summary>
     /// True when a call-time gate may demand that the tool appear in the TinadecTools child-process

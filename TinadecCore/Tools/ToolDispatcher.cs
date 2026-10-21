@@ -65,6 +65,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
     private readonly IEvidenceArchive? _evidence;
     /// <summary>The session's exploration graph behind <c>exploration_*</c>. Optional: a trimmed host simply does not offer them.</summary>
     private readonly IExplorationGraph? _exploration;
+    /// <summary>The run's shared plan behind <c>plan_ledger_*</c>. Optional like the graph.</summary>
+    private readonly IPlanLedger? _planLedger;
     /// <summary>The environment steward's registry behind <c>environment_*</c>. Optional like the archive.</summary>
     private readonly IEnvironmentRegistry? _environments;
     /// <summary>Standing approvals a person gave (todo E7): command prefixes honored at prepare, shell's per-session delegation opt-in re-checked at the gates.</summary>
@@ -97,7 +99,8 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         ISessionOrganization? organization = null,
         IToolConfigurationResolver? toolSettings = null,
         IScopeStorageLocations? storageLocations = null,
-        IExplorationGraph? exploration = null)
+        IExplorationGraph? exploration = null,
+        IPlanLedger? planLedger = null)
     {
         _provider = provider;
         _scopeResolver = scopeResolver;
@@ -122,6 +125,7 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
         _toolSettings = toolSettings;
         _storageLocations = storageLocations;
         _exploration = exploration;
+        _planLedger = planLedger;
     }
 
     public Task<ToolDispatchResultDto> ExecuteAsync(ToolDispatchRequestDto request, CancellationToken cancellationToken = default) =>
@@ -883,6 +887,11 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             return await ExecuteExplorationToolAsync(scope, wire, cancellationToken).ConfigureAwait(false);
         }
 
+        if (CoreVirtualToolPolicy.IsPlanLedger(wire.ToolId))
+        {
+            return await ExecutePlanLedgerToolAsync(scope, wire, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!scope.SerializeWorkspaceWrites || !execution.MutatesWorkspace)
         {
             return streaming is not null
@@ -1487,6 +1496,86 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
             var digest = await graph.DigestAsync(exploration,
                 new ExplorationDigestDraft(digestTitle, digestText, Text("summary"), Text("source_key")), cancellationToken).ConfigureAwait(false);
             return Ok(new { node_id = digest.NodeId.ToString("N"), evidence_id = digest.EvidenceId.ToString("N") });
+        }
+        catch (ArgumentException ex)
+        {
+            return Error(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Serves the run's shared plan (B2). The ledger scope is the call's own: a worker can only
+    /// claim or update intents of the run it is executing, and the ledger refuses a transition by
+    /// anyone but the instance that claimed the intent.
+    /// </summary>
+    private async Task<ToolWireResponseDto> ExecutePlanLedgerToolAsync(ToolInvocationScope scope, ToolWireRequestDto wire, CancellationToken cancellationToken)
+    {
+        if (_planLedger is not { } ledger)
+            return new ToolWireResponseDto { CallId = wire.ToolCallId, IsSuccess = false, Error = "The plan ledger is not available in this host." };
+        var parameters = wire.Params ?? default;
+        ToolWireResponseDto Ok(object result) => new() { CallId = wire.ToolCallId, IsSuccess = true, Result = JsonSerializer.SerializeToElement(result) };
+        ToolWireResponseDto Error(string error) => new() { CallId = wire.ToolCallId, IsSuccess = false, Error = error };
+        string? Text(string name) =>
+            parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                && value.GetString()?.Trim() is { Length: > 0 } text ? text : null;
+        static object DescribeIntent(PlanIntent intent) => new
+        {
+            id = intent.Id.ToString("N"),
+            ordinal = intent.Ordinal,
+            title = intent.Title,
+            content = intent.Content,
+            status = intent.Status,
+            task_id = intent.TaskId?.ToString("N"),
+            claimed_by_agent_instance_id = intent.ClaimedByAgentInstanceId?.ToString("N"),
+            evidence_refs = intent.EvidenceRefs,
+            note = intent.Note,
+            updated_at = intent.UpdatedAt
+        };
+        var ledgerScope = new PlanLedgerScope(
+            scope.TenantId, scope.WorkspaceId, scope.SessionId, scope.RunId, scope.TaskId, scope.AgentInstanceId);
+
+        try
+        {
+            if (CoreVirtualToolPolicy.IsPlanLedgerRead(wire.ToolId))
+            {
+                var status = Text("status");
+                if (status is not null && !PlanIntentStatuses.IsKnown(status))
+                    return Error($"status must be one of {string.Join(", ", PlanIntentStatuses.All)}.");
+                var intents = await ledger.ListAsync(ledgerScope, status, cancellationToken).ConfigureAwait(false);
+                return Ok(new { intents = intents.Select(DescribeIntent).ToArray(), count = intents.Count });
+            }
+
+            var action = Text("action")?.ToLowerInvariant();
+            if (action == "add")
+            {
+                if (Text("title") is not { } title) return Error("adding an intent needs a title.");
+                var added = await ledger.AddAsync(ledgerScope,
+                    [new PlanIntentDraft(title, Text("content"))], cancellationToken).ConfigureAwait(false);
+                return Ok(new { updated = true, intent = DescribeIntent(added[0]) });
+            }
+            if (action is not ("claim" or "complete" or "block"))
+                return Error("action must be add, claim, complete or block.");
+            if (Text("intent_id") is not { } intentText || !Guid.TryParse(intentText, out var intentId))
+                return Error("claim, complete and block need intent_id, an id plan_ledger_read returned.");
+
+            var note = Text("note");
+            var intent = action switch
+            {
+                "claim" => await ledger.ClaimAsync(ledgerScope, intentId, cancellationToken).ConfigureAwait(false),
+                "complete" => await ledger.CompleteAsync(ledgerScope, intentId, note, cancellationToken).ConfigureAwait(false),
+                _ => note is null
+                    ? throw new ArgumentException("block needs note: the reason the intent cannot proceed.")
+                    : await ledger.BlockAsync(ledgerScope, intentId, note, cancellationToken).ConfigureAwait(false),
+            };
+            return Ok(new { updated = true, intent = DescribeIntent(intent) });
+        }
+        catch (PlanLedgerDeniedException ex)
+        {
+            return Error(ex.Message);
         }
         catch (ArgumentException ex)
         {

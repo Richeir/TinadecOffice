@@ -101,6 +101,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     private readonly ILoopGuard? _loopGuard;
     private readonly IOrchestrationDirectiveValidator? _directiveValidator;
     private readonly ILongTermMemoryService? _longTermMemory;
+    /// <summary>The run's shared plan (B2), when the host registered the exploration module.</summary>
+    private readonly IPlanLedger? _planLedger;
     /// <summary>
     /// The resource ledger, when the host registered one. Optional so a trimmed composition still runs;
     /// the ledger only ever refuses a call, never grants one.
@@ -199,6 +201,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         _loopGuard = loopGuard ?? services.GetService(typeof(ILoopGuard)) as ILoopGuard;
         _directiveValidator = directiveValidator ?? services.GetService(typeof(IOrchestrationDirectiveValidator)) as IOrchestrationDirectiveValidator;
         _longTermMemory = services.GetService(typeof(ILongTermMemoryService)) as ILongTermMemoryService;
+        _planLedger = services.GetService(typeof(IPlanLedger)) as IPlanLedger;
         _resourceLeases = services.GetService(typeof(IResourceLeaseService)) as IResourceLeaseService;
         _projection = services.GetService(typeof(RunStreamProjection)) as RunStreamProjection;
         _logger = logger;
@@ -5619,7 +5622,53 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             ToolExecutionContext = toolContext,
             AllowedToolIds = agentDefinition.AllowedTools,
         }, cancellationToken).ConfigureAwait(false);
-        return await WithOpenReportsAsync(run, config, agentId, pack, cancellationToken).ConfigureAwait(false);
+        var withReports = await WithOpenReportsAsync(run, config, agentId, pack, cancellationToken).ConfigureAwait(false);
+        return await WithPlanLedgerAsync(run, config, agentDefinition, withReports, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Puts the run's shared plan in front of an execution-layer worker (B2): what is pending, what
+    /// another worker already claimed, and what the run has finished. The worker still has to claim
+    /// an intent through the tool; this evidence is how it knows one exists and who owns it.
+    /// </summary>
+    private async Task<ContextPack> WithPlanLedgerAsync(
+        RunState run,
+        FrozenRunConfigurationV1 config,
+        RuntimeAgentDefinition agentDefinition,
+        ContextPack pack,
+        CancellationToken cancellationToken)
+    {
+        if (_planLedger is not { } ledger
+            || !ModeRuntimePolicyRegistry.Has(config.RuntimePolicy, ModeRuntimePolicyRegistry.PlanLedgerFeature)
+            || !string.Equals(agentDefinition.Layer, "execution", StringComparison.OrdinalIgnoreCase))
+            return pack;
+        if (!Guid.TryParse(run.TenantId, out var tenantId) || !Guid.TryParse(run.WorkspaceId, out var workspaceId)
+            || !Guid.TryParse(run.SessionId, out var sessionId) || !Guid.TryParse(run.RunId, out var runId))
+            return pack;
+        IReadOnlyList<PlanIntent> intents;
+        try
+        {
+            intents = await ledger.ListAsync(
+                new PlanLedgerScope(tenantId, workspaceId, sessionId, runId), cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            _logger.TryLogDebug(ex, "Could not read the plan ledger of run {RunId}.", run.RunId);
+            return pack;
+        }
+        var text = PlanLedgerPrompt.Format(intents);
+        if (text is null) return pack;
+        var evidence = new ContextEvidence { Source = "plan-ledger", Content = text, EstimatedTokens = Math.Max(1, text.Length / 2) };
+        return new ContextPack
+        {
+            SessionId = pack.SessionId,
+            RunId = pack.RunId,
+            TokenBudget = pack.TokenBudget,
+            EstimatedTokens = pack.EstimatedTokens + evidence.EstimatedTokens,
+            Evidence = [.. pack.Evidence, evidence],
+            Dropped = pack.Dropped,
+            Metadata = pack.Metadata
+        };
     }
 
     /// <summary>

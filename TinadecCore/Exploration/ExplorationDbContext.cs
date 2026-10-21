@@ -28,11 +28,14 @@ public sealed class ExplorationDbContext(DbContextOptions<ExplorationDbContext> 
             e.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.SessionId, x.CreatedAtUnixMs });
             e.HasIndex(x => new { x.SessionId, x.Kind });
             e.HasIndex(x => new { x.SessionId, x.AssetKey });
+            // The plan ledger reads one run's intents by status; other node kinds leave both null.
+            e.HasIndex(x => new { x.RunId, x.Status });
             e.Property(x => x.Kind).HasMaxLength(32);
             e.Property(x => x.Title).HasMaxLength(512);
             e.Property(x => x.AssetKey).HasMaxLength(512);
             e.Property(x => x.SourceKey).HasMaxLength(256);
             e.Property(x => x.Author).HasMaxLength(128);
+            e.Property(x => x.Status).HasMaxLength(32);
         });
         model.Entity<ExplorationEdgeRecord>(e =>
         {
@@ -77,9 +80,17 @@ public sealed class ExplorationNodeRecord
     public string EvidenceRefsJson { get; set; } = "[]";
     public string SourceKey { get; set; } = string.Empty;
     public string? Author { get; set; }
+    /// <summary>Plan-ledger state; null for every non-intent node, which has no workflow state.</summary>
+    public string? Status { get; set; }
+    /// <summary>The worker instance that claimed the intent; only it may complete or block it.</summary>
+    public Guid? ClaimedByAgentInstanceId { get; set; }
+    /// <summary>Why the intent was completed or blocked, in the writer's words.</summary>
+    public string? Note { get; set; }
     /// <summary>Ordering column: SQLite cannot order by DateTimeOffset.</summary>
     public long CreatedAtUnixMs { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public long? UpdatedAtUnixMs { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
 }
 
 public sealed class ExplorationEdgeRecord

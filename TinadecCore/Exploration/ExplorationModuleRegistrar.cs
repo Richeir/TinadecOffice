@@ -21,12 +21,14 @@ public sealed class ExplorationModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<IStorageMigrationParticipant, DbContextMigrationParticipant<ExplorationDbContext>>();
         builder.Services.AddSingleton<ExplorationGraphService>();
         builder.Services.AddSingleton<IExplorationGraph>(sp => sp.GetRequiredService<ExplorationGraphService>());
+        builder.Services.AddSingleton<PlanLedgerService>();
+        builder.Services.AddSingleton<IPlanLedger>(sp => sp.GetRequiredService<PlanLedgerService>());
         builder.RegisterModule(new ModuleDescriptor
         {
             ModuleId = ModuleId,
             Version = "0.1.0",
             Dependencies = ["abstractions", "persistence", "agent_graph"],
-            Capabilities = ["exploration_graph", "asset_coverage", "exploration_digest"],
+            Capabilities = ["exploration_graph", "asset_coverage", "exploration_digest", "plan_ledger"],
             Language = "C#",
             MafPrimitives = [],
             RegistrationStatus = ModuleRegistrationStatus.Registered

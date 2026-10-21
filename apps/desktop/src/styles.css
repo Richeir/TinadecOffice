@@ -1999,12 +1999,21 @@ button.agent-topology-node:hover,
 }
 
 /* Workspace navigation shares a single scrollport and keeps auxiliary controls quiet. */
+/* The heading and the scrollport are one hover region: the section action belongs to the
+   workspace block, not to the whole sidebar. The block owns the growth so the footer
+   stays pinned to the bottom when the list is folded. */
+.workspace-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .workspace-section-heading { display: flex; align-items: center; gap: 4px; margin: 16px 10px 4px; min-height: 24px; flex-shrink: 0; }
 .workspace-section-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 5px; flex: 1; padding: 4px 2px; color: var(--text-muted); background: transparent; border: 0; font-size: 12px; text-align: left; cursor: pointer; }
 .workspace-section-chevron { opacity: 0; transform: rotate(0); transition: opacity 120ms ease, transform 120ms ease; }
 .workspace-section-chevron.expanded { transform: rotate(90deg); }
-.workspace-section-add { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; background: transparent; color: var(--text-muted); border: 0; border-radius: var(--radius-sm); opacity: 0; cursor: pointer; }
-.workspace-section-heading:hover .workspace-section-chevron, .workspace-section-heading:focus-within .workspace-section-chevron, .workspace-section-heading:hover .workspace-section-add, .workspace-section-heading:focus-within .workspace-section-add { opacity: 1; }
+.workspace-section-add { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; background: transparent; color: var(--text-muted); border: 0; border-radius: var(--radius-sm); cursor: pointer; }
+/* Scoped to the section on purpose. `.sidebar-extra` further down re-asserts
+   `opacity: 1` at equal specificity, so a bare `.workspace-section-add { opacity: 0 }`
+   loses the cascade and the action then never hides. */
+.workspace-section .workspace-section-add { opacity: 0; pointer-events: none; }
+.workspace-section:hover .workspace-section-add, .workspace-section-heading:focus-within .workspace-section-add { opacity: 1; pointer-events: auto; }
+.workspace-section-heading:hover .workspace-section-chevron, .workspace-section-heading:focus-within .workspace-section-chevron { opacity: 1; }
 .workspace-section-add:hover { background: var(--surface-hover); color: var(--text-primary); }
 .workspace-section-heading button:focus-visible, .workspace-show-more:focus-visible, .workspace-load-error button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .workspace-show-more { align-self: flex-start; margin: 4px 0 8px; border: 0; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }

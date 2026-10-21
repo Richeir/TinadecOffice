@@ -146,6 +146,19 @@ describe('AppSidebar lifecycle management', () => {
     wrapper.unmount()
   })
 
+  it('keeps the section action inside the same hover region as the workspace list', () => {
+    // The reveal is pure CSS (`.workspace-section:hover`), which happy-dom cannot evaluate.
+    // What a DOM test can pin is the region itself: the "new workspace" action and the
+    // scrollport must share one ancestor, otherwise hovering a workspace stops surfacing
+    // the button and it falls back to being permanently visible.
+    const wrapper = factory()
+    const section = wrapper.get('.workspace-section')
+    expect(section.find('.workspace-section-add').exists()).toBe(true)
+    expect(section.find('#sidebar-workspaces').exists()).toBe(true)
+    expect(section.element.contains(wrapper.get('[data-workspace-key="p-1"]').element)).toBe(true)
+    wrapper.unmount()
+  })
+
   it('keeps five recent conversations and the selected older one, then shows all', async () => {
     localStorage.clear()
     const sessions = Array.from({ length: 9 }, (_, index) => ({ ...session, id: `s-${index}`, updated_at: new Date(index * 1000).toISOString() }))

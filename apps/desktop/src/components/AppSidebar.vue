@@ -448,46 +448,50 @@ watch([nickname, () => props.collapsed], async () => {
       </UiButton>
     </nav>
 
-    <div class="workspace-section-heading">
-      <button class="workspace-section-toggle" :aria-expanded="!list.state.value.collapsed" aria-controls="sidebar-workspaces" @click="list.state.value.collapsed = !list.state.value.collapsed">
-        <span class="sidebar-label">{{ t('sidebar.workspaces') }}</span>
-        <ChevronRight :size="13" class="workspace-section-chevron" :class="{ expanded: !list.state.value.collapsed }" />
-      </button>
-      <button class="workspace-section-add sidebar-extra" :aria-label="t('sidebar.newWorkspace')" :title="t('sidebar.newWorkspace')" @click.stop="emit('open-project')"><Plus :size="14" /></button>
-    </div>
-    <div id="sidebar-workspaces" class="sidebar-list" :class="{ 'sidebar-list--group-collapsed': list.state.value.collapsed }">
-      <template v-if="!list.state.value.collapsed"><div v-for="workspace in workspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
-        <div class="project-row" :class="{
-            active: workspace.project ? workspace.project.id === selectedProjectId && (!workspace.project.storage_id || workspace.project.storage_id === selectedStorage) : !selectedProjectId,
-            'drag-source': draggedWorkspace === workspace.key,
-            'drag-over-before': dragOverKey === workspace.key && !dragOverAfter,
-            'drag-over-after': dragOverKey === workspace.key && dragOverAfter,
-          }"
-          draggable="true" @dragstart.stop="startDrag($event, workspace.key)" @dragend="draggedWorkspace = null; dragOverKey = null"
-          @dragover.prevent="dragOverWorkspace($event, workspace.key)" @drop.stop="dropWorkspace($event, workspace.key)"
-          @contextmenu.prevent="openMenuAtCursor($event, workspace.project ? 'project' : 'free', workspace.key, workspace.name)" @click="handleProjectClick(workspace.key)">
-          <button class="project-row-main" :title="workspace.project?.path ?? workspace.name" :aria-expanded="isExpanded(workspace.key)" :aria-controls="`workspace-sessions-${workspace.key}`" :aria-keyshortcuts="'Alt+ArrowUp Alt+ArrowDown'" @keydown="reorderWithKeyboard($event, workspace.key)" @click.stop="handleProjectClick(workspace.key)">
-            <component :is="workspace.project ? workspaceIcons[workspace.project.icon ?? 'folder'] ?? FolderOpen : Sparkles" :size="15" class="sidebar-list-item-icon sidebar-icon" :class="`workspace-color-${workspace.project?.color ?? 'default'}`" />
-            <span class="sidebar-list-item-text sidebar-label">{{ workspace.name }}</span>
-          </button>
-          <button v-if="workspace.project" class="project-row-action sidebar-extra" :aria-label="`${workspace.name} · ${t('sidebar.moreActions')}`" :title="t('sidebar.moreActions')" @mousedown.stop @click.stop="openMenuAtButton($event, 'project', workspace.key, workspace.name)"><MoreHorizontal :size="14" /></button>
-          <button class="project-row-action sidebar-extra" :disabled="busy || workspace.project?.availability === 'error'" :aria-label="`${workspace.name} · ${t('sidebar.newChat')}`" :title="t('sidebar.newChat')" @mousedown.stop @click.stop="emit('create-session', workspace.project ? workspace.key : null)"><Plus :size="14" /></button>
-        </div>
-        <div v-if="isExpanded(workspace.key)" :id="`workspace-sessions-${workspace.key}`" class="project-sessions sidebar-extra">
-          <div v-if="workspaceLoadStates?.[workspace.key]?.status === 'loading'" class="session-empty" role="status">{{ t('common.loading') }}</div>
-          <div v-else-if="workspaceLoadStates?.[workspace.key]?.status === 'error' || workspace.project?.availability === 'error'" class="workspace-load-error" role="status">
-            <span :title="workspaceLoadStates?.[workspace.key]?.message ?? errorCodeMessage(workspace.project?.availability_code, undefined, { t, te }) ?? workspace.project?.availability_error">{{ t('home.loadFailed') }}</span><button @click="emit('retry-workspaces', workspace.key)">{{ t('common.retry') }}</button>
-          </div>
-          <div v-for="session in shownSessions(workspace.key)" :key="selectionKey(session)" class="session-row" :class="{ active: isActiveSession(session) }" @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(session), session.title)">
-            <button class="session-item" :aria-current="isActiveSession(session) ? 'page' : undefined" :title="session.title" @click="handleSessionClick(selectionKey(session))" @dblclick.stop="renaming = { kind: 'session', id: selectionKey(session) }">
-              <InlineRenameInput v-if="renaming?.kind === 'session' && renaming.id === selectionKey(session)" :model-value="session.title" class="session-title" @submit="submitRename" @cancel="cancelRename" /><span v-else class="session-title">{{ session.title }}</span>
+    <!-- The heading and the scrollport share one hover region: the "new workspace"
+         action belongs to this block, not to the whole sidebar. -->
+    <div class="workspace-section">
+      <div class="workspace-section-heading">
+        <button class="workspace-section-toggle" :aria-expanded="!list.state.value.collapsed" aria-controls="sidebar-workspaces" @click="list.state.value.collapsed = !list.state.value.collapsed">
+          <span class="sidebar-label">{{ t('sidebar.workspaces') }}</span>
+          <ChevronRight :size="13" class="workspace-section-chevron" :class="{ expanded: !list.state.value.collapsed }" />
+        </button>
+        <button class="workspace-section-add sidebar-extra" :aria-label="t('sidebar.newWorkspace')" :title="t('sidebar.newWorkspace')" @click.stop="emit('open-project')"><Plus :size="14" /></button>
+      </div>
+      <div id="sidebar-workspaces" class="sidebar-list" :class="{ 'sidebar-list--group-collapsed': list.state.value.collapsed }">
+        <template v-if="!list.state.value.collapsed"><div v-for="workspace in workspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
+          <div class="project-row" :class="{
+              active: workspace.project ? workspace.project.id === selectedProjectId && (!workspace.project.storage_id || workspace.project.storage_id === selectedStorage) : !selectedProjectId,
+              'drag-source': draggedWorkspace === workspace.key,
+              'drag-over-before': dragOverKey === workspace.key && !dragOverAfter,
+              'drag-over-after': dragOverKey === workspace.key && dragOverAfter,
+            }"
+            draggable="true" @dragstart.stop="startDrag($event, workspace.key)" @dragend="draggedWorkspace = null; dragOverKey = null"
+            @dragover.prevent="dragOverWorkspace($event, workspace.key)" @drop.stop="dropWorkspace($event, workspace.key)"
+            @contextmenu.prevent="openMenuAtCursor($event, workspace.project ? 'project' : 'free', workspace.key, workspace.name)" @click="handleProjectClick(workspace.key)">
+            <button class="project-row-main" :title="workspace.project?.path ?? workspace.name" :aria-expanded="isExpanded(workspace.key)" :aria-controls="`workspace-sessions-${workspace.key}`" :aria-keyshortcuts="'Alt+ArrowUp Alt+ArrowDown'" @keydown="reorderWithKeyboard($event, workspace.key)" @click.stop="handleProjectClick(workspace.key)">
+              <component :is="workspace.project ? workspaceIcons[workspace.project.icon ?? 'folder'] ?? FolderOpen : Sparkles" :size="15" class="sidebar-list-item-icon sidebar-icon" :class="`workspace-color-${workspace.project?.color ?? 'default'}`" />
+              <span class="sidebar-list-item-text sidebar-label">{{ workspace.name }}</span>
             </button>
-            <button class="session-more" :title="t('sidebar.moreActions')" @click.stop="openMenuAtButton($event, 'session', selectionKey(session), session.title)"><MoreHorizontal :size="13" /></button>
+            <button v-if="workspace.project" class="project-row-action sidebar-extra" :aria-label="`${workspace.name} · ${t('sidebar.moreActions')}`" :title="t('sidebar.moreActions')" @mousedown.stop @click.stop="openMenuAtButton($event, 'project', workspace.key, workspace.name)"><MoreHorizontal :size="14" /></button>
+            <button class="project-row-action sidebar-extra" :disabled="busy || workspace.project?.availability === 'error'" :aria-label="`${workspace.name} · ${t('sidebar.newChat')}`" :title="t('sidebar.newChat')" @mousedown.stop @click.stop="emit('create-session', workspace.project ? workspace.key : null)"><Plus :size="14" /></button>
           </div>
-          <div v-if="!allSessions(workspace.key).length && (!workspaceLoadStates?.[workspace.key] || workspaceLoadStates[workspace.key]?.status === 'ready') && workspace.project?.availability !== 'error'" class="session-empty">{{ t('sidebar.noSessions') }}</div>
-          <button v-if="allSessions(workspace.key).length > shownSessions(workspace.key).length || list.state.value.allKeys.includes(workspace.key)" class="workspace-show-more" @click="list.toggle(workspace.key, 'allKeys')">{{ list.state.value.allKeys.includes(workspace.key) ? t('sidebar.showFewer') : t('sidebar.showAll') }}</button>
-        </div>
-      </div></template>
+          <div v-if="isExpanded(workspace.key)" :id="`workspace-sessions-${workspace.key}`" class="project-sessions sidebar-extra">
+            <div v-if="workspaceLoadStates?.[workspace.key]?.status === 'loading'" class="session-empty" role="status">{{ t('common.loading') }}</div>
+            <div v-else-if="workspaceLoadStates?.[workspace.key]?.status === 'error' || workspace.project?.availability === 'error'" class="workspace-load-error" role="status">
+              <span :title="workspaceLoadStates?.[workspace.key]?.message ?? errorCodeMessage(workspace.project?.availability_code, undefined, { t, te }) ?? workspace.project?.availability_error">{{ t('home.loadFailed') }}</span><button @click="emit('retry-workspaces', workspace.key)">{{ t('common.retry') }}</button>
+            </div>
+            <div v-for="session in shownSessions(workspace.key)" :key="selectionKey(session)" class="session-row" :class="{ active: isActiveSession(session) }" @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(session), session.title)">
+              <button class="session-item" :aria-current="isActiveSession(session) ? 'page' : undefined" :title="session.title" @click="handleSessionClick(selectionKey(session))" @dblclick.stop="renaming = { kind: 'session', id: selectionKey(session) }">
+                <InlineRenameInput v-if="renaming?.kind === 'session' && renaming.id === selectionKey(session)" :model-value="session.title" class="session-title" @submit="submitRename" @cancel="cancelRename" /><span v-else class="session-title">{{ session.title }}</span>
+              </button>
+              <button class="session-more" :title="t('sidebar.moreActions')" @click.stop="openMenuAtButton($event, 'session', selectionKey(session), session.title)"><MoreHorizontal :size="13" /></button>
+            </div>
+            <div v-if="!allSessions(workspace.key).length && (!workspaceLoadStates?.[workspace.key] || workspaceLoadStates[workspace.key]?.status === 'ready') && workspace.project?.availability !== 'error'" class="session-empty">{{ t('sidebar.noSessions') }}</div>
+            <button v-if="allSessions(workspace.key).length > shownSessions(workspace.key).length || list.state.value.allKeys.includes(workspace.key)" class="workspace-show-more" @click="list.toggle(workspace.key, 'allKeys')">{{ list.state.value.allKeys.includes(workspace.key) ? t('sidebar.showFewer') : t('sidebar.showAll') }}</button>
+          </div>
+        </div></template>
+      </div>
     </div>
 
     <div v-if="tokenUsage.length > 0" class="token-usage-area">

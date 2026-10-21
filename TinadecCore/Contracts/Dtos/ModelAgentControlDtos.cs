@@ -147,6 +147,10 @@ public sealed class AgentDirectoryItemDto
     public Guid Id { get; init; }
     public string Slug { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
+    /// <summary>Per-locale overlays; omitted when the definition ships none.</summary>
+    [JsonPropertyName("i18n")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, AgentPackI18nDto>? I18n { get; init; }
     public string Layer { get; init; } = string.Empty;
     public string Role { get; init; } = string.Empty;
     public string SourceKind { get; init; } = string.Empty;

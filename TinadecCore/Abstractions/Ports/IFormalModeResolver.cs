@@ -10,6 +10,10 @@ public interface IFormalModeResolver
     Task<FormalModeRoster?> ResolveSpaceBaseAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
         Task.FromResult<FormalModeRoster?>(null);
 
+    /// <summary>Same baseline resolved with a frozen interface locale for prompt overlays.</summary>
+    Task<FormalModeRoster?> ResolveSpaceBaseAsync(Guid sessionId, string? interfaceLocale, CancellationToken cancellationToken = default) =>
+        ResolveSpaceBaseAsync(sessionId, cancellationToken);
+
     /// <summary>
     /// Returns the union of effective tools (agent ∩ mode) for the session's mode_version, or null if no formal mode.
     /// Contains "*" if wildcard, empty set if no effective tools (publish warned EMPTY_EFFECTIVE_TOOLS).
@@ -43,6 +47,14 @@ public interface IFormalModeResolver
         Guid modeVersionId,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<FormalModeRoster?>(null);
+
+    /// <summary>Resolves the candidate roster with a frozen interface locale for prompt overlays.</summary>
+    Task<FormalModeRoster?> ResolveRosterForModeAsync(
+        Guid sessionId,
+        Guid modeVersionId,
+        string? interfaceLocale,
+        CancellationToken cancellationToken = default) =>
+        ResolveRosterForModeAsync(sessionId, modeVersionId, cancellationToken);
 }
 
 /// <summary>
@@ -81,7 +93,7 @@ public sealed record FormalModeRoster(
     /// Host-owned workflow selected by the published mode. Null means ordinary
     /// mode behavior; old mode versions remain byte-compatible.
     /// </summary>
-    public CorrectionRuntimePolicyDto? RuntimePolicy { get; init; }
+    public ModeRuntimePolicyDto? RuntimePolicy { get; init; }
 }
 
 /// <summary>One declared communication edge of a mode graph (dispatch direction).</summary>

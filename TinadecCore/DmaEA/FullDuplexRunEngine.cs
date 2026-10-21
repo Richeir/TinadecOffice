@@ -1721,7 +1721,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         FullDuplexCheckpointV1 target,
         FullDuplexCheckpointV1 source,
         Guid taskId,
-        CorrectionRuntimePolicyDto? runtimePolicy,
+        ModeRuntimePolicyDto? runtimePolicy,
         string goal)
     {
         var updated = source.Tasks.FirstOrDefault(item => item.TaskId == taskId)
@@ -3382,7 +3382,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             definition.PromptVersionContentHash,
             definition.PromptGraphJson)
         {
-            Workspace = configuration.Workspace
+            Workspace = configuration.Workspace,
+            ResponseLocale = configuration.InterfaceLocale
         }, cancellationToken).ConfigureAwait(false);
     }
 

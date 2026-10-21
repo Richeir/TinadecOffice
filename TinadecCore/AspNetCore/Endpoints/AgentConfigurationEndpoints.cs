@@ -279,6 +279,7 @@ public static class AgentConfigurationEndpoints
             result.Add(new AgentDirectoryItemDto
             {
                 Id = definition.Id, Slug = definition.Slug, DisplayName = definition.DisplayName,
+                I18n = i18nMap(definition.I18nJson),
                 Layer = definition.Layer, Role = definition.Role, SourceKind = definition.SourceKind,
                 SourceKey = definition.SourceKey, Managed = definition.Managed, Writable = !definition.Managed && definition.Status != "archived",
                 Enabled = definition.Enabled, Status = definition.Status, Revision = definition.Revision, Version = definition.Version,
@@ -621,7 +622,7 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
         var edges=await db.ModeEdges.Where(x=>x.ModeId==id && x.TenantId==t && x.WorkspaceId==w && x.Status==nodeStatus).ToListAsync(ct);
         var layout=await db.CanvasLayouts.FirstOrDefaultAsync(x=>x.ModeId==id && x.TenantId==t && x.WorkspaceId==w && x.Status==nodeStatus, ct);
         var managed = await packs.FindManagedResourceAsync("mode", id, ct) is not null;
-        return Results.Ok(new{ id=rec.Id, slug=rec.Slug, display_name=rec.DisplayName, description=rec.Description, runtime_policy=rec.RuntimePolicyJson != null ? JsonSerializer.Deserialize<JsonElement>(rec.RuntimePolicyJson) : (JsonElement?)null, status=rec.Status, revision=rec.Revision, version=rec.Version, managed, nodes=nodes.Select(n=>new{ id=n.Id, node_key=n.NodeKey, agent_definition_id=n.AgentDefinitionId, layer=n.Layer, label=n.Label, position= n.PositionJson!=null? JsonSerializer.Deserialize<JsonElement>(n.PositionJson): (JsonElement?)null, config= n.ConfigJson!=null? JsonSerializer.Deserialize<JsonElement>(n.ConfigJson): (JsonElement?)null, model_strategy_override = n.ModelStrategyOverrideJson!=null ? JsonSerializer.Deserialize<JsonElement>(n.ModelStrategyOverrideJson) : (JsonElement?)null}), edges=edges.Select(e=>new{ id=e.Id, edge_key=e.EdgeKey, source_node_key=e.SourceNodeKey, target_node_key=e.TargetNodeKey}), canvas_layout= layout!=null? JsonSerializer.Deserialize<JsonElement>(layout.LayoutJson): (JsonElement?)null, created_at=rec.CreatedAt, updated_at=rec.UpdatedAt});
+        return Results.Ok(new{ id=rec.Id, slug=rec.Slug, display_name=rec.DisplayName, description=rec.Description, i18n=i18nElement(rec.I18nJson), runtime_policy=rec.RuntimePolicyJson != null ? JsonSerializer.Deserialize<JsonElement>(rec.RuntimePolicyJson) : (JsonElement?)null, status=rec.Status, revision=rec.Revision, version=rec.Version, managed, nodes=nodes.Select(n=>new{ id=n.Id, node_key=n.NodeKey, agent_definition_id=n.AgentDefinitionId, layer=n.Layer, label=n.Label, i18n=i18nElement(n.I18nJson), position= n.PositionJson!=null? JsonSerializer.Deserialize<JsonElement>(n.PositionJson): (JsonElement?)null, config= n.ConfigJson!=null? JsonSerializer.Deserialize<JsonElement>(n.ConfigJson): (JsonElement?)null, model_strategy_override = n.ModelStrategyOverrideJson!=null ? JsonSerializer.Deserialize<JsonElement>(n.ModelStrategyOverrideJson) : (JsonElement?)null}), edges=edges.Select(e=>new{ id=e.Id, edge_key=e.EdgeKey, source_node_key=e.SourceNodeKey, target_node_key=e.TargetNodeKey}), canvas_layout= layout!=null? JsonSerializer.Deserialize<JsonElement>(layout.LayoutJson): (JsonElement?)null, created_at=rec.CreatedAt, updated_at=rec.UpdatedAt});
     }
 
     static async Task<IResult> UpdateModeDraft(Guid id, HttpRequest req, IDbContextFactory<AgentConfigurationDbContext> f, ITenantContextAccessor a, IAgentPackService packs, CancellationToken ct)
@@ -748,6 +749,7 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
                 agent_version_hash = agentVersion.ContentHash,
                 layer = node.Layer,
                 label = node.Label,
+                i18n = i18nElement(node.I18nJson),
                 config,
                 model_strategy_override = modelStrategyOverride,
                 model_strategy_source = modelStrategyOverride is null ? "agent_version" : "mode_node_override",
@@ -772,7 +774,7 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
         var snapshotObject = new Dictionary<string, object?>
         {
             ["schema"] = "tinadec.mode_version/v1",
-            ["mode"] = new { id = rec.Id, slug = rec.Slug, display_name = rec.DisplayName },
+            ["mode"] = new { id = rec.Id, slug = rec.Slug, display_name = rec.DisplayName, i18n = i18nElement(rec.I18nJson) },
             ["nodes"] = frozenNodes,
             ["edges"] = frozenEdges,
             ["canvas_layout"] = canvasLayout
@@ -1137,7 +1139,15 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
         catch (Exception ex) { return "graph invalid: " + ex.Message; }
     }
 
-    static object ToAgentDto(AgentDefinitionRecord r) => new{ id=r.Id, slug=r.Slug, display_name=r.DisplayName, layer=r.Layer, role=r.Role, source_kind=r.SourceKind, source_key=r.SourceKey, managed=r.Managed, writable=!r.Managed && r.Status!="archived", capabilities= r.CapabilitiesJson!=null? JsonSerializer.Deserialize<JsonElement>(r.CapabilitiesJson): (JsonElement?)null, model_strategy= r.ModelStrategyJson!=null? JsonSerializer.Deserialize<JsonElement>(r.ModelStrategyJson): (JsonElement?)null, tool_scope= r.ToolScopeJson!=null? JsonSerializer.Deserialize<JsonElement>(r.ToolScopeJson): (JsonElement?)null, system_prompt=r.SystemPrompt, description=r.Description, enabled=r.Enabled, status=r.Status, revision=r.Revision, version=r.Version, created_at=r.CreatedAt, updated_at=r.UpdatedAt, archived_at=r.ArchivedAt };
+    static object ToAgentDto(AgentDefinitionRecord r) => new{ id=r.Id, slug=r.Slug, display_name=r.DisplayName, i18n=i18nElement(r.I18nJson), layer=r.Layer, role=r.Role, source_kind=r.SourceKind, source_key=r.SourceKey, managed=r.Managed, writable=!r.Managed && r.Status!="archived", capabilities= r.CapabilitiesJson!=null? JsonSerializer.Deserialize<JsonElement>(r.CapabilitiesJson): (JsonElement?)null, model_strategy= r.ModelStrategyJson!=null? JsonSerializer.Deserialize<JsonElement>(r.ModelStrategyJson): (JsonElement?)null, tool_scope= r.ToolScopeJson!=null? JsonSerializer.Deserialize<JsonElement>(r.ToolScopeJson): (JsonElement?)null, system_prompt=r.SystemPrompt, description=r.Description, enabled=r.Enabled, status=r.Status, revision=r.Revision, version=r.Version, created_at=r.CreatedAt, updated_at=r.UpdatedAt, archived_at=r.ArchivedAt };
+
+    static JsonElement? i18nElement(string? json) =>
+        string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<JsonElement>(json);
+
+    static IReadOnlyDictionary<string, AgentPackI18nDto>? i18nMap(string? json) =>
+        string.IsNullOrWhiteSpace(json)
+            ? null
+            : JsonSerializer.Deserialize<Dictionary<string, AgentPackI18nDto>>(json);
 
     static ModelInvocationDto ToInvocationDto(ModelInvocationRecord value) => new()
     {
@@ -1161,6 +1171,7 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
         slug = r.Slug,
         display_name = r.DisplayName,
         description = r.Description,
+        i18n = i18nElement(r.I18nJson),
         status = r.Status,
         revision = r.Revision,
         version = r.Version,
@@ -1190,8 +1201,8 @@ static async Task<IResult> GetMode(Guid id, IDbContextFactory<AgentConfiguration
             return (null, "runtime_policy must be an object or null.");
         try
         {
-            var policy = value.Deserialize<CorrectionRuntimePolicyDto>();
-            var error = CorrectionRuntimePolicy.Validate(policy);
+            var policy = value.Deserialize<ModeRuntimePolicyDto>();
+            var error = ModeRuntimePolicyRegistry.Validate(policy);
             return error is null && policy is not null
                 ? (JsonSerializer.Serialize(policy), null)
                 : (null, error ?? "runtime_policy is invalid.");

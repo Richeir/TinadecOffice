@@ -85,6 +85,27 @@ internal sealed class PromptAssembler : IPromptAssembler
                 ? $"agent-version:{agentVersionId}:{request.AgentVersionContentHash}"
                 : $"agent:{agentId}:system-prompt");
         }
+        // Response language is frozen with the run: a model must not guess from the
+        // latest user turn, and a resumed run keeps the language it started in.
+        if (!string.IsNullOrWhiteSpace(request.ResponseLocale))
+        {
+            var locale = RunLocaleResolver.Normalize(request.ResponseLocale);
+            var responseLanguage =
+                $"Response language: reply in {RunLocaleResolver.LanguageName(locale)} ({locale}). " +
+                "Keep code, identifiers, file paths, commands, logs and quoted text verbatim.";
+            var languageTokens = EstimateTokens(responseLanguage);
+            if (languageTokens <= budget - used)
+            {
+                sections.Add(responseLanguage);
+                fragmentIds.Add("builtin:response-language");
+                used += languageTokens;
+            }
+            else
+            {
+                warnings.Add("Response language instruction could not fit in the configured context budget.");
+            }
+        }
+
         // Workspace facts sit next to the run-level mode profile: the same text
         // reaches every agent of the run, so a model always knows the absolute
         // root its path arguments are validated against.

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TinadecCore.Abstractions.Ports;
@@ -81,15 +82,25 @@ internal sealed class FormalModeResolver : IFormalModeResolver
     }
 
     public Task<FormalModeRoster?> ResolveRosterAsync(Guid sessionId, CancellationToken ct = default) =>
-        ResolveRosterAsync(sessionId, modeVersionIdOverride: null, ct);
+        ResolveRosterAsync(sessionId, modeVersionIdOverride: null, interfaceLocale: null, ct);
 
     public Task<FormalModeRoster?> ResolveRosterForModeAsync(
         Guid sessionId,
         Guid modeVersionId,
         CancellationToken ct = default) =>
-        ResolveRosterAsync(sessionId, modeVersionId, ct);
+        ResolveRosterAsync(sessionId, modeVersionId, interfaceLocale: null, ct);
 
-    public async Task<FormalModeRoster?> ResolveSpaceBaseAsync(Guid sessionId, CancellationToken cancellationToken = default)
+    public Task<FormalModeRoster?> ResolveRosterForModeAsync(
+        Guid sessionId,
+        Guid modeVersionId,
+        string? interfaceLocale,
+        CancellationToken ct = default) =>
+        ResolveRosterAsync(sessionId, modeVersionId, interfaceLocale, ct);
+
+    public Task<FormalModeRoster?> ResolveSpaceBaseAsync(Guid sessionId, CancellationToken cancellationToken = default) =>
+        ResolveSpaceBaseAsync(sessionId, interfaceLocale: null, cancellationToken);
+
+    public async Task<FormalModeRoster?> ResolveSpaceBaseAsync(Guid sessionId, string? interfaceLocale, CancellationToken cancellationToken = default)
     {
         var session = await _sessions.FindAsync(sessionId, cancellationToken).ConfigureAwait(false);
         if (session is null) return null;
@@ -114,7 +125,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                        join installation in cfg.AgentPackInstallations.AsNoTracking() on managed.InstallationId equals installation.Id
                        where managed.LogicalEntityId == candidate.ModeId && installation.Status != "active"
                        select managed.Id).AnyAsync(cancellationToken).ConfigureAwait(false)) continue;
-            var roster = await ResolveRosterForModeAsync(sessionId, candidate.Id, cancellationToken).ConfigureAwait(false);
+            var roster = await ResolveRosterForModeAsync(sessionId, candidate.Id, interfaceLocale, cancellationToken).ConfigureAwait(false);
             var root = roster?.Operation.FirstOrDefault(item => item.Id == roster.ConversationTemplateSlug);
             if (roster is { HasDeclaredEdges: false } && root is { AllowedTools.Count: > 0 }
                 && root.ResourceGrants.Any(grant => grant.Level == "write")) return roster;
@@ -125,6 +136,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
     private async Task<FormalModeRoster?> ResolveRosterAsync(
         Guid sessionId,
         Guid? modeVersionIdOverride,
+        string? interfaceLocale,
         CancellationToken ct)
     {
         var sess = await _sessions.FindAsync(sessionId, ct).ConfigureAwait(false);
@@ -212,7 +224,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                         || !string.Equals(promptVersion.Status, "published", StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException($"Mode node '{node.NodeKey}' does not reference a published PromptVersion owned by its prompt pipeline.");
                     VerifyHash(promptVersion.GraphJson, promptVersion.ContentHash, node.PromptVersionHash, $"PromptVersion '{promptVersion.Id}'");
-                    promptGraph = promptVersion.GraphJson;
+                    promptGraph = LocalizePromptGraph(promptVersion.GraphJson, promptVersion.I18nJson, interfaceLocale);
                 }
                 else if (node.PromptPipelineId is not null || !string.IsNullOrWhiteSpace(node.PromptVersionHash))
                 {
@@ -223,7 +235,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                 var modelStrategyJson = node.ModelStrategyOverrideJson ?? RawJson(agent, "model_strategy", "{\"kind\":\"inherit\"}");
                 var modelStrategySource = node.ModelStrategyOverrideJson is null ? "agent_version" : "mode_node_override";
                 var effectiveTools = node.EffectiveTools;
-                var systemPrompt = OptionalString(agent, "system_prompt") ?? string.Empty;
+                var systemPrompt = LocalizedString(agent, "system_prompt", interfaceLocale) ?? string.Empty;
                 var enabled = OptionalBoolean(agent, "enabled") ?? true;
                 if (bindings.TryGetValue(node.AgentDefinitionId, out var binding))
                 {
@@ -251,7 +263,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                     ReadStringArray(agent, "capabilities"))
                 {
                     SystemPrompt = systemPrompt,
-                    Description = OptionalString(agent, "description"),
+                    Description = LocalizedString(agent, "description", interfaceLocale),
                     Enabled = enabled,
                     Order = order
                 });
@@ -342,7 +354,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                 .Select(item => new DeclaredGraphNode(item.Node.NodeKey, item.Slug, item.Layer))
                 .ToArray();
             var spawnable = (await ResolveSpawnableTemplatesAsync(
-                    cfg, mv, nodes, sess.TenantId, sess.WorkspaceId, envelopes, ct).ConfigureAwait(false))
+                    cfg, mv, nodes, sess.TenantId, sess.WorkspaceId, envelopes, interfaceLocale, ct).ConfigureAwait(false))
                 .Select(template => policyTools.Length == 0
                     ? template
                     : template with
@@ -387,6 +399,7 @@ internal sealed class FormalModeResolver : IFormalModeResolver
         Guid tenantId,
         Guid workspaceId,
         BindingEnvelopes envelopes,
+        string? interfaceLocale,
         CancellationToken ct)
     {
         var slugs = nodes
@@ -443,12 +456,76 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                 ReadStringArray(agent, "capabilities"))
             {
                 ResourceGrants = envelopes.TemplateGrants.TryGetValue(slug, out var grants) ? grants : [],
-                Description = OptionalString(agent, "description"),
-                SystemPrompt = OptionalString(agent, "system_prompt"),
+                Description = LocalizedString(agent, "description", interfaceLocale),
+                SystemPrompt = LocalizedString(agent, "system_prompt", interfaceLocale),
                 AllowedDispatchTargets = ReadStringArray(agent, "allowed_dispatch_targets") is { Count: > 0 } targets ? targets : null
             });
         }
         return result.OrderBy(item => item.Slug, StringComparer.Ordinal).ToArray();
+    }
+
+    /// <summary>
+    /// Reads a field from a version snapshot, preferring the frozen locale's
+    /// overlay. Partial overlays and missing locales fall back to the base value,
+    /// never to a raw key.
+    /// </summary>
+    private static string? LocalizedString(JsonElement source, string field, string? interfaceLocale)
+    {
+        if (string.IsNullOrWhiteSpace(interfaceLocale)) return OptionalString(source, field);
+        if (!source.TryGetProperty("i18n", out var i18n) || i18n.ValueKind != JsonValueKind.Object)
+            return OptionalString(source, field);
+        foreach (var locale in RunLocaleResolver.FallbackChain(interfaceLocale))
+        {
+            if (i18n.TryGetProperty(locale, out var overlay)
+                && overlay.ValueKind == JsonValueKind.Object
+                && OptionalString(overlay, field) is { Length: > 0 } localized)
+                return localized;
+        }
+        return OptionalString(source, field);
+    }
+
+    /// <summary>
+    /// Applies localized prompt templates to the frozen graph. Only node content
+    /// is replaced; ids, edges and every other graph member stay authoritative.
+    /// </summary>
+    private static string LocalizePromptGraph(string graphJson, string? i18nJson, string? interfaceLocale)
+    {
+        if (string.IsNullOrWhiteSpace(i18nJson) || string.IsNullOrWhiteSpace(interfaceLocale))
+            return graphJson;
+        try
+        {
+            var i18n = JsonNode.Parse(i18nJson);
+            JsonObject? templates = null;
+            foreach (var locale in RunLocaleResolver.FallbackChain(interfaceLocale))
+            {
+                if (i18n?[locale]?["templates"] is JsonObject candidate)
+                {
+                    templates = candidate;
+                    break;
+                }
+            }
+            var graph = JsonNode.Parse(graphJson);
+            if (templates is null || graph?["nodes"] is not JsonArray nodes)
+                return graphJson;
+
+            foreach (var node in nodes)
+            {
+                if (node is not JsonObject item) continue;
+                var id = item["id"]?.GetValue<string>();
+                if (id is null || !templates.TryGetPropertyValue(id, out var content) || content is null) continue;
+                if (item["config"] is not JsonObject config)
+                {
+                    config = new JsonObject();
+                    item["config"] = config;
+                }
+                config["content"] = content.DeepClone();
+            }
+            return graph.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return graphJson;
+        }
     }
 
     /// <summary>
@@ -539,23 +616,23 @@ internal sealed class FormalModeResolver : IFormalModeResolver
         return new BindingEnvelopes(nodeGrants, nodeCapabilities, templateGrants, templateToolFaces);
     }
 
-    private static CorrectionRuntimePolicyDto? ParseRuntimePolicy(ModeVersionRecord version)
+    private static ModeRuntimePolicyDto? ParseRuntimePolicy(ModeVersionRecord version)
     {
         if (string.IsNullOrWhiteSpace(version.SnapshotJson)) return null;
         using var document = JsonDocument.Parse(version.SnapshotJson);
         if (!document.RootElement.TryGetProperty("runtime_policy", out var element)
             || element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
-        CorrectionRuntimePolicyDto? policy;
+        ModeRuntimePolicyDto? policy;
         try
         {
-            policy = element.Deserialize<CorrectionRuntimePolicyDto>();
+            policy = element.Deserialize<ModeRuntimePolicyDto>();
         }
         catch (JsonException exception)
         {
             throw new InvalidDataException("Mode runtime_policy is invalid.", exception);
         }
-        if (CorrectionRuntimePolicy.Validate(policy) is { } error)
+        if (ModeRuntimePolicyRegistry.Validate(policy) is { } error)
             throw new InvalidDataException(error);
         return policy;
     }

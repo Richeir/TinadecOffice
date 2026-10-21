@@ -152,17 +152,17 @@ public sealed class AgentPackService : IAgentPackService
     public const string ManifestKind = "AgentPack";
     public const string CurrentCoreVersion = "0.1.0";
 
-    private static readonly HashSet<string> SupportedCapabilities = new(StringComparer.Ordinal)
-    {
+    private static readonly HashSet<string> SupportedCapabilities =
+    [
         "agent_pack_lifecycle",
         "versioned_agent_configuration",
         "frozen_agent_version_binding",
-        CorrectionRuntimePolicy.RequiredCoreCapability,
+        .. ModeRuntimePolicyRegistry.Definitions.Select(definition => definition.RequiredCoreCapability),
         // DmaEA graph orchestration pack surface (resources.tools, mode bindings,
         // node relationship files). Declaring it opts the pack into those semantics;
         // older Cores reject the unknown capability fail-closed.
-        GraphValidation.GraphModePacksCapability
-    };
+        GraphValidation.GraphModePacksCapability,
+    ];
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -859,13 +859,20 @@ public sealed class AgentPackService : IAgentPackService
         };
         if (wasCreated) db.PromptPipelines.Add(logical);
         var graph = Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(resource.Graph));
-        var hash = Sha256Hex(Encoding.UTF8.GetBytes(graph));
+        var i18nJson = CanonicalI18n(resource.I18n);
+        var hash = i18nJson is null
+            ? Sha256Hex(Encoding.UTF8.GetBytes(graph))
+            : Sha256Hex(Encoding.UTF8.GetBytes(graph + "\n" + i18nJson));
         var latest = await db.PromptVersions.Where(item => item.PromptPipelineId == logical.Id).OrderByDescending(item => item.Version).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         PromptVersionRecord version;
-        var unchanged = latest is not null && string.Equals(latest.ContentHash, hash, StringComparison.OrdinalIgnoreCase) && string.Equals(Sha256Hex(Encoding.UTF8.GetBytes(latest.GraphJson)), hash, StringComparison.OrdinalIgnoreCase);
+        var unchanged = latest is not null
+            && string.Equals(latest.ContentHash, hash, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(latest.GraphJson, graph, StringComparison.Ordinal)
+            && string.Equals(latest.I18nJson, i18nJson, StringComparison.Ordinal);
         if (unchanged)
         {
             version = latest!;
+            version.I18nJson = i18nJson;
         }
         else
         {
@@ -873,13 +880,16 @@ public sealed class AgentPackService : IAgentPackService
             {
                 Id = Guid.NewGuid(), TenantId = scope.TenantId, WorkspaceId = scope.WorkspaceId,
                 PromptPipelineId = logical.Id, Version = (latest?.Version ?? 0) + 1,
-                GraphJson = graph, ContentHash = hash, ContentLength = Encoding.UTF8.GetByteCount(graph),
+                GraphJson = graph, ContentHash = hash,
+                ContentLength = Encoding.UTF8.GetByteCount(graph) + Encoding.UTF8.GetByteCount(i18nJson ?? string.Empty),
+                I18nJson = i18nJson,
                 Status = "published", Revision = 1, CreatedAt = now, CreatedByPrincipalId = scope.PrincipalId
             };
             db.PromptVersions.Add(version);
         }
         logical.DisplayName = resource.DisplayName!;
         logical.Description = resource.Description;
+        logical.I18nJson = i18nJson;
         logical.GraphJson = graph;
         logical.Status = "published";
         logical.Version = version.Version;
@@ -921,20 +931,25 @@ public sealed class AgentPackService : IAgentPackService
             : null;
         var capabilities = resource.Capabilities.OrderBy(item => item, StringComparer.Ordinal).ToArray();
         var tools = resource.ToolScope.OrderBy(item => item, StringComparer.Ordinal).ToArray();
-        var snapshotElement = JsonSerializer.SerializeToElement(new
+        var i18nJson = CanonicalI18n(resource.I18n);
+        // Null i18n must stay absent: the snapshot is hashed, so an explicit null
+        // would change every legacy agent version hash.
+        var snapshotObject = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            id = logical.Id,
-            slug = resource.Slug,
-            display_name = resource.DisplayName,
-            layer = resource.Layer,
-            role = resource.Role,
-            capabilities,
-            tool_scope = tools,
-            model_strategy = resource.ModelStrategy,
-            system_prompt = resource.SystemPrompt,
-            description = resource.Description,
-            enabled = resource.Enabled
-        }, JsonOptions);
+            ["id"] = logical.Id,
+            ["slug"] = resource.Slug,
+            ["display_name"] = resource.DisplayName,
+            ["layer"] = resource.Layer,
+            ["role"] = resource.Role,
+            ["capabilities"] = capabilities,
+            ["tool_scope"] = tools,
+            ["model_strategy"] = resource.ModelStrategy,
+            ["system_prompt"] = resource.SystemPrompt,
+            ["description"] = resource.Description,
+            ["enabled"] = resource.Enabled
+        };
+        if (resource.I18n is not null) snapshotObject["i18n"] = resource.I18n;
+        var snapshotElement = JsonSerializer.SerializeToElement(snapshotObject, JsonOptions);
         var snapshot = Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(snapshotElement));
         var hash = Sha256Hex(Encoding.UTF8.GetBytes(snapshot));
         var latest = await db.AgentVersions.Where(item => item.AgentDefinitionId == logical.Id).OrderByDescending(item => item.Version).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
@@ -958,6 +973,7 @@ public sealed class AgentPackService : IAgentPackService
         }
         logical.DisplayName = resource.DisplayName!;
         logical.Description = resource.Description;
+        logical.I18nJson = CanonicalI18n(resource.I18n);
         logical.Layer = resource.Layer!;
         logical.Role = resource.Role!;
         logical.CapabilitiesJson = JsonSerializer.Serialize(capabilities, JsonOptions);
@@ -1066,21 +1082,23 @@ public sealed class AgentPackService : IAgentPackService
                     .Where(tool => !IsSwitchedOff(switches, tool))
                     .ToArray();
             }
-            return new
+            var snapshotNode = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                node_key = node.NodeKey,
-                agent_definition_id = agent.LogicalId,
-                agent_version_id = agent.VersionId,
-                agent_version_hash = agent.ContentHash,
-                layer = node.Layer,
-                label = node.Label,
-                config = NormalizeObject(node.Config),
-                relationship = node.Relationship is { } relationshipElement ? (object?)NormalizeObject(relationshipElement) : null,
-                effective_tools = effectiveTools,
-                prompt_pipeline_id = prompt?.LogicalId,
-                prompt_version_id = prompt?.VersionId,
-                prompt_version_hash = prompt?.ContentHash
+                ["node_key"] = node.NodeKey,
+                ["agent_definition_id"] = agent.LogicalId,
+                ["agent_version_id"] = agent.VersionId,
+                ["agent_version_hash"] = agent.ContentHash,
+                ["layer"] = node.Layer,
+                ["label"] = node.Label,
+                ["config"] = NormalizeObject(node.Config),
+                ["relationship"] = node.Relationship is { } relationshipElement ? (object?)NormalizeObject(relationshipElement) : null,
+                ["effective_tools"] = effectiveTools,
+                ["prompt_pipeline_id"] = prompt?.LogicalId,
+                ["prompt_version_id"] = prompt?.VersionId,
+                ["prompt_version_hash"] = prompt?.ContentHash
             };
+            if (node.I18n is not null) snapshotNode["i18n"] = node.I18n;
+            return snapshotNode;
         }).ToArray();
         var snapshotEdges = resource.Edges.OrderBy(item => item.EdgeKey, StringComparer.Ordinal).Select(edge => new
         {
@@ -1112,10 +1130,17 @@ public sealed class AgentPackService : IAgentPackService
                 instance_naming = binding.InstanceNaming is { } namingElement ? (object?)NormalizeObject(namingElement) : null,
             };
         }).ToArray();
+        var snapshotMode = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["id"] = logical.Id,
+            ["slug"] = resource.Slug,
+            ["display_name"] = resource.DisplayName
+        };
+        if (resource.I18n is not null) snapshotMode["i18n"] = resource.I18n;
         var snapshotObject = new Dictionary<string, object?>
         {
             ["schema"] = "tinadec.mode_version/v1",
-            ["mode"] = new { id = logical.Id, slug = resource.Slug, display_name = resource.DisplayName },
+            ["mode"] = snapshotMode,
             ["nodes"] = snapshotNodes,
             ["edges"] = snapshotEdges,
             ["bindings"] = snapshotBindings,
@@ -1147,6 +1172,7 @@ public sealed class AgentPackService : IAgentPackService
         }
         logical.DisplayName = resource.DisplayName!;
         logical.Description = resource.Description;
+        logical.I18nJson = CanonicalI18n(resource.I18n);
         logical.RuntimePolicyJson = resource.RuntimePolicy is null
             ? null
             : JsonSerializer.Serialize(resource.RuntimePolicy, JsonOptions);
@@ -1182,6 +1208,7 @@ public sealed class AgentPackService : IAgentPackService
             NodeKey = node.NodeKey!,
             AgentDefinitionId = agents[ReferenceKey(node.AgentRef, "agent", $"mode '{resource.ResourceKey}' node '{node.NodeKey}' agent_ref")].LogicalId,
             Layer = node.Layer!, Label = node.Label,
+            I18nJson = CanonicalI18n(node.I18n),
             PositionJson = node.Position.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? null : Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(node.Position)),
             ConfigJson = Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(NormalizeObject(node.Config))),
             Status = "published", Revision = 1, CreatedAt = now, UpdatedAt = now
@@ -1332,6 +1359,15 @@ public sealed class AgentPackService : IAgentPackService
 
     private static AgentPackResourceView ToResourceView(AgentPackResourceBindingRecord resource) =>
         new(resource.ResourceKind, resource.ResourceKey, resource.LogicalEntityId, resource.VersionId, resource.ContentHash, resource.Disposition);
+
+    private static string? CanonicalI18n<T>(T? value) where T : class
+    {
+        if (value is null) return null;
+        var element = JsonSerializer.SerializeToElement(value, JsonOptions);
+        return element.ValueKind == JsonValueKind.Null
+            ? null
+            : Encoding.UTF8.GetString(JsonCanonicalizer.Canonicalize(element));
+    }
 
     private static string Sha256Hex(ReadOnlySpan<byte> value) => Convert.ToHexString(SHA256.HashData(value)).ToLowerInvariant();
 
@@ -1521,6 +1557,76 @@ public sealed class AgentPackService : IAgentPackService
         return new ValidatedEnvelope(envelope, manifest, packId, owner, productId, name, version, computedDigest, envelopeBytes);
     }
 
+    private static readonly HashSet<string> SupportedI18nLocales =
+        new(StringComparer.Ordinal) { "zh-CN", "zh-TW", "en", "ja", "ru" };
+
+    private static void ValidateI18n(
+        IReadOnlyDictionary<string, AgentPackI18nDto>? i18n,
+        string label,
+        bool requireDisplayName,
+        bool requireSystemPrompt = false,
+        bool requireLabel = false,
+        int? maxDescriptionLength = null,
+        IReadOnlySet<string>? templateNodeIds = null)
+    {
+        if (i18n is null) return;
+        foreach (var (locale, overlay) in i18n)
+        {
+            if (!SupportedI18nLocales.Contains(locale))
+                Invalid($"{label} i18n locale '{locale}' is not supported.");
+            if (overlay is null)
+            {
+                Invalid($"{label} i18n['{locale}'] must be an object.");
+                continue;
+            }
+            if (requireDisplayName)
+                RequiredText(overlay.DisplayName, $"{label} i18n['{locale}'].display_name", 256);
+            if (requireLabel)
+                RequiredText(overlay.Label, $"{label} i18n['{locale}'].label", 256);
+            if (overlay.Description is { Length: > 0 } description
+                && maxDescriptionLength is { } max && description.Length > max)
+                Invalid($"{label} i18n['{locale}'].description must be at most {max} characters.");
+            if (requireSystemPrompt)
+                RequiredText(overlay.SystemPrompt, $"{label} i18n['{locale}'].system_prompt", 200000);
+            if (overlay.Templates is { } templates)
+            {
+                if (templateNodeIds is null)
+                    Invalid($"{label} i18n['{locale}'].templates is only valid on prompt pipelines.");
+                foreach (var (nodeId, content) in templates)
+                {
+                    if (!templateNodeIds!.Contains(nodeId))
+                        Invalid($"{label} i18n['{locale}'].templates references unknown node '{nodeId}'.");
+                    RequiredText(content, $"{label} i18n['{locale}'].templates['{nodeId}']", 200000);
+                }
+                var missing = templateNodeIds!.Where(nodeId => !templates.ContainsKey(nodeId)).ToArray();
+                if (missing.Length > 0)
+                    Invalid($"{label} i18n['{locale}'].templates must cover node(s): {string.Join(", ", missing)}.");
+            }
+        }
+    }
+
+    private static IReadOnlySet<string> PromptContentNodeIds(JsonElement graph)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (graph.ValueKind == JsonValueKind.Object
+            && graph.TryGetProperty("nodes", out var nodes)
+            && nodes.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var node in nodes.EnumerateArray())
+            {
+                if (node.ValueKind == JsonValueKind.Object
+                    && node.TryGetProperty("id", out var id)
+                    && id.ValueKind == JsonValueKind.String
+                    && node.TryGetProperty("config", out var config)
+                    && config.ValueKind == JsonValueKind.Object
+                    && config.TryGetProperty("content", out var content)
+                    && content.ValueKind == JsonValueKind.String)
+                    ids.Add(id.GetString()!);
+            }
+        }
+        return ids;
+    }
+
     private static void ValidateResources(AgentPackManifestDto manifest)
     {
         var resources = manifest.Resources ?? throw InvalidException("resources is required.");
@@ -1551,23 +1657,33 @@ public sealed class AgentPackService : IAgentPackService
                 var promptKey = ReferenceKey(promptRef, "prompt", $"agent '{agent.ResourceKey}' base_prompt_pipeline_ref");
                 if (!prompts.ContainsKey(promptKey)) Invalid($"agent '{agent.ResourceKey}' references unknown prompt pipeline '{promptRef}'.");
             }
+            ValidateI18n(agent.I18n, $"agent '{agent.ResourceKey}'", requireDisplayName: true, requireSystemPrompt: true);
         }
 
         foreach (var prompt in resources.PromptPipelines)
         {
             RequiredText(prompt.DisplayName, $"prompt pipeline '{prompt.ResourceKey}' display_name", 256);
             ValidatePromptGraph(prompt.ResourceKey!, prompt.Graph);
+            ValidateI18n(prompt.I18n, $"prompt pipeline '{prompt.ResourceKey}'", requireDisplayName: true,
+                templateNodeIds: PromptContentNodeIds(prompt.Graph));
         }
 
         foreach (var mode in resources.Modes)
         {
             RequiredText(mode.DisplayName, $"mode '{mode.ResourceKey}' display_name", 256);
-            if (CorrectionRuntimePolicy.Validate(mode.RuntimePolicy) is { } policyError)
+            ValidateI18n(mode.I18n, $"mode '{mode.ResourceKey}'", requireDisplayName: true, maxDescriptionLength: 50);
+            foreach (var node in mode.Nodes)
+                ValidateI18n(node.I18n, $"mode '{mode.ResourceKey}' node '{node.NodeKey}'", requireDisplayName: false, requireLabel: true);
+            if (ModeRuntimePolicyRegistry.Validate(mode.RuntimePolicy) is { } policyError)
                 Invalid($"mode '{mode.ResourceKey}' {policyError}");
-            if (mode.RuntimePolicy is not null
-                && !(manifest.Compatibility?.RequiredCoreCapabilities ?? [])
-                    .Contains(CorrectionRuntimePolicy.RequiredCoreCapability, StringComparer.Ordinal))
-                Invalid($"mode '{mode.ResourceKey}' runtime_policy requires compatibility.required_core_capabilities to declare '{CorrectionRuntimePolicy.RequiredCoreCapability}'.");
+            if (mode.RuntimePolicy is not null)
+            {
+                var requiredCapability = ModeRuntimePolicyRegistry.Definition(mode.RuntimePolicy)?.RequiredCoreCapability;
+                if (requiredCapability is not null
+                    && !(manifest.Compatibility?.RequiredCoreCapabilities ?? [])
+                        .Contains(requiredCapability, StringComparer.Ordinal))
+                    Invalid($"mode '{mode.ResourceKey}' runtime_policy requires compatibility.required_core_capabilities to declare '{requiredCapability}'.");
+            }
             if (mode.Nodes.Count == 0) Invalid($"mode '{mode.ResourceKey}' must contain nodes.");
             EnsureUnique(mode.Nodes.Select(item => RequiredToken(item.NodeKey, $"mode '{mode.ResourceKey}' node_key", 128)), $"mode '{mode.ResourceKey}' node_key");
             EnsureUnique(mode.Edges.Select(item => RequiredToken(item.EdgeKey, $"mode '{mode.ResourceKey}' edge_key", 128)), $"mode '{mode.ResourceKey}' edge_key");

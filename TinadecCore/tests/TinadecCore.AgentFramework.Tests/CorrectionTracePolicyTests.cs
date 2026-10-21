@@ -7,7 +7,7 @@ namespace TinadecCore.AgentFramework.Tests;
 
 public sealed class CorrectionTracePolicyTests
 {
-    private static readonly CorrectionRuntimePolicyDto Policy = new()
+    private static readonly ModeRuntimePolicyDto Policy = new()
     {
         Kind = CorrectionRuntimePolicy.StructuredInvestigationKind,
         Version = CorrectionRuntimePolicy.StructuredInvestigationVersion,
@@ -73,7 +73,7 @@ public sealed class CorrectionTracePolicyTests
     public void ClarificationLedgerMustBeEnabledByTheModePolicy()
     {
         var trace = CorrectionTracePolicy.Create(Run("run-policy"), "需要用户澄清");
-        var causalOnly = new CorrectionRuntimePolicyDto
+        var causalOnly = new ModeRuntimePolicyDto
         {
             Kind = CorrectionRuntimePolicy.StructuredInvestigationKind,
             Version = CorrectionRuntimePolicy.StructuredInvestigationVersion,

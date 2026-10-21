@@ -397,6 +397,8 @@ public sealed class AgentDefinitionRecord
     public string? ToolScopeJson { get; set; }
     public string? SystemPrompt { get; set; }
     public string? Description { get; set; }
+    // json: { "<locale>": { display_name, description, system_prompt } }
+    public string? I18nJson { get; set; }
     public string SourceKind { get; set; } = "custom";
     public string SourceKey { get; set; } = string.Empty;
     public bool Managed { get; set; }
@@ -460,6 +462,8 @@ public sealed class AgentModeRecord
     public string Slug { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string? Description { get; set; }
+    // json: { "<locale>": { display_name, description } }
+    public string? I18nJson { get; set; }
     public string? RuntimePolicyJson { get; set; }
     public string Status { get; set; } = "draft";
     public long Revision { get; set; }
@@ -499,6 +503,8 @@ public sealed class ModeNodeRecord
     public Guid AgentDefinitionId { get; set; }
     public string Layer { get; set; } = string.Empty;
     public string? Label { get; set; }
+    // json: { "<locale>": { label } }
+    public string? I18nJson { get; set; }
     public string? PositionJson { get; set; }
     public string? ConfigJson { get; set; }
     public string? ModelStrategyOverrideJson { get; set; }
@@ -548,6 +554,8 @@ public sealed class PromptPipelineRecord
     public string Slug { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string? Description { get; set; }
+    // json: { "<locale>": { display_name, description, templates } }
+    public string? I18nJson { get; set; }
     // json graph (nodes+edges)
     public string GraphJson { get; set; } = string.Empty;
     public string Status { get; set; } = "draft";
@@ -568,6 +576,8 @@ public sealed class PromptVersionRecord
     public Guid PromptPipelineId { get; set; }
     public int Version { get; set; }
     public string GraphJson { get; set; } = string.Empty;
+    // json: { "<locale>": { templates } }
+    public string? I18nJson { get; set; }
     public string? ContentHash { get; set; }
     public long ContentLength { get; set; }
     public string Status { get; set; } = "published";

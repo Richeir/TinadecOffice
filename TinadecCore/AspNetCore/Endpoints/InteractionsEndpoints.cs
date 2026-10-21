@@ -46,7 +46,7 @@ public static class InteractionsEndpoints
         // admit a run under a mode nobody reads anymore.
         var unknownField = el.EnumerateObject()
             .Select(property => property.Name)
-            .FirstOrDefault(name => name is not ("content" or "client_message_id" or "mode_version_id" or "permission_mode" or "dispatch_mode" or "target_run_id" or "expected_context_revision" or "expected_settings_revision" or "meeting_model_override" or "clear_meeting_model_override" or "space_options" or "attachment_ids" or "interrupt"));
+            .FirstOrDefault(name => name is not ("content" or "client_message_id" or "mode_version_id" or "permission_mode" or "dispatch_mode" or "target_run_id" or "expected_context_revision" or "expected_settings_revision" or "meeting_model_override" or "clear_meeting_model_override" or "space_options" or "attachment_ids" or "interrupt" or "interface_locale"));
         if (unknownField is not null) return Results.BadRequest(new { code = "unknown_field", message = $"Field '{unknownField}' is not part of the interaction contract." });
         var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? string.Empty : string.Empty;
         // Not "content is required" here: a message that carries a file does say something, it
@@ -57,6 +57,9 @@ public static class InteractionsEndpoints
         var modeVersionId = el.TryGetProperty("mode_version_id", out var mv) && Guid.TryParse(mv.GetString(), out var g) ? g : (Guid?)null;
         var dispatchMode = el.TryGetProperty("dispatch_mode", out var dm) ? dm.GetString()?.Trim().ToLowerInvariant() : "queued";
         if (dispatchMode is not ("queued" or "insert" or "parallel")) return Results.BadRequest(new { code = "invalid_request", message = "dispatch_mode must be queued|insert|parallel" });
+        var interfaceLocale = el.TryGetProperty("interface_locale", out var localeElement) && localeElement.ValueKind == JsonValueKind.String
+            ? localeElement.GetString()
+            : null;
         Guid? targetRunId = null;
         if (el.TryGetProperty("target_run_id", out var tr) && Guid.TryParse(tr.GetString(), out var tg)) targetRunId = tg;
         if (dispatchMode == "insert" && targetRunId is null) return Results.BadRequest(new { code = "invalid_request", message = "insert requires target_run_id" });
@@ -411,7 +414,8 @@ public static class InteractionsEndpoints
                 expectedRev,
                 invocationOverride,
                 modeVersionId,
-                QueueBehindActiveRun: dispatchMode == "queued", SpaceOptions: spaceOptions, SessionSettingsCaptured: true), ct);
+                QueueBehindActiveRun: dispatchMode == "queued", SpaceOptions: spaceOptions, SessionSettingsCaptured: true,
+                InterfaceLocale: interfaceLocale), ct);
             admissionStatus = dispatchMode == "parallel" ? "assigned" : "queued";
         }
         catch (RunAdmissionException ex) when (ex.Code is "ACTIVE_RUN_LIMIT" or "SESSION_BUSY" && dispatchMode == "queued")
@@ -454,7 +458,8 @@ public static class InteractionsEndpoints
                         expectedRev,
                         invocationOverride,
                         modeVersionId,
-                        QueueBehindActiveRun: true, SpaceOptions: spaceOptions, SessionSettingsCaptured: true), ct).ConfigureAwait(false);
+                        QueueBehindActiveRun: true, SpaceOptions: spaceOptions, SessionSettingsCaptured: true,
+                        InterfaceLocale: interfaceLocale), ct).ConfigureAwait(false);
                     admissionStatus = "queued";
                 }
                 catch (RunAdmissionException retry) when (retry.Code is "ACTIVE_RUN_LIMIT" or "SESSION_BUSY")
@@ -496,22 +501,24 @@ public static class InteractionsEndpoints
                 };
                 directive.RunId = activeRun.Id;
                 directive.MessageId = message.Id;
-                directive.PayloadJson = JsonSerializer.Serialize(new
+                var queuedPayload = new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
-                    content,
-                    client_message_id = clientMessageId,
-                    dispatch_mode = dispatchMode,
-                    mode_version_id = modeVersionId,
-                    permission_mode = permissionMode,
-                    space_options = spaceOptions,
-                    meeting_model_override = meetingModelOverride is null
+                    ["content"] = content,
+                    ["client_message_id"] = clientMessageId,
+                    ["dispatch_mode"] = dispatchMode,
+                    ["mode_version_id"] = modeVersionId,
+                    ["permission_mode"] = permissionMode,
+                    ["space_options"] = spaceOptions,
+                    ["meeting_model_override"] = meetingModelOverride is null
                         ? null
                         : new
                         {
                             provider_instance_id = meetingModelOverride.ProviderInstanceId,
                             model = meetingModelOverride.Model
                         }
-                }, SettingsJson);
+                };
+                if (interfaceLocale is not null) queuedPayload["interface_locale"] = interfaceLocale;
+                directive.PayloadJson = JsonSerializer.Serialize(queuedPayload, SettingsJson);
                 directive.UpdatedAt = DateTimeOffset.UtcNow;
                 if (replay is null) lifecycleDb.RunDirectives.Add(directive);
                 await lifecycleDb.SaveChangesAsync(ct).ConfigureAwait(false);

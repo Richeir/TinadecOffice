@@ -16,20 +16,22 @@ public interface IAgentRuntimeConfigurationResolver
 {
     Task<FrozenRunConfigurationV1> ResolveSubmissionAsync(FullDuplexInvocation invocation, CancellationToken cancellationToken = default) =>
         invocation.SpaceOptions is { } options
-            ? ResolveSpaceAsync(invocation.SessionId, options, invocation.PermissionMode, invocation.MeetingModelOverride, cancellationToken)
+            ? ResolveSpaceAsync(invocation.SessionId, options, invocation.PermissionMode, invocation.MeetingModelOverride, invocation.InterfaceLocale, cancellationToken)
             : invocation.ModeVersionId is { } mode
-                ? ResolveForModeAsync(invocation.SessionId, mode, invocation.PermissionMode, invocation.MeetingModelOverride, cancellationToken)
-                : ResolveAsync(invocation.SessionId, invocation.PermissionMode, invocation.MeetingModelOverride, cancellationToken);
+                ? ResolveForModeAsync(invocation.SessionId, mode, invocation.PermissionMode, invocation.MeetingModelOverride, invocation.InterfaceLocale, cancellationToken)
+                : ResolveAsync(invocation.SessionId, invocation.PermissionMode, invocation.MeetingModelOverride, invocation.InterfaceLocale, cancellationToken);
 
     Task<FrozenRunConfigurationV1> ResolveSpaceAsync(
         Guid sessionId, SpaceRunOptions options, string? permissionMode,
-        SessionModelOverride? meetingModelOverride = null, CancellationToken cancellationToken = default) =>
+        SessionModelOverride? meetingModelOverride = null, string? interfaceLocale = null,
+        CancellationToken cancellationToken = default) =>
         throw new RunAdmissionException("space_options_unavailable", "Spatial composition is unavailable in this host.");
 
     Task<FrozenRunConfigurationV1> ResolveAsync(
         Guid sessionId,
         string? permissionMode,
         SessionModelOverride? meetingModelOverride = null,
+        string? interfaceLocale = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -41,6 +43,7 @@ public interface IAgentRuntimeConfigurationResolver
         Guid modeVersionId,
         string? permissionMode,
         SessionModelOverride? meetingModelOverride = null,
+        string? interfaceLocale = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -133,7 +136,15 @@ public sealed record FrozenRunConfigurationV1(
     /// ordinary mode and on bodies frozen before this field existed.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public CorrectionRuntimePolicyDto? RuntimePolicy { get; init; }
+    public ModeRuntimePolicyDto? RuntimePolicy { get; init; }
+
+    /// <summary>
+    /// UI locale at admission, normalized to one of the five supported locales.
+    /// Null on bodies frozen before this field existed; those keep the default
+    /// Chinese behavior and stay byte-compatible on resume.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? InterfaceLocale { get; init; }
 
     /// <summary>
     /// The workspace this run is bound to, frozen at admission (root absolute
@@ -299,26 +310,32 @@ internal sealed class AgentRuntimeConfigurationResolver : IAgentRuntimeConfigura
         Guid sessionId,
         string? permissionMode,
         SessionModelOverride? meetingModelOverride = null,
+        string? interfaceLocale = null,
         CancellationToken cancellationToken = default) =>
-        ResolveCoreAsync(sessionId, modeVersionIdOverride: null, permissionMode, meetingModelOverride, cancellationToken);
+        ResolveCoreAsync(sessionId, modeVersionIdOverride: null, permissionMode, meetingModelOverride, cancellationToken,
+            interfaceLocale: interfaceLocale);
 
     public Task<FrozenRunConfigurationV1> ResolveSpaceAsync(
         Guid sessionId, SpaceRunOptions options, string? permissionMode,
-        SessionModelOverride? meetingModelOverride = null, CancellationToken cancellationToken = default) =>
-        ResolveCoreAsync(sessionId, options.WorkflowModeVersionId, permissionMode, meetingModelOverride, cancellationToken, options);
+        SessionModelOverride? meetingModelOverride = null, string? interfaceLocale = null,
+        CancellationToken cancellationToken = default) =>
+        ResolveCoreAsync(sessionId, options.WorkflowModeVersionId, permissionMode, meetingModelOverride, cancellationToken, options,
+            interfaceLocale: interfaceLocale);
 
     public Task<FrozenRunConfigurationV1> ResolveSubmissionAsync(FullDuplexInvocation invocation, CancellationToken cancellationToken = default) =>
         ResolveCoreAsync(invocation.SessionId, invocation.SpaceOptions?.WorkflowModeVersionId ?? invocation.ModeVersionId,
             invocation.PermissionMode, invocation.MeetingModelOverride, cancellationToken, invocation.SpaceOptions,
-            useSessionModelOverride: !invocation.SessionSettingsCaptured);
+            useSessionModelOverride: !invocation.SessionSettingsCaptured, interfaceLocale: invocation.InterfaceLocale);
 
     public Task<FrozenRunConfigurationV1> ResolveForModeAsync(
         Guid sessionId,
         Guid modeVersionId,
         string? permissionMode,
         SessionModelOverride? meetingModelOverride = null,
+        string? interfaceLocale = null,
         CancellationToken cancellationToken = default) =>
-        ResolveCoreAsync(sessionId, modeVersionId, permissionMode, meetingModelOverride, cancellationToken);
+        ResolveCoreAsync(sessionId, modeVersionId, permissionMode, meetingModelOverride, cancellationToken,
+            interfaceLocale: interfaceLocale);
 
     private async Task<FrozenRunConfigurationV1> ResolveCoreAsync(
         Guid sessionId,
@@ -327,7 +344,8 @@ internal sealed class AgentRuntimeConfigurationResolver : IAgentRuntimeConfigura
         SessionModelOverride? meetingModelOverride,
         CancellationToken cancellationToken,
         SpaceRunOptions? spaceOptions = null,
-        bool useSessionModelOverride = true)
+        bool useSessionModelOverride = true,
+        string? interfaceLocale = null)
     {
         EffectiveConfigurationSnapshot? fileSnapshot = null;
         if (_configurationFiles is not null)
@@ -364,9 +382,9 @@ internal sealed class AgentRuntimeConfigurationResolver : IAgentRuntimeConfigura
         if (fileSnapshot is not null)
             bindings.Add(new("scope_configuration_files", DeterministicGuid(fileSnapshot.StorageId), DeterministicGuid(fileSnapshot.ContentHash), fileSnapshot.ContentHash));
         var relational = spaceOptions is { WorkflowModeVersionId: null }
-            ? await _formal.ResolveSpaceBaseAsync(sessionId, cancellationToken).ConfigureAwait(false)
+            ? await _formal.ResolveSpaceBaseAsync(sessionId, RunLocaleResolver.Normalize(interfaceLocale), cancellationToken).ConfigureAwait(false)
                 ?? throw new RunAdmissionException("space_base_unavailable", "Publish a directly executable mode with a writable conversation identity before using spatial composition.")
-            : await _formal.ResolveRosterForModeAsync(sessionId, modeVersionId.Value, cancellationToken).ConfigureAwait(false)
+            : await _formal.ResolveRosterForModeAsync(sessionId, modeVersionId.Value, RunLocaleResolver.Normalize(interfaceLocale), cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidDataException($"Agent mode version '{modeVersionId}' could not be resolved.");
         modeVersionId = relational.ModeVersionId;
         SpaceCompositionPolicy.Validate(spaceOptions, relational, workspace);
@@ -375,7 +393,7 @@ internal sealed class AgentRuntimeConfigurationResolver : IAgentRuntimeConfigura
         string[] preparationTools = [];
         if (spaceOptions is { WorkflowModeVersionId: not null } && (spaceOptions.SpecEnabled || spaceOptions.Worktree))
         {
-            var preparation = await _formal.ResolveSpaceBaseAsync(sessionId, cancellationToken).ConfigureAwait(false)
+            var preparation = await _formal.ResolveSpaceBaseAsync(sessionId, RunLocaleResolver.Normalize(interfaceLocale), cancellationToken).ConfigureAwait(false)
                 ?? throw new RunAdmissionException("space_base_unavailable", "The workflow requires a published direct-execution resource for its preparation phase.");
             var source = preparation.Operation.Single(item => item.Id == preparation.ConversationTemplateSlug);
             var root = operation.Single(item => item.Id == relational.ConversationTemplateSlug);
@@ -507,6 +525,7 @@ internal sealed class AgentRuntimeConfigurationResolver : IAgentRuntimeConfigura
             Orchestration = snapshot.Orchestration,
             Graph = graph,
             RuntimePolicy = relational.RuntimePolicy,
+            InterfaceLocale = RunLocaleResolver.Normalize(interfaceLocale),
             Workspace = workspace,
             SpaceOptions = spaceOptions,
             SpacePreparationToolIds = preparationTools.Length == 0 ? null : preparationTools

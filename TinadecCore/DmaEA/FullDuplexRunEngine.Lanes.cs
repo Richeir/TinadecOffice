@@ -1115,7 +1115,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 MeetingModelOverride: payload.MeetingModelOverride,
                 ModeVersionId: payload.ModeVersionId,
                 QueueBehindActiveRun: true, SpaceOptions: payload.SpaceOptions,
-                SessionSettingsCaptured: true), cancellationToken).ConfigureAwait(false);
+                SessionSettingsCaptured: true, InterfaceLocale: payload.InterfaceLocale), cancellationToken).ConfigureAwait(false);
             await AppendEventAsync(runId, "interaction.queued_executed",
                 "A queued interaction was admitted as its own run once this run finished.",
                 new { directive_id = directive.Id, released_run_id = submission.RunId, existing = submission.Existing }, cancellationToken).ConfigureAwait(false);
@@ -1157,7 +1157,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         string? PermissionMode,
         Guid? ModeVersionId,
         SessionModelOverride? MeetingModelOverride,
-        SpaceRunOptions? SpaceOptions);
+        SpaceRunOptions? SpaceOptions,
+        string? InterfaceLocale = null);
 
     internal static QueuedInteractionPayload? ParseQueuedInteractionPayload(string payloadJson)
     {
@@ -1198,6 +1199,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                     : null;
                 meetingModelOverride = new SessionModelOverride(providerInstanceId, model);
             }
+            var interfaceLocale = root.TryGetProperty("interface_locale", out var localeValue)
+                && localeValue.ValueKind == JsonValueKind.String
+                ? localeValue.GetString()
+                : null;
             SpaceRunOptions? spaceOptions = null;
             if (root.TryGetProperty("space_options", out var optionsValue) && optionsValue.ValueKind != JsonValueKind.Null)
                 spaceOptions = optionsValue.Deserialize<SpaceRunOptions>(new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -1208,7 +1213,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 permissionMode,
                 modeVersionId,
                 meetingModelOverride,
-                spaceOptions);
+                spaceOptions,
+                interfaceLocale);
         }
         catch (JsonException)
         {

@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TinadecCore.Abstractions.Ports;
 using TinadecCore.AgentConfiguration;
+using TinadecCore.Contracts.Dtos;
 using TinadecCore.DmaEA;
 using TinadecCore.Lifecycle;
 using TinadecCore.Persistence;
@@ -1647,6 +1648,47 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         Assert.Equal(body.GetProperty("turn_id").GetGuid(), retryBody.GetProperty("turn_id").GetGuid());
     }
 
+    [Fact]
+    public async Task InteractionAdmission_FreezesTheNormalizedInterfaceLocaleForTheRun()
+    {
+        var script = new ScriptedChatClient()
+            .WhenPlanner("[{\"title\":\"任务A\",\"description\":\"\",\"success_criteria\":[\"完成\"],\"dependencies\":[],\"required_capabilities\":[],\"priority\":1,\"risk\":\"low\"}]")
+            .WhenWorker("完成")
+            .WhenSupervisor("{\"decision\":\"pass\",\"reasons\":[],\"revise_task_indexes\":[]}")
+            .WhenMeeting("好了。");
+        var factory = CreateFactory(script);
+        var client = factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/sessions/{sessionId}/interactions",
+            new { content = "locale probe", client_message_id = "locale-main", interface_locale = "en-US" });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var runId = body.GetProperty("run_id").GetGuid();
+
+        var lifecycle = factory.Services.GetRequiredService<ILifecycleManager>();
+        var frozen = await lifecycle.GetFrozenRunConfigurationAsync(runId.ToString());
+        Assert.NotNull(frozen);
+        var configuration = JsonSerializer.Deserialize<FrozenRunConfigurationV1>(
+            frozen!.Content, FrozenRunConfigurationV1.JsonOptions);
+        // The raw BCP-47 tag is normalized at freeze time; a resumed run keeps it.
+        Assert.Equal("en", configuration!.InterfaceLocale);
+
+        // Replaying the same client_message_id returns the frozen run; the retry
+        // locale is never allowed to rewrite a run that already started.
+        var retry = await client.PostAsJsonAsync(
+            $"/api/v1/sessions/{sessionId}/interactions",
+            new { content = "locale probe", client_message_id = "locale-main", interface_locale = "ja" });
+        Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
+        var retryBody = await retry.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(runId, retryBody.GetProperty("run_id").GetGuid());
+        var frozenAfterRetry = await lifecycle.GetFrozenRunConfigurationAsync(runId.ToString());
+        var configurationAfterRetry = JsonSerializer.Deserialize<FrozenRunConfigurationV1>(
+            frozenAfterRetry!.Content, FrozenRunConfigurationV1.JsonOptions);
+        Assert.Equal("en", configurationAfterRetry!.InterfaceLocale);
+    }
+
     private static string LanesEnabledToml() =>
         RuntimeTomlWith(
             "enabled = false\ncontext_token_threshold = 0\ncompress_on_task_closed = false\nrecommend_on_task_created = false\ncurate_on_run_closed = false\ngit_steward_on_run_closed = false\n")
@@ -1715,7 +1757,8 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
             {
                 content = "完成后测试并提交",
                 client_message_id = "drain-followup",
-                permission_mode = "full-access"
+                permission_mode = "full-access",
+                interface_locale = "ja"
             });
         Assert.Equal(HttpStatusCode.Created, queued.StatusCode);
         var queuedBody = await queued.Content.ReadFromJsonAsync<JsonElement>();
@@ -1766,6 +1809,142 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         Assert.NotNull(configuration);
         Assert.Equal("full-access", configuration!.PermissionMode);
         Assert.Equal(queuedBody.GetProperty("mode_version_id").GetGuid(), configuration.ModeVersionId);
+        // The queued directive persisted the locale it was submitted with, and the
+        // drain that released it froze that locale onto the run it admitted.
+        Assert.Equal("ja", configuration.InterfaceLocale);
+    }
+
+    [Fact]
+    public async Task CorrectionFeedback_ReopenFreezesTheFeedbackLocaleOrFallsBackToTheSourceRun()
+    {
+        var script = new ScriptedChatClient()
+            .WhenPlanner("[{\"title\":\"任务A\",\"description\":\"\",\"success_criteria\":[\"完成\"],\"dependencies\":[],\"required_capabilities\":[],\"priority\":1,\"risk\":\"low\"}]")
+            .WhenWorker("完成")
+            .WhenSupervisor("{\"decision\":\"pass\",\"reasons\":[],\"revise_task_indexes\":[]}")
+            .WhenMeeting("好了。");
+        var factory = CreateFactory(script);
+        var client = factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+        var lifecycle = factory.Services.GetRequiredService<ILifecycleManager>();
+
+        Guid meetingAgentId;
+        Guid plannerAgentId;
+        await using (var db = await factory.Services
+            .GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync())
+        {
+            meetingAgentId = await db.AgentDefinitions
+                .Where(x => x.SourceKey == TestAgentPackId + ":meeting").Select(x => x.Id).SingleAsync();
+            plannerAgentId = await db.AgentDefinitions
+                .Where(x => x.SourceKey == TestAgentPackId + ":task_planner").Select(x => x.Id).SingleAsync();
+        }
+
+        var features = new[]
+        {
+            CorrectionRuntimePolicy.CausalTraceFeature,
+            CorrectionRuntimePolicy.CompletionContractFeature,
+            CorrectionRuntimePolicy.UserReproductionReopensFeature,
+        };
+        var createMode = await client.PostAsJsonAsync("/api/v1/agent-modes", new
+        {
+            slug = "correction-mode",
+            display_name = "Correction Mode",
+            runtime_policy = new
+            {
+                kind = CorrectionRuntimePolicy.StructuredInvestigationKind,
+                version = CorrectionRuntimePolicy.StructuredInvestigationVersion,
+                features
+            },
+            nodes = new object[]
+            {
+                new { node_key = "meeting-1", agent_definition_id = meetingAgentId.ToString(), layer = "operation", label = "meeting", config = new { } },
+                new { node_key = "executor-1", agent_definition_id = plannerAgentId.ToString(), layer = "execution", label = "planner", config = new { } }
+            },
+            edges = Array.Empty<object>()
+        });
+        Assert.Equal(HttpStatusCode.Created, createMode.StatusCode);
+        var createdMode = await createMode.Content.ReadFromJsonAsync<JsonElement>();
+        var modeId = createdMode.GetProperty("id").GetGuid();
+        using var publishMode = await client.PostAsync($"/api/v1/agent-modes/{modeId}/publish", null);
+        Assert.Equal(HttpStatusCode.OK, publishMode.StatusCode);
+
+        Guid modeVersionId;
+        await using (var db = await factory.Services
+            .GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync())
+        {
+            modeVersionId = await db.ModeVersions
+                .Where(x => x.AgentModeId == modeId && x.Status == "published")
+                .Select(x => x.Id)
+                .SingleAsync();
+        }
+
+        // Freeze a source run by hand: the endpoint only needs a completed run, a
+        // frozen policy, and a checkpoint carrying a correction trace.
+        var sourceRunId = await lifecycle.StartRunAsync(sessionId.ToString());
+        var sourcePolicy = new ModeRuntimePolicyDto
+        {
+            Kind = CorrectionRuntimePolicy.StructuredInvestigationKind,
+            Version = CorrectionRuntimePolicy.StructuredInvestigationVersion,
+            Features = features
+        };
+        var sourceConfiguration = new FrozenRunConfigurationV1(
+            FrozenRunConfigurationV1.CurrentSchemaVersion, "baseline", 1, modeVersionId, "correction", "full-access",
+            new SpawnPolicy(2, 16, 4), new SchedulingPolicy(2, 2, true), new SupervisionPolicy(true, 2),
+            new ContextPolicy(65536, 128, true), new MemoryPolicy(true, 8, [], []),
+            new ToolRuntimePolicy("test", true, true, 60, 0), [], [], [])
+        {
+            RuntimePolicy = sourcePolicy,
+            InterfaceLocale = "zh-TW"
+        };
+        await lifecycle.FreezeRunConfigurationAsync(
+            sourceRunId,
+            new FrozenRunConfigurationWrite(sourceConfiguration.SchemaVersion, sourceConfiguration.ToCanonicalJson(), []));
+        var trace = CorrectionTracePolicy.Create(
+            new RunState { RunId = sourceRunId, SessionId = sessionId.ToString(), Status = RunStatus.Completed },
+            "the symptom is still visible");
+        var checkpoint = new FullDuplexCheckpointV1
+        {
+            RunId = Guid.Parse(sourceRunId),
+            SessionId = sessionId,
+            TurnId = Guid.NewGuid(),
+            TriggerMessageId = Guid.NewGuid(),
+            UserGoal = "the symptom is still visible",
+            Phase = "completed",
+            Correction = trace
+        };
+        await lifecycle.SaveRunCheckpointAsync(
+            sourceRunId,
+            new RunCheckpointWrite(
+                0,
+                "completed",
+                JsonSerializer.Serialize(checkpoint, FrozenRunConfigurationV1.JsonOptions),
+                IdempotencyKey: $"correction-locale-seed:{sourceRunId}"));
+        await lifecycle.SetRunStatusAsync(sourceRunId, "executing", "Seed correction executing.");
+        await lifecycle.SetRunStatusAsync(sourceRunId, "completed", "Seed correction completed.");
+
+        var explicitFeedback = await client.PostAsJsonAsync(
+            $"/api/v1/runs/{sourceRunId}/correction/feedback",
+            new { kind = "reproduced", client_request_id = "locale-reopen-explicit", note = "still reproduces", interface_locale = "ru" });
+        Assert.Equal(HttpStatusCode.Accepted, explicitFeedback.StatusCode);
+        var explicitBody = await explicitFeedback.Content.ReadFromJsonAsync<JsonElement>();
+        var explicitRunId = explicitBody.GetProperty("run_id").GetGuid();
+        var explicitFrozen = await lifecycle.GetFrozenRunConfigurationAsync(explicitRunId.ToString());
+        var explicitConfiguration = JsonSerializer.Deserialize<FrozenRunConfigurationV1>(
+            explicitFrozen!.Content, FrozenRunConfigurationV1.JsonOptions);
+        Assert.Equal("ru", explicitConfiguration!.InterfaceLocale);
+        Assert.Equal(modeVersionId, explicitConfiguration.ModeVersionId);
+
+        // No interface_locale on the request: the reopen inherits the locale the
+        // source run was frozen with instead of silently resetting to the default.
+        var inheritedFeedback = await client.PostAsJsonAsync(
+            $"/api/v1/runs/{sourceRunId}/correction/feedback",
+            new { kind = "reproduced", client_request_id = "locale-reopen-inherited", note = "still reproduces" });
+        Assert.Equal(HttpStatusCode.Accepted, inheritedFeedback.StatusCode);
+        var inheritedBody = await inheritedFeedback.Content.ReadFromJsonAsync<JsonElement>();
+        var inheritedRunId = inheritedBody.GetProperty("run_id").GetGuid();
+        var inheritedFrozen = await lifecycle.GetFrozenRunConfigurationAsync(inheritedRunId.ToString());
+        var inheritedConfiguration = JsonSerializer.Deserialize<FrozenRunConfigurationV1>(
+            inheritedFrozen!.Content, FrozenRunConfigurationV1.JsonOptions);
+        Assert.Equal("zh-TW", inheritedConfiguration!.InterfaceLocale);
     }
 
     [Fact]

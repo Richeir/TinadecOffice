@@ -197,6 +197,9 @@ public static class CorrectionEndpoints
             cancellationToken: cancellationToken,
             idempotencyKey: idempotencyKey).ConfigureAwait(false);
         var reopenedGoal = note ?? "原症状仍复现，请重新调查。";
+        var reopenedLocale = string.IsNullOrWhiteSpace(body.InterfaceLocale)
+            ? configuration.InterfaceLocale
+            : body.InterfaceLocale;
         var submitted = await coordinator.SubmitAsync(new FullDuplexInvocation(
             Guid.Parse(sourceRun.SessionId),
             reopenedGoal,
@@ -207,7 +210,7 @@ public static class CorrectionEndpoints
             ModeVersionId: configuration.ModeVersionId,
             ParentRunId: runId,
             RunKind: "correction_reopen",
-            SessionSettingsCaptured: true), cancellationToken).ConfigureAwait(false);
+            SessionSettingsCaptured: true, InterfaceLocale: reopenedLocale), cancellationToken).ConfigureAwait(false);
         var linked = await MutateLatestAsync(
             runId,
             lifecycle,

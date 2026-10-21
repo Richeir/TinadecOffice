@@ -130,6 +130,35 @@ public sealed class AgentPackToolResourceDto
     public JsonElement? Definition { get; init; }
 }
 
+/// <summary>
+/// One locale overlay. Every member is optional: a missing member falls back to
+/// the resource's base value, so a partially translated pack still never leaks a
+/// key into the UI. <see cref="Templates"/> keys are prompt-graph node ids and
+/// replace that node's <c>config.content</c> at freeze time.
+/// </summary>
+public sealed class AgentPackI18nDto
+{
+    [JsonPropertyName("display_name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DisplayName { get; init; }
+
+    [JsonPropertyName("description")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Description { get; init; }
+
+    [JsonPropertyName("label")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Label { get; init; }
+
+    [JsonPropertyName("system_prompt")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SystemPrompt { get; init; }
+
+    [JsonPropertyName("templates")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? Templates { get; init; }
+}
+
 public sealed class AgentPackAgentResourceDto
 {
     [JsonPropertyName("resource_key")]
@@ -143,6 +172,14 @@ public sealed class AgentPackAgentResourceDto
 
     [JsonPropertyName("description")]
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Per-locale display overlays. Omitted when a pack ships none, so legacy
+    /// manifests keep their exact digest.
+    /// </summary>
+    [JsonPropertyName("i18n")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, AgentPackI18nDto>? I18n { get; init; }
 
     [JsonPropertyName("layer")]
     public string? Layer { get; init; }
@@ -183,6 +220,10 @@ public sealed class AgentPackPromptPipelineResourceDto
     [JsonPropertyName("description")]
     public string? Description { get; init; }
 
+    [JsonPropertyName("i18n")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, AgentPackI18nDto>? I18n { get; init; }
+
     [JsonPropertyName("graph")]
     public JsonElement Graph { get; init; }
 }
@@ -200,6 +241,10 @@ public sealed class AgentPackModeResourceDto
 
     [JsonPropertyName("description")]
     public string? Description { get; init; }
+
+    [JsonPropertyName("i18n")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, AgentPackI18nDto>? I18n { get; init; }
 
     [JsonPropertyName("nodes")]
     public IReadOnlyList<AgentPackModeNodeDto> Nodes { get; init; } = [];
@@ -238,7 +283,7 @@ public sealed class AgentPackModeResourceDto
     /// </summary>
     [JsonPropertyName("runtime_policy")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public CorrectionRuntimePolicyDto? RuntimePolicy { get; init; }
+    public ModeRuntimePolicyDto? RuntimePolicy { get; init; }
 
     [JsonPropertyName("canvas_layout")]
     public JsonElement CanvasLayout { get; init; }
@@ -295,6 +340,10 @@ public sealed class AgentPackModeNodeDto
 
     [JsonPropertyName("label")]
     public string? Label { get; init; }
+
+    [JsonPropertyName("i18n")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, AgentPackI18nDto>? I18n { get; init; }
 
     [JsonPropertyName("config")]
     public JsonElement Config { get; init; }

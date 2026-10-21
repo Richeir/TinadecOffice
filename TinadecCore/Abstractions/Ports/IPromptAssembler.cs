@@ -32,7 +32,8 @@ public sealed record FrozenPromptAssemblyRequest(
     Guid? PromptVersionId = null,
     string? PromptVersionContentHash = null,
     string? PromptGraphJson = null,
-    bool IncludeLiveFragments = false)
+    bool IncludeLiveFragments = false,
+    string? ResponseLocale = null)
 {
     /// <summary>
     /// The run's frozen workspace, when one is bound. It is prompt input, not a

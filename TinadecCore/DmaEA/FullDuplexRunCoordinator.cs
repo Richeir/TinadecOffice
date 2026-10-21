@@ -42,7 +42,8 @@ public sealed record FullDuplexInvocation(
     Guid? ParentTaskId = null,
     string RunKind = "root",
     SpaceRunOptions? SpaceOptions = null,
-    bool SessionSettingsCaptured = false);
+    bool SessionSettingsCaptured = false,
+    string? InterfaceLocale = null);
 
 public sealed record RunSubmission(
     Guid RunId,

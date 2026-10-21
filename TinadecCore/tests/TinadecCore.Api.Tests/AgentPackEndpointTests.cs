@@ -853,6 +853,251 @@ public sealed class AgentPackEndpointTests
         }
     }
 
+    // ── pack i18n overlays ──
+
+    private static readonly string[] I18nLocales = ["zh-CN", "zh-TW", "en", "ja", "ru"];
+
+    [Fact]
+    public async Task I18nOverlays_AreValidatedInstalledAndProjectedOnEveryReadSurface()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope(mutate: AddFiveLocaleOverlays);
+        var preview = await PreviewAsync(client, envelope);
+        using var install = await ApplyAsync(client, envelope, preview.GetProperty("preview_id").GetGuid(), "i18n-install");
+        Assert.Equal(HttpStatusCode.Created, install.StatusCode);
+
+        var agents = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/agents");
+        var localized = Assert.Single(agents!, agent => agent.TryGetProperty("i18n", out var i18n) && i18n.ValueKind == JsonValueKind.Object);
+        Assert.Equal(
+            I18nLocales.OrderBy(name => name, StringComparer.Ordinal),
+            localized.GetProperty("i18n").EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal));
+        Assert.Equal("Meeting Agent en", localized.GetProperty("i18n").GetProperty("en").GetProperty("display_name").GetString());
+        // Rows without overlays must not grow an i18n member.
+        Assert.All(
+            agents!.Where(agent => !agent.TryGetProperty("i18n", out _)),
+            agent => Assert.False(string.IsNullOrWhiteSpace(agent.GetProperty("display_name").GetString())));
+
+        var modes = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/agent-modes");
+        var localizedMode = Assert.Single(modes!, mode => mode.TryGetProperty("i18n", out var i18n) && i18n.ValueKind == JsonValueKind.Object);
+        var topology = await client.GetFromJsonAsync<JsonElement>($"/api/v1/agent-modes/{localizedMode.GetProperty("id").GetGuid()}");
+        Assert.Equal(5, topology.GetProperty("i18n").EnumerateObject().Count());
+        var localizedNode = Assert.Single(topology.GetProperty("nodes").EnumerateArray()
+            .Where(node => node.TryGetProperty("i18n", out var i18n) && i18n.ValueKind == JsonValueKind.Object));
+        Assert.Equal("meeting en", localizedNode.GetProperty("i18n").GetProperty("en").GetProperty("label").GetString());
+
+        await using var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync();
+        var pipeline = await db.PromptPipelines.AsNoTracking().SingleAsync(item => item.I18nJson != null);
+        Assert.Equal(5, JsonDocument.Parse(pipeline.I18nJson!).RootElement.EnumerateObject().Count());
+        var promptVersion = await db.PromptVersions.AsNoTracking().SingleAsync(item => item.PromptPipelineId == pipeline.Id);
+        Assert.NotNull(promptVersion.I18nJson);
+        Assert.Equal(
+            Encoding.UTF8.GetByteCount(promptVersion.GraphJson!) + Encoding.UTF8.GetByteCount(promptVersion.I18nJson!),
+            promptVersion.ContentLength);
+    }
+
+    [Fact]
+    public async Task I18nModeNodeOverlayWithoutLabelIsRejected()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope(mutate: manifest =>
+        {
+            AddFiveLocaleOverlays(manifest);
+            var node = manifest["resources"]!["modes"]!.AsArray()[0]!["nodes"]!.AsArray()[0]!.AsObject();
+            node["i18n"]!["en"]!.AsObject().Remove("label");
+        });
+
+        await AssertPackRejectedAsync(client, envelope, "node 'meeting-1' i18n['en'].label is required.");
+    }
+
+    [Fact]
+    public async Task I18nPromptTemplatesMustCoverEveryContentNodeAndNoStructuralNode()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+
+        var missing = FixtureEnvelope(mutate: manifest =>
+        {
+            AddFiveLocaleOverlays(manifest);
+            var prompt = manifest["resources"]!["prompt_pipelines"]!.AsArray()[0]!;
+            prompt["i18n"]!["en"]!["templates"]!.AsObject().Remove("template");
+        });
+        await AssertPackRejectedAsync(client, missing, "templates must cover node(s): template.");
+
+        var structural = FixtureEnvelope(mutate: manifest =>
+        {
+            AddFiveLocaleOverlays(manifest);
+            var prompt = manifest["resources"]!["prompt_pipelines"]!.AsArray()[0]!;
+            prompt["i18n"]!["en"]!["templates"]!["assemble"] = "structural nodes carry no content";
+        });
+        await AssertPackRejectedAsync(client, structural, "templates references unknown node 'assemble'.");
+    }
+
+    [Fact]
+    public async Task I18nUnknownLocaleIsRejected()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope(mutate: manifest =>
+        {
+            AddFiveLocaleOverlays(manifest);
+            var agent = manifest["resources"]!["agents"]!.AsArray()[0]!;
+            agent["i18n"]!["de"] = new JsonObject
+            {
+                ["display_name"] = "Meeting Agent de",
+                ["system_prompt"] = "de"
+            };
+        });
+
+        await AssertPackRejectedAsync(client, envelope, "i18n locale 'de' is not supported.");
+    }
+
+    [Fact]
+    public async Task PromptVersionIsNotRecreatedWhenOnlyThePackVersionChanges()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var first = FixtureEnvelope("0.2.5", AddFiveLocaleOverlays);
+        var firstPreview = await PreviewAsync(client, first);
+        using var firstInstall = await ApplyAsync(client, first, firstPreview.GetProperty("preview_id").GetGuid(), "i18n-idem-1");
+        Assert.Equal(HttpStatusCode.Created, firstInstall.StatusCode);
+
+        var second = FixtureEnvelope("0.3.0", manifest =>
+        {
+            AddFiveLocaleOverlays(manifest);
+            var meeting = manifest["resources"]!["agents"]!.AsArray()
+                .Single(item => item!["resource_key"]!.GetValue<string>() == "meeting")!.AsObject();
+            meeting["system_prompt"] = meeting["system_prompt"]!.GetValue<string>() + " v2";
+        });
+        var secondPreview = await PreviewAsync(client, second);
+        Assert.Equal("upgrade", secondPreview.GetProperty("action").GetString());
+        using var secondInstall = await ApplyAsync(
+            client, second, secondPreview.GetProperty("preview_id").GetGuid(), "i18n-idem-2",
+            $"\"{secondPreview.GetProperty("revision").GetInt64()}\"");
+        Assert.Equal(HttpStatusCode.OK, secondInstall.StatusCode);
+        var applied = await secondInstall.Content.ReadFromJsonAsync<JsonElement>();
+        var promptBinding = applied.GetProperty("resources").EnumerateArray()
+            .Single(item => item.GetProperty("kind").GetString() == "prompt_pipeline"
+                && item.GetProperty("resource_key").GetString() == "baseline-prompt");
+        Assert.Equal("reused", promptBinding.GetProperty("disposition").GetString());
+
+        await using var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync();
+        var pipeline = await db.PromptPipelines.AsNoTracking().SingleAsync(item => item.I18nJson != null);
+        var version = Assert.Single(await db.PromptVersions.AsNoTracking().Where(item => item.PromptPipelineId == pipeline.Id).ToArrayAsync());
+        Assert.Equal(1, version.Version);
+    }
+
+    [Fact]
+    public async Task LegacyPackSnapshotsKeepThePreOverlayShapeWithoutAnI18nMember()
+    {
+        using var factory = new AgentPackFactory();
+        using var client = factory.CreateClient();
+        var envelope = FixtureEnvelope();
+        var preview = await PreviewAsync(client, envelope);
+        using var install = await ApplyAsync(client, envelope, preview.GetProperty("preview_id").GetGuid(), "legacy-i18n");
+        Assert.Equal(HttpStatusCode.Created, install.StatusCode);
+
+        await using var db = await factory.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync();
+        var meeting = await db.AgentDefinitions.AsNoTracking().SingleAsync(item => item.SourceKey == PackId + ":meeting");
+        var agentVersion = await db.AgentVersions.AsNoTracking().SingleAsync(item => item.AgentDefinitionId == meeting.Id);
+        // Reconstruct the byte pre-i18n snapshot: if the conditional i18n member
+        // regressed to an explicit null, this canonical string would differ.
+        var expectedSnapshot = JsonSerializer.SerializeToElement(new
+        {
+            id = meeting.Id,
+            slug = meeting.Slug,
+            display_name = meeting.DisplayName,
+            layer = meeting.Layer,
+            role = meeting.Role,
+            capabilities = JsonSerializer.Deserialize<string[]>(meeting.CapabilitiesJson!),
+            tool_scope = JsonSerializer.Deserialize<string[]>(meeting.ToolScopeJson!),
+            model_strategy = JsonSerializer.Deserialize<JsonElement>(meeting.ModelStrategyJson!),
+            system_prompt = meeting.SystemPrompt,
+            description = meeting.Description,
+            enabled = meeting.Enabled
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+        Assert.Equal(Encoding.UTF8.GetString(Canonicalize(expectedSnapshot)), agentVersion.SnapshotJson);
+
+        foreach (var modeVersion in await db.ModeVersions.AsNoTracking().ToArrayAsync())
+        {
+            using var snapshot = JsonDocument.Parse(modeVersion.SnapshotJson!);
+            if (!snapshot.RootElement.TryGetProperty("mode", out var mode)) continue;
+            Assert.False(mode.TryGetProperty("i18n", out _));
+            if (!snapshot.RootElement.TryGetProperty("nodes", out var nodes)) continue;
+            foreach (var node in nodes.EnumerateArray())
+                Assert.False(node.TryGetProperty("i18n", out _));
+        }
+        Assert.All(await db.PromptVersions.AsNoTracking().ToArrayAsync(), version => Assert.Null(version.I18nJson));
+
+        var agentVersionCount = await db.AgentVersions.CountAsync();
+        var promptVersionCount = await db.PromptVersions.CountAsync();
+        var modeVersionCount = await db.ModeVersions.CountAsync();
+        var rePreview = await PreviewAsync(client, envelope);
+        Assert.Equal("up_to_date", rePreview.GetProperty("action").GetString());
+        using var reinstall = await ApplyAsync(
+            client, envelope, rePreview.GetProperty("preview_id").GetGuid(), "legacy-i18n-2",
+            $"\"{rePreview.GetProperty("revision").GetInt64()}\"");
+        Assert.Equal(HttpStatusCode.OK, reinstall.StatusCode);
+        Assert.Equal("up_to_date", (await reinstall.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+
+        await using var after = await factory.Services.GetRequiredService<IDbContextFactory<AgentConfigurationDbContext>>().CreateDbContextAsync();
+        Assert.Equal(agentVersionCount, await after.AgentVersions.CountAsync());
+        Assert.Equal(promptVersionCount, await after.PromptVersions.CountAsync());
+        Assert.Equal(modeVersionCount, await after.ModeVersions.CountAsync());
+    }
+
+    private static void AddFiveLocaleOverlays(JsonObject manifest)
+    {
+        var resources = manifest["resources"]!.AsObject();
+        var agent = resources["agents"]!.AsArray()[0]!.AsObject();
+        var prompt = resources["prompt_pipelines"]!.AsArray()[0]!.AsObject();
+        var mode = resources["modes"]!.AsArray()[0]!.AsObject();
+        var node = mode["nodes"]!.AsArray()[0]!.AsObject();
+        var agentI18n = new JsonObject();
+        var promptI18n = new JsonObject();
+        var modeI18n = new JsonObject();
+        var nodeI18n = new JsonObject();
+        foreach (var locale in I18nLocales)
+        {
+            agentI18n[locale] = new JsonObject
+            {
+                ["display_name"] = $"Meeting Agent {locale}",
+                ["description"] = $"agent overlay {locale}",
+                // Longer than the old 256-character ceiling; a real system prompt
+                // must never be rejected just because it carries an overlay.
+                ["system_prompt"] = new string('x', 1200)
+            };
+            promptI18n[locale] = new JsonObject
+            {
+                ["display_name"] = $"Baseline Prompt {locale}",
+                ["templates"] = new JsonObject { ["template"] = $"template overlay {locale}" }
+            };
+            modeI18n[locale] = new JsonObject
+            {
+                ["display_name"] = $"Ask {locale}",
+                ["description"] = $"ask overlay {locale}"
+            };
+            nodeI18n[locale] = new JsonObject { ["label"] = $"meeting {locale}" };
+        }
+        agent["i18n"] = agentI18n;
+        prompt["i18n"] = promptI18n;
+        mode["i18n"] = modeI18n;
+        node["i18n"] = nodeI18n;
+    }
+
+    private static async Task AssertPackRejectedAsync(HttpClient client, JsonElement envelope, string detail)
+    {
+        using var response = await client.PostAsJsonAsync("/api/v1/agent-packs/install-preview", envelope);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_agent_pack_manifest", problem.GetProperty("code").GetString());
+        Assert.Contains(detail, problem.GetProperty("detail").GetString() ?? string.Empty, StringComparison.Ordinal);
+    }
+
     private static async Task<JsonElement> PreviewAsync(HttpClient client, JsonElement envelope)
     {
         using var response = await client.PostAsJsonAsync("/api/v1/agent-packs/install-preview", envelope);

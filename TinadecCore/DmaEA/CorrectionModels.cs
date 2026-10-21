@@ -334,7 +334,7 @@ internal static class CorrectionTracePolicy
     public static string? ApplyProposal(
         CorrectionTraceState trace,
         JsonElement arguments,
-        CorrectionRuntimePolicyDto? policy = null)
+        ModeRuntimePolicyDto? policy = null)
     {
         if (arguments.ValueKind != JsonValueKind.Object)
             return "update_correction_trace requires an object.";
@@ -546,7 +546,7 @@ internal static class CorrectionTracePolicy
 
     public static string? EvaluateCompletion(
         CorrectionTraceState trace,
-        CorrectionRuntimePolicyDto policy,
+        ModeRuntimePolicyDto policy,
         string goal,
         bool hasMutation)
     {

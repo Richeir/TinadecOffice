@@ -5,12 +5,15 @@ namespace TinadecCore.Abstractions.Ports;
 /// <summary>
 /// Allow-list for host-owned mode workflows. Packs may choose a known policy and
 /// its declared features, but may never ship executable behavior of their own.
+/// Correction constants stay here for domain readability; every validation and
+/// feature lookup delegates to <see cref="ModeRuntimePolicyRegistry"/>, so the
+/// set of supported modes is data, not a code branch.
 /// </summary>
 public static class CorrectionRuntimePolicy
 {
-    public const string StructuredInvestigationKind = "structured_investigation";
-    public const int StructuredInvestigationVersion = 1;
-    public const string RequiredCoreCapability = "structured_investigation_v1";
+    public const string StructuredInvestigationKind = ModeRuntimePolicyRegistry.StructuredInvestigationKind;
+    public const int StructuredInvestigationVersion = ModeRuntimePolicyRegistry.StructuredInvestigationVersion;
+    public const string RequiredCoreCapability = ModeRuntimePolicyRegistry.StructuredInvestigationCapability;
 
     public const string CausalTraceFeature = "causal_trace";
     public const string CompletionContractFeature = "completion_contract";
@@ -20,47 +23,13 @@ public static class CorrectionRuntimePolicy
     public const string LocalHunkRevertFeature = "local_hunk_revert";
 
     public static readonly IReadOnlySet<string> StructuredInvestigationFeatures =
-        new HashSet<string>(StringComparer.Ordinal)
-        {
-            CausalTraceFeature,
-            CompletionContractFeature,
-            FailingReproRequiredFeature,
-            ClarificationLedgerFeature,
-            UserReproductionReopensFeature,
-            LocalHunkRevertFeature,
-        };
+        ModeRuntimePolicyRegistry.Definition(StructuredInvestigationKind, StructuredInvestigationVersion)!.Features;
 
-    public static string? Validate(CorrectionRuntimePolicyDto? policy)
-    {
-        if (policy is null) return null;
-        if (!string.Equals(policy.Kind, StructuredInvestigationKind, StringComparison.Ordinal))
-            return $"runtime_policy.kind '{policy.Kind}' is not supported.";
-        if (policy.Version != StructuredInvestigationVersion)
-            return $"runtime_policy.version {policy.Version} is not supported.";
+    public static string? Validate(ModeRuntimePolicyDto? policy) => ModeRuntimePolicyRegistry.Validate(policy);
 
-        var features = policy.Features.Distinct(StringComparer.Ordinal).ToArray();
-        var unknown = features.Where(feature => !StructuredInvestigationFeatures.Contains(feature)).ToArray();
-        if (unknown.Length > 0) return $"runtime_policy.features contains unsupported values: {string.Join(", ", unknown)}.";
-        if (!features.Contains(CausalTraceFeature, StringComparer.Ordinal))
-            return $"runtime_policy.features must include '{CausalTraceFeature}'.";
-        if (features.Contains(FailingReproRequiredFeature, StringComparer.Ordinal)
-            && !features.Contains(CompletionContractFeature, StringComparer.Ordinal))
-            return $"'{FailingReproRequiredFeature}' requires '{CompletionContractFeature}'.";
-        if (features.Contains(UserReproductionReopensFeature, StringComparer.Ordinal)
-            && !features.Contains(CompletionContractFeature, StringComparer.Ordinal))
-            return $"'{UserReproductionReopensFeature}' requires '{CompletionContractFeature}'.";
-        if (features.Contains(LocalHunkRevertFeature, StringComparer.Ordinal)
-            && !features.Contains(UserReproductionReopensFeature, StringComparer.Ordinal))
-            return $"'{LocalHunkRevertFeature}' requires '{UserReproductionReopensFeature}'.";
-        return null;
-    }
+    public static bool Has(ModeRuntimePolicyDto? policy, string feature) =>
+        ModeRuntimePolicyRegistry.Has(policy, StructuredInvestigationKind, feature);
 
-    public static bool Has(CorrectionRuntimePolicyDto? policy, string feature) =>
-        policy is not null
-        && string.Equals(policy.Kind, StructuredInvestigationKind, StringComparison.Ordinal)
-        && policy.Version == StructuredInvestigationVersion
-        && policy.Features.Contains(feature, StringComparer.Ordinal);
-
-    public static bool IsStructuredInvestigation(CorrectionRuntimePolicyDto? policy) =>
+    public static bool IsStructuredInvestigation(ModeRuntimePolicyDto? policy) =>
         Has(policy, CausalTraceFeature);
 }

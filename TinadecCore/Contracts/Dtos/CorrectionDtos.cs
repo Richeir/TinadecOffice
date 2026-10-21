@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace TinadecCore.Contracts.Dtos;
@@ -5,9 +6,10 @@ namespace TinadecCore.Contracts.Dtos;
 /// <summary>
 /// The declared, versioned runtime behavior of a mode. It is intentionally
 /// separate from agent capabilities: agent capabilities authorize work, while a
-/// runtime policy selects a host-owned workflow.
+/// runtime policy selects a host-owned workflow. The shape stays compatible with
+/// the original correction-only policy: <c>settings</c> is omitted when absent.
 /// </summary>
-public sealed class CorrectionRuntimePolicyDto
+public sealed class ModeRuntimePolicyDto
 {
     [JsonPropertyName("kind")]
     public string Kind { get; init; } = string.Empty;
@@ -17,6 +19,10 @@ public sealed class CorrectionRuntimePolicyDto
 
     [JsonPropertyName("features")]
     public IReadOnlyList<string> Features { get; init; } = [];
+
+    [JsonPropertyName("settings")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? Settings { get; init; }
 }
 
 public sealed class CorrectionTraceDto
@@ -278,6 +284,10 @@ public sealed class CorrectionFeedbackRequestDto
 
     [JsonPropertyName("client_request_id")]
     public string? ClientRequestId { get; init; }
+
+    [JsonPropertyName("interface_locale")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? InterfaceLocale { get; init; }
 }
 
 public sealed class CorrectionAnswerRequestDto

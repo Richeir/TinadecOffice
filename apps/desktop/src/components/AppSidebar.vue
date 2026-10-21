@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue'
 import { useWorkspaceList, freeWorkspaceKey, recentSessionRows, recentWorkspaceSessions } from '@/composables/useWorkspaceList'
+import { ACTIVITY_LIMIT, useRecentActivity } from '@/composables/useRecentActivity'
+import { presentActivity, type ActivityTone } from '@/lib/recentActivity'
 import { workspaceIcons, type WorkspaceLoadState } from '@/lib/workspaces'
 import { scopedApi, selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
 import { buildSidebarUsage, SIDEBAR_USAGE_DAYS, usageWindow, type SidebarUsage, type SidebarUsageBar } from '@/lib/sidebarUsage'
@@ -10,7 +12,14 @@ import {
   ArrowRightLeft,
   Bug,
   ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleDot,
+  CircleSlash,
+  CircleX,
   FolderOpen,
+  Hourglass,
+  Loader,
   MessageSquare,
   MoreHorizontal,
   PanelLeftClose,
@@ -284,6 +293,14 @@ const visibleWorkspaces = computed(() => workspaces.value.filter(workspace => wo
   ? list.state.value.projectConversations
   : list.state.value.freeConversation,
 ))
+// Sessions not bound to any project (Codex-style free conversations). The title is not a
+// filter: a newly created conversation still carries the default 'Tinadec session' title until
+// its first message generates one, so hiding that title made every fresh free conversation
+// invisible. Declared with the other session derivations because `allSessions` reads it while
+// the option lists below are being evaluated.
+const freeSessions = computed(() =>
+  props.sessions.filter((s) => !s.project_id && s.title)
+)
 function allSessions(key: string): SessionDto[] { return key === freeWorkspaceKey ? freeSessions.value : getProjectSessions(key) }
 function shownSessions(key: string) {
   const active = props.sessions.find(isActiveSession)
@@ -291,13 +308,13 @@ function shownSessions(key: string) {
 }
 function isActiveSession(session: SessionDto) { return session.id === props.selectedSessionId && (!session.storage_id || session.storage_id === selectedStorage.value) }
 
-// ---- Section options (最近对话, 项目对话) ----
-// The recents list is what Codex/WorkBuddy lead with: newest conversations across every
-// workspace, so a chat is one click away without knowing which project it lives in. It is
-// built from every workspace row rather than only the groups currently rendered, because
-// hiding project conversations removes the grouped list, not this flat shortcut.
-const RECENT_CONVERSATION_LIMIT = 8
-const recentConversations = computed(() => {
+// ---- Section options (最近对话 / 最近活动 / 分组开关) ----
+/**
+ * Every conversation the sidebar can reach, newest first, each labelled with its workspace.
+ * Both flat lists (最近对话, 最近的活动) read this ranking, and both deliberately ignore the
+ * group switches: hiding the grouped rows must not take the shortcuts with them.
+ */
+const conversationRows = computed(() => {
   const source = new Map<string, string>()
   const rows: SessionDto[] = []
   for (const workspace of workspaces.value) {
@@ -308,9 +325,60 @@ const recentConversations = computed(() => {
       rows.push(row)
     }
   }
-  return recentSessionRows(rows, RECENT_CONVERSATION_LIMIT)
-    .map(session => ({ session, workspace: source.get(selectionKey(session)) ?? '' }))
+  return recentSessionRows(rows, rows.length)
+    .map(session => ({ session, projectName: source.get(selectionKey(session)) ?? '' }))
 })
+const RECENT_CONVERSATION_LIMIT = 8
+const recentConversations = computed(() => conversationRows.value.slice(0, RECENT_CONVERSATION_LIMIT))
+// The activity cards are taller, so fewer of them fit the same scrollport.
+/** A live duration only has to look right, so a half-minute tick is enough. */
+const ACTIVITY_CLOCK_MS = 30_000
+const activityCandidates = computed(() => conversationRows.value.slice(0, ACTIVITY_LIMIT))
+const { runs: activityRuns, refresh: refreshActivity } = useRecentActivity(
+  () => activityCandidates.value,
+  { enabled: () => list.state.value.activity },
+)
+const activityNow = ref(Date.now())
+let activityClock: ReturnType<typeof setInterval> | null = null
+/** A live run's duration has to grow; a terminal one does not, so the clock only runs while on. */
+function syncActivityClock(enabled: boolean) {
+  if (activityClock) { clearInterval(activityClock); activityClock = null }
+  if (!enabled) return
+  activityNow.value = Date.now()
+  activityClock = setInterval(() => { activityNow.value = Date.now() }, ACTIVITY_CLOCK_MS)
+}
+watch(() => list.state.value.activity, enabled => {
+  syncActivityClock(enabled)
+  if (enabled) void refreshActivity()
+})
+const activityIcons: Record<ActivityTone, Component> = {
+  awaiting: Hourglass,
+  active: Loader,
+  completed: CircleCheck,
+  failed: CircleX,
+  cancelled: CircleSlash,
+  unknown: CircleDot,
+  idle: CircleDashed,
+}
+function activityStateLabel(tone: ActivityTone): string {
+  switch (tone) {
+    case 'awaiting': return t('sidebar.activityState.awaiting')
+    case 'active': return t('sidebar.activityState.active')
+    case 'completed': return t('sidebar.activityState.completed')
+    case 'failed': return t('sidebar.activityState.failed')
+    case 'cancelled': return t('sidebar.activityState.cancelled')
+    case 'unknown': return t('sidebar.activityState.unknown')
+    default: return t('sidebar.activityState.idle')
+  }
+}
+const activities = computed(() => activityCandidates.value.map(candidate => {
+  const key = selectionKey(candidate.session)
+  // "No run in a roster I read" and "I never read this roster" are different facts: the second
+  // one must not render as an idle task.
+  const read = key in activityRuns.value
+  const run = activityRuns.value[key] ?? null
+  return { ...candidate, run, facts: presentActivity(run, candidate.session, activityNow.value, locale.value, read) }
+}))
 const optionsMenuId = `sidebar-workspace-options-${useId()}`
 const optionsMenuOpen = ref(false)
 const optionsMenuStyle = ref({ left: '0px', top: '0px' })
@@ -364,9 +432,6 @@ function handleNewThread() {
 // not a filter: a newly created conversation still carries the default
 // 'Tinadec session' title until its first message generates one, so hiding that
 // title made every fresh free conversation invisible.
-const freeSessions = computed(() =>
-  props.sessions.filter((s) => !s.project_id && s.title)
-)
 
 // ---- Token usage (current storage scope, last 7 days) ----
 const USAGE_PAGE_LIMIT = 200
@@ -421,8 +486,19 @@ async function loadTokenUsage(): Promise<void> {
   }
 }
 
-onMounted(() => { void loadTokenUsage() })
-watch(() => props.busy, (busy, wasBusy) => { if (wasBusy && !busy) void loadTokenUsage() })
+onMounted(() => {
+  void loadTokenUsage()
+  // An option that is already on when the window opens still needs its first read; the clock
+  // only exists while the view does.
+  syncActivityClock(list.state.value.activity)
+  if (list.state.value.activity) void refreshActivity()
+})
+watch(() => props.busy, (busy, wasBusy) => {
+  if (!wasBusy || busy) return
+  void loadTokenUsage()
+  // A finished run is exactly what turns one activity card from "进行中" into its outcome.
+  void refreshActivity()
+})
 watch(selectedStorage, () => { void loadTokenUsage() })
 
 function openDebugStudio() {
@@ -501,6 +577,7 @@ onBeforeUnmount(() => {
   footerResizeObserver?.disconnect()
   footerResizeObserver = null
   tokenUsageGeneration += 1
+  if (activityClock) { clearInterval(activityClock); activityClock = null }
 })
 watch([nickname, () => props.collapsed], async () => {
   await nextTick()
@@ -584,13 +661,39 @@ watch([nickname, () => props.collapsed], async () => {
             :class="{ active: isActiveSession(entry.session) }"
             @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
           >
-            <button class="session-item" :aria-current="isActiveSession(entry.session) ? 'page' : undefined" :title="`${entry.session.title} · ${entry.workspace}`" @click="handleSessionClick(selectionKey(entry.session))">
+            <button class="session-item" :aria-current="isActiveSession(entry.session) ? 'page' : undefined" :title="`${entry.session.title} · ${entry.projectName}`" @click="handleSessionClick(selectionKey(entry.session))">
               <MessageSquare :size="13" class="recent-conversation-icon" />
               <span class="session-title">{{ entry.session.title }}</span>
-              <span class="recent-conversation-source">{{ entry.workspace }}</span>
+              <span class="recent-conversation-source">{{ entry.projectName }}</span>
             </button>
           </div>
           <div v-if="!recentConversations.length" class="session-empty">{{ t('sidebar.noSessions') }}</div>
+        </div>
+        <div v-if="list.state.value.activity && !list.state.value.collapsed" class="activity-group" role="group" :aria-label="t('sidebar.recentActivity')">
+          <div class="activity-group-heading">{{ t('sidebar.recentActivity') }}</div>
+          <button
+            v-for="entry in activities"
+            :key="selectionKey(entry.session)"
+            type="button"
+            class="activity-card"
+            :class="{ active: isActiveSession(entry.session) }"
+            :title="`${entry.session.title} · ${entry.projectName}`"
+            @click="handleSessionClick(selectionKey(entry.session))"
+            @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
+          >
+            <span class="activity-title">{{ entry.session.title }}</span>
+            <span class="activity-meta">
+              <span class="activity-state" :class="`activity-state--${entry.facts.tone}`">
+                <component :is="activityIcons[entry.facts.tone]" :size="12" class="activity-state-icon" />
+                <span class="activity-state-label">{{ activityStateLabel(entry.facts.tone) }}</span>
+              </span>
+              <span class="activity-facts">
+                <span class="activity-duration">{{ entry.facts.measure }}</span>
+                <span class="activity-workspace">{{ entry.projectName }}</span>
+              </span>
+            </span>
+          </button>
+          <div v-if="!activities.length" class="session-empty">{{ t('sidebar.activityEmpty') }}</div>
         </div>
         <template v-if="!list.state.value.collapsed"><div v-for="workspace in visibleWorkspaces" :key="workspace.key" class="project-group" :class="{ 'free-conversation-group': !workspace.project }" :data-workspace-key="workspace.key">
           <div class="project-row" :class="{
@@ -734,26 +837,40 @@ watch([nickname, () => props.collapsed], async () => {
       @beforetoggle="updateOptionsMenuState"
     >
       <p class="sidebar-workspace-options-title">{{ t('sidebar.workspaceOptions') }}</p>
-      <label class="sidebar-option">
+      <!-- The whole row is the hit target: a label wrapping a button does not forward clicks,
+           so the row toggles itself and the checkbox stops the bubbling it already handled. -->
+      <label class="sidebar-option" @click="list.setRecent(!list.state.value.recent)">
         <UiCheckbox
           :model-value="list.state.value.recent"
           :aria-label="t('sidebar.recentConversations')"
+          @click.stop
           @update:model-value="list.setRecent($event)"
         />
         <span class="sidebar-option-label">{{ t('sidebar.recentConversations') }}</span>
       </label>
-      <label class="sidebar-option">
+      <label class="sidebar-option" @click="list.setActivity(!list.state.value.activity)">
+        <UiCheckbox
+          :model-value="list.state.value.activity"
+          :aria-label="t('sidebar.recentActivity')"
+          @click.stop
+          @update:model-value="list.setActivity($event)"
+        />
+        <span class="sidebar-option-label">{{ t('sidebar.recentActivity') }}</span>
+      </label>
+      <label class="sidebar-option" @click="list.setProjectConversations(!list.state.value.projectConversations)">
         <UiCheckbox
           :model-value="list.state.value.projectConversations"
           :aria-label="t('sidebar.projectConversations')"
+          @click.stop
           @update:model-value="list.setProjectConversations($event)"
         />
         <span class="sidebar-option-label">{{ t('sidebar.projectConversations') }}</span>
       </label>
-      <label class="sidebar-option">
+      <label class="sidebar-option" @click="list.setFreeConversation(!list.state.value.freeConversation)">
         <UiCheckbox
           :model-value="list.state.value.freeConversation"
           :aria-label="t('chat.freeConversation')"
+          @click.stop
           @update:model-value="list.setFreeConversation($event)"
         />
         <span class="sidebar-option-label">{{ t('chat.freeConversation') }}</span>

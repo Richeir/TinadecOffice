@@ -14,17 +14,25 @@ vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof
   useI18n: () => ({ t: (key: string) => key, te: () => false, locale: { value: 'en' } }),
 }))
 
-const { confirmMock, listModelInvocationsMock } = vi.hoisted(() => ({
+const { confirmMock, listModelInvocationsMock, listRunsMock } = vi.hoisted(() => ({
   confirmMock: vi.fn(async (..._args: unknown[]) => true),
   listModelInvocationsMock: vi.fn(async (..._params: unknown[]) => ({
     items: [] as unknown[],
     next_cursor: null as string | null,
   })),
+  listRunsMock: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
 }))
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
-  return { ...actual, api: { ...actual.api, listModelInvocations: (...args: unknown[]) => listModelInvocationsMock(...args) } }
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      listModelInvocations: (...args: unknown[]) => listModelInvocationsMock(...args),
+      listRuns: (...args: unknown[]) => listRunsMock(...args),
+    },
+  }
 })
 
 vi.mock('@/composables/useNotifications', () => ({
@@ -50,6 +58,8 @@ const session: SessionDto = {
 beforeEach(() => {
   listModelInvocationsMock.mockReset()
   listModelInvocationsMock.mockResolvedValue({ items: [], next_cursor: null })
+  listRunsMock.mockReset()
+  listRunsMock.mockResolvedValue([])
 })
 
 function factory(overrides: Record<string, unknown> = {}, attachTo?: Element) {
@@ -634,6 +644,60 @@ describe('AppSidebar material surfaces', () => {
   it('applies the raised material filter to its top-layer surfaces', () => {
     // The panel root's backdrop-filter cannot reach native popovers/dialogs in the top layer.
     expect(sidebarSource).toMatch(/\.sidebar-view-menu, \.sidebar-workspace-options, \.sidebar-migration-dialog \{[^}]*backdrop-filter: var\(--material-filter-raised, none\);[^}]*\}/)
+  })
+})
+
+describe('AppSidebar activity view', () => {
+  const runRow = (sessionId: string, status: string, createdAt: string, updatedAt = createdAt) => ({
+    id: `${sessionId}-run`, session_id: sessionId, status, summary: '', created_at: createdAt, updated_at: updatedAt,
+  })
+
+  it('reads no run rosters while the activity view is off', async () => {
+    localStorage.clear()
+    const wrapper = factory()
+    await flushPromises()
+    expect(wrapper.find('.activity-group').exists()).toBe(false)
+    expect(listRunsMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('shows each recent conversation as a card with its outcome, span and workspace', async () => {
+    localStorage.clear()
+    const second = { ...project, id: 'p-2', name: 'Second' }
+    const free: SessionDto = { ...session, id: 's-free', project_id: null, title: 'Free chat', updated_at: '2026-08-01T00:00:00Z' }
+    const newest: SessionDto = { ...session, id: 's-new', project_id: 'p-2', title: 'Newest work', updated_at: '2026-09-05T00:00:00Z' }
+    listRunsMock.mockImplementation(async (sessionId: unknown) => {
+      if (sessionId === 's-new') return [runRow('s-new', 'awaiting_user', '2026-09-05T10:00:00Z', '2026-09-05T10:00:00Z')]
+      if (sessionId === 's-1') return [runRow('s-1', 'completed', '2026-09-01T10:00:00Z', '2026-09-01T10:03:00Z')]
+      return [runRow('s-free', 'failed', '2026-08-01T09:00:00Z', '2026-08-01T09:01:00Z')]
+    })
+    const wrapper = factory({ projects: [project, second], sessions: [session, free, newest] })
+    await flushPromises()
+
+    // The option is off by default and lives in the workspace options panel.
+    expect(wrapper.find('.activity-card').exists()).toBe(false)
+    await wrapper.get('[aria-label="sidebar.recentActivity"]').trigger('click')
+    await flushPromises()
+
+    const cards = wrapper.findAll('.activity-card')
+    expect(cards.map(card => card.get('.activity-title').text())).toEqual(['Newest work', 'Demo session', 'Free chat'])
+    // State keeps the canonical outcome, colour-coded, icon left of the word.
+    expect(cards.map(card => card.get('.activity-state-label').text())).toEqual([
+      'sidebar.activityState.awaiting',
+      'sidebar.activityState.completed',
+      'sidebar.activityState.failed',
+    ])
+    expect(cards[0]!.get('.activity-state').classes()).toContain('activity-state--awaiting')
+    expect(cards[1]!.get('.activity-state').classes()).toContain('activity-state--completed')
+    expect(cards[0]!.find('.activity-state-icon').exists()).toBe(true)
+    // Facts sit right: the run's own span, then the workspace the conversation belongs to.
+    expect(cards[1]!.get('.activity-duration').text()).toBe('3m')
+    expect(cards.map(card => card.get('.activity-workspace').text())).toEqual(['Second', 'Demo project', 'chat.freeConversation'])
+
+    await cards[0]!.trigger('click')
+    expect(wrapper.emitted('select-session')?.at(-1)).toEqual(['s-new'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).activity).toBe(true)
+    wrapper.unmount()
   })
 })
 

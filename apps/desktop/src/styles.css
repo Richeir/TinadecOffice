@@ -2041,6 +2041,33 @@ button.agent-topology-node:hover,
 .recent-conversation-source { flex: 0 1 auto; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
 /* The rail has no room for a flat chat list, and its section header is gone there too. */
 .sidebar-collapsed .recent-conversations { display: none; }
+/* Activity cards carry an outcome, so they are two lines and full width: title on top, then the
+   state (icon + word, colour-coded) on the left and the facts right-aligned underneath it. */
+.activity-group { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--border-muted); }
+.activity-group-heading { padding: 4px 8px 3px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-muted); }
+.activity-card { display: grid; gap: 3px; width: 100%; padding: 7px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.activity-card:hover { background: var(--surface-hover); }
+.activity-card.active { background: var(--surface-selected); }
+.activity-card:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; }
+.activity-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.activity-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.activity-state { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; font-size: 11px; }
+.activity-state-icon { flex: 0 0 auto; }
+.activity-state-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Duration then workspace name, right-aligned; the name yields when the sidebar is narrow. */
+.activity-facts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: 0 1 auto; max-width: 62%; font-size: 11px; color: var(--text-muted); }
+.activity-duration { flex: 0 0 auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activity-workspace { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-state--awaiting { color: var(--accent-warning); }
+.activity-state--active { color: var(--accent-info); }
+.activity-state--completed { color: var(--accent-success); }
+.activity-state--failed { color: var(--accent-danger); }
+.activity-state--cancelled, .activity-state--unknown, .activity-state--idle { color: var(--text-muted); }
+/* Only a live run spins; a finished card must stay still. */
+.activity-state--active .activity-state-icon { animation: activity-spin 1.6s linear infinite; }
+@keyframes activity-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .activity-state--active .activity-state-icon { animation: none; } }
+.sidebar-collapsed .activity-group { display: none; }
 .sidebar-collapsed .token-usage-area { display: none; }
 .workspace-section-heading + .sidebar-list--group-collapsed { margin-top: 0; }
 .workspace-color-default { color: var(--text-secondary); }

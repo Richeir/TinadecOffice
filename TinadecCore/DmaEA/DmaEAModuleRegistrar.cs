@@ -36,6 +36,15 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
             sp.GetService<Microsoft.Extensions.Logging.ILogger<TinaChatMemberTurnRunner>>(),
             sp.GetService<Microsoft.Extensions.Configuration.IConfiguration>()?.GetValue<int?>("TinadecTinaChat:MemberTurnRounds") ?? 6));
         builder.Services.AddSingleton<IGovernanceTopicSink, GovernanceTopicSink>();
+        // B3: coalesces run facts into one planner wake and closes the planning loop when the
+        // ledger is empty and coverage is sufficient. Ports are optional so a trimmed host runs.
+        builder.Services.AddSingleton(sp => new AutonomousExplorationCoordinator(
+            sp.GetRequiredService<IGovernanceTopicSink>(),
+            sp.GetService<IPlanLedger>(),
+            sp.GetService<IExplorationGraph>(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<AutonomousExplorationCoordinator>>()));
+        builder.Services.AddHostedService<AutonomousExplorationCoordinatorService>();
         builder.Services.AddSingleton<IApprovalGateJudge, ApprovalGateJudge>();
         builder.Services.AddSingleton<AgentInstanceService>();
         builder.Services.AddSingleton<IAgentInstanceService>(sp => sp.GetRequiredService<AgentInstanceService>());
@@ -52,13 +61,14 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<FullDuplexRunEngine>();
         builder.Services.AddSingleton<IFullDuplexRunEngine>(sp => sp.GetRequiredService<FullDuplexRunEngine>());
         builder.Services.AddHostedService(sp => sp.GetRequiredService<FullDuplexRunEngine>());
+        builder.Services.AddSingleton<SideQuestionService>();
         builder.Services.AddSingleton<IFullDuplexRunCoordinator, FullDuplexRunCoordinator>();
         builder.RegisterModule(new ModuleDescriptor
         {
             ModuleId = ModuleId,
             Version = "0.1.0",
             Dependencies = ["abstractions", "persistence", "lifecycle", "models", "memory", "context", "prompts", "loop_guard", "tools"],
-            Capabilities = ["dual_layer_orchestration", "task_dispatch", "collaboration", "scheduling", "result_aggregation", "operational_trigger_chain", "standing_member_turns", "governance_topic_sink", "approval_gate_judge"],
+            Capabilities = ["dual_layer_orchestration", "task_dispatch", "collaboration", "scheduling", "result_aggregation", "operational_trigger_chain", "standing_member_turns", "governance_topic_sink", "approval_gate_judge", "autonomous_exploration_coordinator"],
             Language = "C#",
             MafPrimitives = ["agent", "workflow"],
             RegistrationStatus = ModuleRegistrationStatus.Registered

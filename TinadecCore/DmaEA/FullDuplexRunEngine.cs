@@ -103,6 +103,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
     private readonly ILongTermMemoryService? _longTermMemory;
     /// <summary>The run's shared plan (B2), when the host registered the exploration module.</summary>
     private readonly IPlanLedger? _planLedger;
+    /// <summary>The event-driven planner wake (B3), when the host registered the exploration module.</summary>
+    private readonly AutonomousExplorationCoordinator? _autonomousPlanning;
     /// <summary>
     /// The resource ledger, when the host registered one. Optional so a trimmed composition still runs;
     /// the ledger only ever refuses a call, never grants one.
@@ -202,6 +204,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         _directiveValidator = directiveValidator ?? services.GetService(typeof(IOrchestrationDirectiveValidator)) as IOrchestrationDirectiveValidator;
         _longTermMemory = services.GetService(typeof(ILongTermMemoryService)) as ILongTermMemoryService;
         _planLedger = services.GetService(typeof(IPlanLedger)) as IPlanLedger;
+        _autonomousPlanning = services.GetService(typeof(AutonomousExplorationCoordinator)) as AutonomousExplorationCoordinator;
         _resourceLeases = services.GetService(typeof(IResourceLeaseService)) as IResourceLeaseService;
         _projection = services.GetService(typeof(RunStreamProjection)) as RunStreamProjection;
         _logger = logger;
@@ -1879,7 +1882,12 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             // the model asked for that have not started are not run, and the next turn reads the
             // steering. A call already running was left to finish — its outcome must stay known.
             if (Interrupts?.TakePending(Guid.Parse(run.RunId)) is { } steering)
+            {
+                // A user steer can change what the run should investigate next, so the planner
+                // hears about it as a planning fact as well as the worker seeing it in-session.
+                await ObserveAutonomousEventAsync(run, configuration, GovernanceTopics.UserSteer, steering.Content).ConfigureAwait(false);
                 checkpoint = await SkipUnstartedToolCallsAsync(run, checkpoint, task, steering, cancellationToken).ConfigureAwait(false);
+            }
 
             // At most one unresolved call is resumed at a time. A model response
             // may contain multiple calls, but each call gets its own durable
@@ -2296,6 +2304,10 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 var runTokens = Maf18RuntimeAdapter.BudgetTokens(checkpoint.ModelUsage);
                 if (configuration.Context.RunTokenBudget > 0 && runTokens >= configuration.Context.RunTokenBudget)
                 {
+                    // The planner is told the budget is gone; it decides whether the plan can be
+                    // closed out with what the run already knows instead of dispatching more work.
+                    await ObserveAutonomousEventAsync(run, configuration, GovernanceTopics.BudgetTick,
+                        $"The run exhausted its token budget ({runTokens}/{configuration.Context.RunTokenBudget}).").ConfigureAwait(false);
                     RequestCloseout(task, RunErrorTaxonomy.RunTokenBudgetExhausted,
                         $"The run exhausted its token budget ({runTokens}/{configuration.Context.RunTokenBudget}).");
                 }
@@ -3601,6 +3613,26 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             {
                 _logger.TryLogWarning(ex, "Could not tell standing member {Agent} about {Topic} in run {RunId}.", agent.Id, topic, run.RunId);
             }
+        }
+    }
+
+    /// <summary>
+    /// Reports one run fact to the autonomous planner (B3). The coordinator decides whether the
+    /// run's frozen policy enables event-driven planning, coalesces the wake, and forwards the raw
+    /// fact to whoever subscribed to it; this engine never waits for the planner's turn.
+    /// </summary>
+    private async Task ObserveAutonomousEventAsync(RunState run, FrozenRunConfigurationV1 configuration, string topic, string summary)
+    {
+        if (_autonomousPlanning is not { } planning || OrganizationScopeOf(run) is not { } scope) return;
+        try
+        {
+            await planning.ObserveAsync(
+                new AutonomousPlanningRun(scope.TenantId, scope.WorkspaceId, scope.SessionId, Guid.Parse(run.RunId), configuration.RuntimePolicy),
+                topic, summary, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.TryLogDebug(ex, "Could not report {Topic} of run {RunId} to the autonomous planner.", topic, run.RunId);
         }
     }
 
@@ -5271,6 +5303,14 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
         // Persisted BEFORE the turn's closing revision is read, so the evidence message
         // is part of the turn the next request inherits.
         await PersistRunEvidenceAsync(runId, run, checkpoint, cancellationToken).ConfigureAwait(false);
+        if (string.Equals(run.RunKind, SideQuestionService.RunKind, StringComparison.OrdinalIgnoreCase))
+        {
+            // The isolated run exists only to answer; its answer is the artifact. The archive's
+            // source key makes a recovery finalization reuse the entry instead of duplicating it.
+            await ArchiveEvidenceAsync(run, null, EvidenceKinds.SideQuestion, "Side question answer", "oracle",
+                $"Question:\n{checkpoint.UserGoal}\n\nAnswer:\n{meetingResponse}",
+                $"run:{run.RunId}:side-question-answer", cancellationToken).ConfigureAwait(false);
+        }
 
         var revision = await _conversations.GetContextRevisionAsync(checkpoint.SessionId, cancellationToken).ConfigureAwait(false);
         await _conversations.CompleteTurnAsync(checkpoint.TurnId, runId, checkpoint.AssistantMessageId, revision, "completed", cancellationToken).ConfigureAwait(false);
@@ -5288,6 +5328,7 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             FinishReason: "completed",
             IdempotencyKey: $"run:{run.RunId}:turn:{checkpoint.TurnId}:done"), cancellationToken).ConfigureAwait(false);
         await _lifecycle.CompleteRunAsync(run.RunId, cancellationToken).ConfigureAwait(false);
+        _autonomousPlanning?.Forget(runId);
         checkpoint = await DrainRunDirectivesAsync(run, configuration, checkpoint, cancellationToken).ConfigureAwait(false);
         await EvaluateAndDispatchOperationsAsync(OperationalTriggerPoint.RunFinalized, run, configuration, checkpoint, cancellationToken).ConfigureAwait(false);
         await _instances.ReleaseRunInstancesAsync(runId, cancellationToken).ConfigureAwait(false);

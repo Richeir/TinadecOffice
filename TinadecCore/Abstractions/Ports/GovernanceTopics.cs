@@ -33,9 +33,22 @@ public static class GovernanceTopics
     /// <summary>A tool call parked on an approval gate.</summary>
     public const string ApprovalRequested = "approval_requested";
 
+    /// <summary>A worker settled a task: completed, failed or blocked (B4).</summary>
+    public const string WorkerSettled = "worker_settled";
+
+    /// <summary>A person steered a running run (a hard insert), which may change the plan.</summary>
+    public const string UserSteer = "user_steer";
+
+    /// <summary>The autonomous planner's coalesced wake-up (B3): the debounced planning tick.</summary>
+    public const string PlanTick = "plan_tick";
+
+    /// <summary>A task consumed its token or round budget; the remaining plan may need to change.</summary>
+    public const string BudgetTick = "budget_tick";
+
     public static readonly IReadOnlyList<string> All =
     [
-        TaskCreated, TaskClosed, RunClosed, CapabilityMissing, LeaseConflict, ApprovalRequested
+        TaskCreated, TaskClosed, RunClosed, CapabilityMissing, LeaseConflict, ApprovalRequested,
+        WorkerSettled, UserSteer, PlanTick, BudgetTick
     ];
 
     public static bool IsKnown(string? topic) =>

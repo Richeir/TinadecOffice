@@ -19,8 +19,10 @@ public static class EvidenceKinds
     public const string Summary = "summary";
     /// <summary>An exploration digest: the compressed view, archived next to the material it folded.</summary>
     public const string ExplorationDigest = "exploration_digest";
+    /// <summary>An isolated side question and the answer it produced (B3).</summary>
+    public const string SideQuestion = "side_question";
 
-    public static readonly IReadOnlyList<string> All = [TaskResult, Report, MemberTurn, Summary, ExplorationDigest];
+    public static readonly IReadOnlyList<string> All = [TaskResult, Report, MemberTurn, Summary, ExplorationDigest, SideQuestion];
 }
 
 /// <param name="SourceKey">Idempotency key within the session (e.g. <c>task:{id}:{attempt}</c>): appending the same source twice keeps one entry.</param>

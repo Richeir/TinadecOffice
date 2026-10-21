@@ -88,8 +88,8 @@ public sealed class StorageLifecycleService : IStorageMigrationParticipant
         Guid? parentRunId = null;
         Guid? parentTaskId = null;
         var runKind = string.IsNullOrWhiteSpace(options?.RunKind) ? "root" : options!.RunKind.Trim().ToLowerInvariant();
-        if (runKind is not ("root" or "execution_child" or "correction_reopen"))
-            throw new ArgumentException("RunKind must be root, execution_child, or correction_reopen.", nameof(options));
+        if (runKind is not ("root" or "execution_child" or "correction_reopen" or "side_question"))
+            throw new ArgumentException("RunKind must be root, execution_child, correction_reopen, or side_question.", nameof(options));
         if (!string.IsNullOrWhiteSpace(options?.ParentRunId))
         {
             if (!Guid.TryParse(options.ParentRunId, out var parsedParentRun) || parsedParentRun == Guid.Empty)
@@ -101,7 +101,7 @@ public sealed class StorageLifecycleService : IStorageMigrationParticipant
                     throw new ArgumentException("An execution child requires valid parent_task_id.", nameof(options));
                 parsedParentTask = taskId;
             }
-            else if (runKind != "correction_reopen")
+            else if (runKind is not ("correction_reopen" or "side_question"))
             {
                 throw new ArgumentException("Only execution children may declare a parent task.", nameof(options));
             }

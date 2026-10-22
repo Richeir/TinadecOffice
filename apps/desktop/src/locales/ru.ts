@@ -685,6 +685,8 @@ export default {
     recentConversations: "Недавние разговоры",
     projectConversations: "Разговоры проектов",
     recentActivity: "Недавняя активность",
+    allActivity: 'Вся активность',
+    projectActivity: 'Активность проекта',
     activityEmpty: "Активности пока нет",
     activityState: {
       awaiting: "Ждёт вашего ответа",

@@ -10,7 +10,13 @@
 
 「工作区选项」现在有两个分组显示开关：「项目对话」与「自由对话」，都默认勾选、左侧复选框右侧文字。它们只控制侧栏分组行是否渲染：`workspaces` 仍保留全部行供排序与最近列表使用，渲染走 `visibleWorkspaces`；因此扁平「最近对话」（若开启）仍能进入项目或自由会话，Composer/设置里的项目选择、创建、编辑、归档也都不受影响。两者分别持久化为 `projectConversations` / `freeConversation`，旧记录缺键按 `true` 处理；两个都关闭时侧栏只剩分区标题与操作入口。
 
-## 2026-10-21 侧栏 token 用量图
+## 2026-10-22 侧栏 token 用量图已移除
+
+头像上方那块「近 {days} 天 token 用量」柱状图整块删掉，不保留开关。连带移除：`AppSidebar` 对 `GET /api/v1/model-invocations` 的读取（原先挂载、`busy` true→false、切换存储作用域各读一次，最多 5×200 条分页）、纯聚合模块 `lib/sidebarUsage.ts` 与其 6 例测试、组件内 5 例测试、`styles.css` 的 `.token-usage-*` 与 `.sidebar-collapsed .token-usage-area`、五语的 `sidebar.tokenUsage*` 七个键。
+
+**不要再为了"随手看用量"把读表逻辑塞回侧栏**：它每次挂载与每个 run 结束都要付几轮 200 条分页的代价，而设置 → 个人页（`PersonalSection.loadTokenUsage`）已经是看得见的用量入口。侧栏的 `busy` 监听仍保留，只服务最近活动卡片的刷新。
+
+## 2026-10-21 侧栏 token 用量图（已被上条移除）
 
 `AppSidebar` 的用量图从 Core `GET /api/v1/model-invocations` 读取当前存储作用域最近 7 个本地日的记录（`from` + 游标，最多 5×200 条），按日汇总 `total_tokens`（缺省回退 `input_tokens + output_tokens`）。未上报绝不当 0：某日只有调用而无用量时 `tokens = null`，整窗都未上报时显示说明而不是空柱。柱高按窗口峰值归一，颜色只表示相对强度（统一强调色，不把最忙的一天画成错误红）；调用被截断时总量带 `≥` 并在标题说明只统计最近 1000 次。挂载、run 结束（`busy` true→false）与存储作用域切换时重读，切换期间迟到的响应按代次丢弃；折叠轨隐藏整块。纯聚合在 `lib/sidebarUsage.ts`（6 例），组件 5 例覆盖渲染、未上报、刷新与迟到响应。未在真 Electron 里做像素级复看；读取失败时静默隐藏（个人页仍负责可见错误）。
 
@@ -592,7 +598,7 @@ apps/TinadecUI/        # TinadecUI — UI engineering suite; import as '@tinadec
 - Agent Center sub-panels share the `workbench-duo` two-pane skeleton: `.center-workbench.workbench-duo` with `.center-resource-rail` / `.center-resource-stage` children (geometry and 1100/700 breakpoints live in `settings/settings.css`). Each center has exactly ONE Refresh button, in the shell command bar, dispatched by `refreshAgentCenterTab()`; panels expose their loader instead (`loadModes`/`refreshAll`/`loadProposals`/`loadRuntimeInstances`) and never render their own refresh buttons. Version/history rows use the shared `.center-list-row` primitive (settings.css), not per-panel chrome.
 - Use `@/*` for imports from `src/*` when it improves clarity.
 - Text a person can see comes from `src/locales/{zh-CN,zh-TW,en,ja,ru}.ts` keys, not literals: template text, labels/titles/placeholders/aria, notifications, errors the UI shows, and enum values (`useStatusLabels`, or `te()` with the raw value as fallback). Format dates and numbers with the active `locale`; recognize server errors by `code`, not message text. Core's sentences are diagnostics: word them from the code it sends alongside (readiness `src/lib/readinessText.ts`, approval `summary_code` via `approvalSummary`, user tool actions via `userToolActionReason`, tool executions `src/lib/toolExecutionText.ts`, skill/market/CLI reason codes) and keep Core's text as a tooltip or details line.
-- A new key is added to all five locale files in the same change. `src/locales/i18nParity.test.ts` checks that every file has en's keys and `{placeholders}` and the plural forms of its language: Russian writes `one | few | many` (rule `russianPluralRule` in `src/i18n.ts`), Chinese and Japanese one form. A missed zh-TW key falls back to zh-CN, then en; every other language falls back to en. The picker in `GeneralSection.vue` lists `SUPPORTED_LOCALES`, each named by its own `common.languageName`.
+- A new key is added to all five locale files in the same change. `src/locales/i18nParity.test.ts` checks that every file has en's keys and `{placeholders}` and the plural forms of its language: Russian writes `one | few | many` (rule `russianPluralRule` in `src/i18n.ts`), Chinese and Japanese one form. A missed zh-TW key falls back to zh-CN, then en; every other language falls back to en. The picker in `GeneralSection.vue` lists `SUPPORTED_LOCALES`, each named by its own `common.languageName`. How to word those keys — the delete test, the anti-patterns, and the retrieval steps before a key is removed — is `docs/ui-copy-spec.zh-CN.md`.
 - Windows system surfaces use `public/tinadec.ico`: main, Debug Studio, and detached `BrowserWindow` instances must reference it in both dev and built `dist`; keep `app.setAppUserModelId('com.tinadec.office')` for taskbar grouping.
 - Main and Debug Studio windows use `titleBarStyle: 'hidden'` without `titleBarOverlay`, preserving the custom controls while leaving the native frame available for Windows DWM corners and shadows. Detached panels remain frameless because their drag and window-control hit testing depends on the custom title bar; pet windows remain transparent and frameless.
 - Router uses `createWebHashHistory()`; routes: `/`, `/settings`, `/agent-center`, `/market`, `/debug-studio`, `/code-editor`, `/workbench`, `/recovery/:actionId`, `/governance`, `/snapshots`, `/library`, `/panel` (detached panel window), `/pet` (transparent local pet window).

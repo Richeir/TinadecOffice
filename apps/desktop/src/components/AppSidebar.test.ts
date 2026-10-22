@@ -7,19 +7,14 @@ import sidebarSource from './AppSidebar.vue?raw'
 import type { ProjectDto, SessionDto } from '../api'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { freeWorkspaceKey, workspaceListStorageKey } from '@/composables/useWorkspaceList'
-import { setSelectedStorage } from '@/lib/storageScope'
 import { setNickname } from '@/lib/userProfile'
 
 vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
   useI18n: () => ({ t: (key: string) => key, te: () => false, locale: { value: 'en' } }),
 }))
 
-const { confirmMock, listModelInvocationsMock, listRunsMock } = vi.hoisted(() => ({
+const { confirmMock, listRunsMock } = vi.hoisted(() => ({
   confirmMock: vi.fn(async (..._args: unknown[]) => true),
-  listModelInvocationsMock: vi.fn(async (..._params: unknown[]) => ({
-    items: [] as unknown[],
-    next_cursor: null as string | null,
-  })),
   listRunsMock: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
 }))
 
@@ -29,7 +24,6 @@ vi.mock('../api', async (importOriginal) => {
     ...actual,
     api: {
       ...actual.api,
-      listModelInvocations: (...args: unknown[]) => listModelInvocationsMock(...args),
       listRuns: (...args: unknown[]) => listRunsMock(...args),
     },
   }
@@ -56,8 +50,6 @@ const session: SessionDto = {
 }
 
 beforeEach(() => {
-  listModelInvocationsMock.mockReset()
-  listModelInvocationsMock.mockResolvedValue({ items: [], next_cursor: null })
   listRunsMock.mockReset()
   listRunsMock.mockResolvedValue([])
 })
@@ -161,9 +153,10 @@ describe('AppSidebar lifecycle management', () => {
     })
     const labels = () => wrapper.findAll('.sidebar-option-label').map(node => node.text())
 
-    // Default order mirrors the shipped list: recents on top, then the free block, then projects.
+    // Default order mirrors the shipped list: recents on top, then the free block, then projects,
+    // then the two activity views the option panel appends.
     expect(blocks()).toEqual(['recent', freeWorkspaceKey, 'p-1'])
-    expect(labels()).toEqual(['sidebar.recentConversations', 'sidebar.recentActivity', 'chat.freeConversation', 'sidebar.projectConversations'])
+    expect(labels()).toEqual(['sidebar.recentConversations', 'sidebar.recentActivity', 'chat.freeConversation', 'sidebar.projectConversations', 'sidebar.allActivity', 'sidebar.projectActivity'])
 
     // Drag 自由对话 onto the upper half of 最近对话: the handle is the drag source, the row is the
     // target, and the panel behind the popover follows the same list.
@@ -171,8 +164,8 @@ describe('AppSidebar lifecycle management', () => {
     await wrapper.get('[data-section="recent"]').trigger('dragover')
     await wrapper.get('[data-section="recent"]').trigger('drop')
     expect(blocks()).toEqual([freeWorkspaceKey, 'recent', 'p-1'])
-    expect(labels()).toEqual(['chat.freeConversation', 'sidebar.recentConversations', 'sidebar.recentActivity', 'sidebar.projectConversations'])
-    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['free', 'recent', 'activity', 'projects'])
+    expect(labels()).toEqual(['chat.freeConversation', 'sidebar.recentConversations', 'sidebar.recentActivity', 'sidebar.projectConversations', 'sidebar.allActivity', 'sidebar.projectActivity'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['free', 'recent', 'activity', 'projects', 'allActivity', 'projectActivity'])
 
     // Dropping on the lower half lands the block after the one under the pointer.
     await wrapper.get('[data-section="free"] .sidebar-option-grip').trigger('dragstart')
@@ -186,7 +179,7 @@ describe('AppSidebar lifecycle management', () => {
     localStorage.clear()
     const wrapper = factory()
     await wrapper.get('[data-section="activity"] [role="checkbox"]').trigger('keydown', { key: 'ArrowUp', altKey: true })
-    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['activity', 'recent', 'free', 'projects'])
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).sectionOrder).toEqual(['activity', 'recent', 'free', 'projects', 'allActivity', 'projectActivity'])
     expect(wrapper.findAll('.sidebar-option-label').map(node => node.text())[0]).toBe('sidebar.recentActivity')
 
     // The grip is a drag affordance, not a second toggle.
@@ -761,101 +754,66 @@ describe('AppSidebar activity view', () => {
     expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).activity).toBe(true)
     wrapper.unmount()
   })
-})
 
-describe('AppSidebar token usage', () => {
-  function invocation(
-    startedAt: Date,
-    tokens: { total?: number | null; input?: number | null; output?: number | null } = {},
-  ) {
-    return {
-      started_at: startedAt.toISOString(),
-      total_tokens: tokens.total ?? null,
-      input_tokens: tokens.input ?? null,
-      output_tokens: tokens.output ?? null,
-    }
-  }
-
-  function today(hour = 10): Date {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour)
-  }
-
-  it('draws the last seven days and totals only reported usage', async () => {
-    const day = today()
-    const yesterday = new Date(day)
-    yesterday.setDate(day.getDate() - 1)
-    listModelInvocationsMock.mockResolvedValue({
-      items: [
-        invocation(day, { total: 120 }),
-        invocation(new Date(day.getTime() + 3_600_000), { input: 30, output: 10 }),
-        invocation(yesterday),
-      ],
-      next_cursor: null,
-    })
-    const wrapper = factory()
+  it('lists every conversation as a card in the 所有活动 block', async () => {
+    localStorage.clear()
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false, activity: false, allActivity: true }))
+    // More than 最近活动's five: the extra conversations are the whole point of the wide view.
+    const many = Array.from({ length: 7 }, (_, index) => ({
+      ...session,
+      id: `s-${index}`,
+      title: `Chat ${index}`,
+      updated_at: new Date(Date.UTC(2026, 8, 1, 0, index)).toISOString(),
+    }))
+    const wrapper = factory({ sessions: many })
     await flushPromises()
 
-    const bars = wrapper.findAll('.token-usage-bar')
-    expect(bars).toHaveLength(7)
-    expect(bars[6]!.classes()).toContain('high')
-    expect(bars[6]!.attributes('style')).toContain('height: 100%')
-    expect(bars[5]!.classes()).toContain('empty')
-    expect(bars[5]!.attributes('style')).toContain('height: 2px')
-    expect(wrapper.get('.token-usage-total').text()).toBe('160')
-    expect(wrapper.get('.token-usage-chart').attributes('role')).toBe('img')
-    expect(wrapper.get('.token-usage-chart').attributes('aria-label')).toBe('sidebar.tokenUsageSummary')
-    expect(wrapper.get('.token-usage-area').text()).toContain('sidebar.tokenUsage')
-    expect(listModelInvocationsMock).toHaveBeenCalledWith(expect.objectContaining({ limit: 200 }))
+    expect(wrapper.findAll('.activity-group')).toHaveLength(1)
+    expect(wrapper.get('.activity-group-heading').text()).toBe('sidebar.allActivity')
+    const cards = wrapper.findAll('.activity-card')
+    expect(cards).toHaveLength(many.length)
+    expect(cards.map(card => card.get('.activity-title').text())).toEqual(['Chat 6', 'Chat 5', 'Chat 4', 'Chat 3', 'Chat 2', 'Chat 1', 'Chat 0'])
+    // The card names the workspace, because the flat list has no group header to do it for it.
+    expect(cards[0]!.get('.activity-workspace').text()).toBe('Demo project')
+    // One read per conversation and no more: the block reads exactly what it draws.
+    expect(listRunsMock).toHaveBeenCalledTimes(many.length)
+    expect(JSON.parse(localStorage.getItem(workspaceListStorageKey)!).allActivity).toBe(true)
     wrapper.unmount()
   })
 
-  it('stays out of the way when nothing was measured', async () => {
-    const wrapper = factory()
+  it('draws a project as activity cards in the 项目活动 block', async () => {
+    localStorage.clear()
+    localStorage.setItem(workspaceListStorageKey, JSON.stringify({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], recent: false, activity: false, projectActivity: true, projectConversations: false }))
+    const wrapper = factory({ sessions: [session] })
     await flushPromises()
-    expect(wrapper.find('.token-usage-area').exists()).toBe(false)
+
+    // Still organised by project: the row is the group, the conversations inside it are cards.
+    const group = wrapper.get('[data-workspace-key="p-1"]')
+    expect(group.get('.project-row-main').text()).toContain('Demo project')
+    const cards = group.findAll('.activity-card')
+    expect(cards).toHaveLength(1)
+    expect(cards[0]!.get('.activity-title').text()).toBe('Demo session')
+    // The group header already names the workspace, so the nested card does not repeat it.
+    expect(cards[0]!.find('.activity-workspace').exists()).toBe(false)
+    expect(group.find('.session-row').exists()).toBe(false)
+    expect(listRunsMock).toHaveBeenCalledTimes(1)
+
+    await cards[0]!.trigger('click')
+    expect(wrapper.emitted('select-session')?.at(-1)).toEqual(['s-1'])
     wrapper.unmount()
   })
 
-  it('says calls reported no usage instead of drawing zero bars', async () => {
-    listModelInvocationsMock.mockResolvedValue({
-      items: [invocation(today())],
-      next_cursor: null,
-    })
+  it('offers all six blocks in the picker, in the order the list renders them', () => {
+    localStorage.clear()
     const wrapper = factory()
-    await flushPromises()
-
-    expect(wrapper.get('.token-usage-unreported').text()).toBe('sidebar.tokenUsageUnreported')
-    expect(wrapper.find('.token-usage-chart').exists()).toBe(false)
-    expect(wrapper.find('.token-usage-total').exists()).toBe(false)
+    expect(wrapper.findAll('.sidebar-option-label').map(node => node.text())).toEqual([
+      'sidebar.recentConversations',
+      'sidebar.recentActivity',
+      'chat.freeConversation',
+      'sidebar.projectConversations',
+      'sidebar.allActivity',
+      'sidebar.projectActivity',
+    ])
     wrapper.unmount()
-  })
-
-  it('refreshes when a run finishes', async () => {
-    const wrapper = factory()
-    await flushPromises()
-    expect(listModelInvocationsMock).toHaveBeenCalledTimes(1)
-
-    await wrapper.setProps({ busy: true })
-    await wrapper.setProps({ busy: false })
-    await flushPromises()
-    expect(listModelInvocationsMock).toHaveBeenCalledTimes(2)
-    wrapper.unmount()
-  })
-
-  it('drops a slow read when the storage scope changes mid-flight', async () => {
-    let resolveFirst: (value: { items: unknown[]; next_cursor: null }) => void = () => {}
-    listModelInvocationsMock.mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
-    const wrapper = factory()
-    try {
-      setSelectedStorage('project-2')
-      await flushPromises()
-      resolveFirst({ items: [invocation(today(), { total: 999 })], next_cursor: null })
-      await flushPromises()
-      expect(wrapper.find('.token-usage-area').exists()).toBe(false)
-    } finally {
-      wrapper.unmount()
-      setSelectedStorage('user')
-    }
   })
 })

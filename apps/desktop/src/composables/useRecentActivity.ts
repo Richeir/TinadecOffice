@@ -8,12 +8,14 @@ export interface ActivityCandidate {
   projectName: string
 }
 
-/** The sidebar shows a handful of recent activities; older ones are not worth a request each. */
+/** The 最近活动 block is five cards; the wider views decide for themselves what they read. */
 export const ACTIVITY_LIMIT = 5
 /** A move in the session list (rename, reorder, a run landing) should not fire a burst of reads. */
 export const ACTIVITY_DEBOUNCE_MS = 300
 /** Safety net for clock skew and long live runs: a read older than this is refreshed anyway. */
 export const ACTIVITY_TTL_MS = 60_000
+/** 所有活动 reads every conversation, so the fan-out runs in batches instead of all at once. */
+export const ACTIVITY_CONCURRENCY = 8
 
 /** Newest run of a roster; the roster order is Core's, so it is ranked here rather than trusted. */
 export function latestRun(runs: OrchestrationRunDto[]): OrchestrationRunDto | null {
@@ -31,16 +33,18 @@ interface Reading {
 }
 
 /**
- * The latest run of each recent conversation, keyed by `selectionKey`.
+ * The latest run of each conversation the activity views render, keyed by `selectionKey`.
  *
- * There is no cross-session activity endpoint, so this walks `sessions/{id}/runs` for the few
- * conversations the activity view actually renders. Three rules keep that cheap: the option being
- * off means no request at all, a read is reused until the session's `updated_at` moves, and a TTL
- * covers the cases where the clock and the server disagree.
+ * There is no cross-session activity endpoint, so this walks `sessions/{id}/runs` for exactly the
+ * conversations it is handed: the caller decides how wide the view is (five cards, every
+ * conversation, every project) and this reads no more than that. Three rules keep it cheap: every
+ * activity view being off means no request at all, a read is reused until the session's
+ * `updated_at` moves, and a TTL covers the cases where the clock and the server disagree.
  */
 export function useRecentActivity(candidates: () => ActivityCandidate[], options: {
   enabled: () => boolean
-  limit?: number
+  /** Optional hardening for callers that hand over an unbounded roster. */
+  limit?: () => number
 }) {
   const runs = ref<Record<string, OrchestrationRunDto | null>>({})
   const readings = ref<Record<string, Reading>>({})
@@ -49,7 +53,10 @@ export function useRecentActivity(candidates: () => ActivityCandidate[], options
   let timer: ReturnType<typeof setTimeout> | null = null
 
   function targets(): ActivityCandidate[] {
-    return options.enabled() ? candidates().slice(0, options.limit ?? ACTIVITY_LIMIT) : []
+    if (!options.enabled()) return []
+    const rows = candidates()
+    const limit = options.limit?.()
+    return limit === undefined ? rows : rows.slice(0, limit)
   }
 
   function stale(candidate: ActivityCandidate): boolean {
@@ -71,9 +78,17 @@ export function useRecentActivity(candidates: () => ActivityCandidate[], options
     // Pin the scope for the whole fan-out: a storage switch mid-read must not stitch two stores.
     const storage = selectedStorage.value
     const scoped = scopedApi(api, () => storage)
-    const results = await Promise.allSettled(wanted.map(row => scoped.listRuns(row.session.id, signal)
-      .then(list => ({ key: selectionKey(row.session), updatedAt: row.session.updated_at, list }))))
-    if (current !== generation || storage !== selectedStorage.value) return
+    type Result = PromiseSettledResult<{ key: string; updatedAt: string; list: OrchestrationRunDto[] }>
+    const results: Result[] = []
+    // A wide view (所有活动) can hand over every conversation; batching keeps the gateway from
+    // receiving one burst of identical requests and lets an abandoned run stop early.
+    for (let index = 0; index < wanted.length; index += ACTIVITY_CONCURRENCY) {
+      const batch = wanted.slice(index, index + ACTIVITY_CONCURRENCY)
+      results.push(...await Promise.allSettled(batch.map(row => scoped.listRuns(row.session.id, signal)
+        .then(list => ({ key: selectionKey(row.session), updatedAt: row.session.updated_at, list })))))
+      if (current !== generation) return
+    }
+    if (storage !== selectedStorage.value) return
     const nextRuns = { ...runs.value }
     const nextReadings = { ...readings.value }
     const readAt = Date.now()

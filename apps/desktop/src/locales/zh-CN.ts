@@ -469,6 +469,8 @@ export default {
     recentConversations: '最近对话',
     projectConversations: '项目对话',
     recentActivity: '最近活动',
+    allActivity: '所有活动',
+    projectActivity: '项目活动',
     activityEmpty: '暂无活动',
     activityState: {
       awaiting: '等待你处理',

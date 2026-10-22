@@ -7,13 +7,14 @@ export const workspaceListStorageKey = 'tinadec.sidebar.workspaces.v1'
 const revealEvent = 'tinadec:workspace-reveal'
 export function revealWorkspace(key: string) { window.dispatchEvent(new CustomEvent(revealEvent, { detail: key })) }
 /**
- * The four blocks inside the workspace list: the two flat lists, the project groups and the
- * free conversation. They are siblings in one scrollport, so they share one order.
+ * The blocks inside the workspace list: the two flat session lists, the two activity views that
+ * read the same sessions as cards, the project groups and the free conversation. They are
+ * siblings in one scrollport, so they share one order.
  */
-export const sidebarSections = ['recent', 'activity', 'free', 'projects'] as const
+export const sidebarSections = ['recent', 'activity', 'free', 'projects', 'allActivity', 'projectActivity'] as const
 export type SidebarSection = (typeof sidebarSections)[number]
-interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[]; sectionOrder: SidebarSection[]; recent: boolean; activity: boolean; projectConversations: boolean; freeConversation: boolean }
-const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], sectionOrder: [...sidebarSections], recent: false, activity: false, projectConversations: true, freeConversation: true })
+interface ListState { collapsed: boolean; collapsedKeys: string[]; allKeys: string[]; order: string[]; sectionOrder: SidebarSection[]; recent: boolean; activity: boolean; allActivity: boolean; projectActivity: boolean; projectConversations: boolean; freeConversation: boolean }
+const defaults = (): ListState => ({ collapsed: false, collapsedKeys: [], allKeys: [], order: [], sectionOrder: [...sidebarSections], recent: false, activity: false, allActivity: false, projectActivity: false, projectConversations: true, freeConversation: true })
 /** A section shipped after this record was written still has to appear, so the missing ids are
  *  appended in their declared order rather than dropped off the end of the list. */
 function readSectionOrder(value: unknown): SidebarSection[] {
@@ -26,7 +27,7 @@ function read(): ListState {
   try {
     const value = JSON.parse(localStorage.getItem(workspaceListStorageKey) ?? 'null')
     if (!value || typeof value !== 'object') return defaults()
-    return { collapsed: value.collapsed === true, recent: value.recent === true, activity: value.activity === true, projectConversations: value.projectConversations !== false, freeConversation: value.freeConversation !== false, sectionOrder: readSectionOrder(value.sectionOrder), ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
+    return { collapsed: value.collapsed === true, recent: value.recent === true, activity: value.activity === true, allActivity: value.allActivity === true, projectActivity: value.projectActivity === true, projectConversations: value.projectConversations !== false, freeConversation: value.freeConversation !== false, sectionOrder: readSectionOrder(value.sectionOrder), ...Object.fromEntries(['collapsedKeys', 'allKeys', 'order'].map(key => [key, Array.isArray(value[key]) ? [...new Set(value[key].filter((item: unknown) => typeof item === 'string'))] : []])) } as ListState
   } catch { return defaults() }
 }
 const byRecency = (a: SessionDto, b: SessionDto) =>
@@ -107,7 +108,9 @@ export function useWorkspaceList() {
   /** Section-level options ride the same persisted record. */
   function setRecent(value: boolean) { state.value.recent = value }
   function setActivity(value: boolean) { state.value.activity = value }
+  function setAllActivity(value: boolean) { state.value.allActivity = value }
+  function setProjectActivity(value: boolean) { state.value.projectActivity = value }
   function setProjectConversations(value: boolean) { state.value.projectConversations = value }
   function setFreeConversation(value: boolean) { state.value.freeConversation = value }
-  return { state, reconcile, toggle, move, step, moveSection, stepSection, setRecent, setActivity, setProjectConversations, setFreeConversation }
+  return { state, reconcile, toggle, move, step, moveSection, stepSection, setRecent, setActivity, setAllActivity, setProjectActivity, setProjectConversations, setFreeConversation }
 }

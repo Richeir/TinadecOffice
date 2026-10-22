@@ -685,6 +685,8 @@ export default {
     recentConversations: "最近對話",
     projectConversations: "專案對話",
     recentActivity: "最近活動",
+    allActivity: '所有活動',
+    projectActivity: '專案活動',
     activityEmpty: "尚無活動",
     activityState: {
       awaiting: "等待你處理",

@@ -1,26 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import { useWorkspaceList, freeWorkspaceKey, recentSessionRows, recentWorkspaceSessions, type SidebarSection } from '@/composables/useWorkspaceList'
-import { ACTIVITY_LIMIT, useRecentActivity } from '@/composables/useRecentActivity'
-import { presentActivity, type ActivityTone } from '@/lib/recentActivity'
+import { ACTIVITY_LIMIT, useRecentActivity, type ActivityCandidate } from '@/composables/useRecentActivity'
+import { presentActivity, type ActivityFacts } from '@/lib/recentActivity'
 import { workspaceIcons, type WorkspaceLoadState } from '@/lib/workspaces'
-import { scopedApi, selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
-import { buildSidebarUsage, SIDEBAR_USAGE_DAYS, usageWindow, type SidebarUsage, type SidebarUsageBar } from '@/lib/sidebarUsage'
-import { formatCompactCount } from '@/lib/shareCard'
+import { selectionKey, selectionIdentity, selectedStorage } from '@/lib/storageScope'
 import {
   Archive,
   ArrowRightLeft,
   Bug,
   ChevronRight,
-  CircleCheck,
-  CircleDashed,
-  CircleDot,
-  CircleSlash,
-  CircleX,
   FolderOpen,
   GripVertical,
-  Hourglass,
-  Loader,
   MessageSquare,
   MoreHorizontal,
   PanelLeftClose,
@@ -39,8 +30,9 @@ import {
   ArrowDown,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
-import { api, type ModelInvocationDto, type ProjectDto, type SessionDto } from '../api'
+import type { ProjectDto, SessionDto } from '../api'
 import BrandLogo from '@/components/BrandLogo.vue'
+import SidebarActivityCard from '@/components/SidebarActivityCard.vue'
 import TinadecCalligraphy from '@/components/TinadecCalligraphy.vue'
 import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
 import InlineRenameInput from '@/components/InlineRenameInput.vue'
@@ -331,29 +323,6 @@ const workspaces = computed<WorkspaceRow[]>(() => {
 })
 const freeWorkspace = computed(() => workspaces.value.find(workspace => !workspace.project) ?? null)
 const projectWorkspaces = computed(() => workspaces.value.filter(workspace => workspace.project))
-/**
- * What the scrollport renders: one entry per visible block, in the order the options menu holds.
- * The two toggles hide a block without touching the flat lists, so conversations stay reachable
- * from 最近对话 when their groups are off.
- */
-type WorkspaceItem = { key: string; kind: 'workspace'; workspace: WorkspaceRow }
-type ListItem = { key: string; kind: 'recent' } | { key: string; kind: 'activity' } | WorkspaceItem
-const listItems = computed<ListItem[]>(() => {
-  const items: ListItem[] = []
-  for (const section of list.state.value.sectionOrder) {
-    if (section === 'recent') {
-      if (list.state.value.recent) items.push({ key: 'recent', kind: 'recent' })
-    } else if (section === 'activity') {
-      if (list.state.value.activity) items.push({ key: 'activity', kind: 'activity' })
-    } else if (section === 'projects') {
-      if (list.state.value.projectConversations) items.push(...projectWorkspaces.value.map(workspace => ({ key: `workspace:${workspace.key}`, kind: 'workspace' as const, workspace })))
-    } else if (list.state.value.freeConversation && freeWorkspace.value) {
-      const workspace = freeWorkspace.value
-      items.push({ key: `workspace:${workspace.key}`, kind: 'workspace', workspace })
-    }
-  }
-  return items
-})
 // Sessions not bound to any project (Codex-style free conversations). The title is not a
 // filter: a newly created conversation still carries the default 'Tinadec session' title until
 // its first message generates one, so hiding that title made every fresh free conversation
@@ -391,14 +360,9 @@ const conversationRows = computed(() => {
 })
 const RECENT_CONVERSATION_LIMIT = 8
 const recentConversations = computed(() => conversationRows.value.slice(0, RECENT_CONVERSATION_LIMIT))
-// The activity cards are taller, so fewer of them fit the same scrollport.
+// The activity cards are taller, so 最近活动 stays at five; 所有活动 is the opt-in full list.
 /** A live duration only has to look right, so a half-minute tick is enough. */
 const ACTIVITY_CLOCK_MS = 30_000
-const activityCandidates = computed(() => conversationRows.value.slice(0, ACTIVITY_LIMIT))
-const { runs: activityRuns, refresh: refreshActivity } = useRecentActivity(
-  () => activityCandidates.value,
-  { enabled: () => list.state.value.activity },
-)
 const activityNow = ref(Date.now())
 let activityClock: ReturnType<typeof setInterval> | null = null
 /** A live run's duration has to grow; a terminal one does not, so the clock only runs while on. */
@@ -408,38 +372,115 @@ function syncActivityClock(enabled: boolean) {
   activityNow.value = Date.now()
   activityClock = setInterval(() => { activityNow.value = Date.now() }, ACTIVITY_CLOCK_MS)
 }
-watch(() => list.state.value.activity, enabled => {
+const activityEnabled = computed(() => list.state.value.activity || list.state.value.allActivity || list.state.value.projectActivity)
+/**
+ * Every conversation a visible activity view is about to draw a card for. There is no
+ * cross-session activity endpoint, so this is precisely the set the composable reads: the five
+ * cards 最近活动 shows, the whole list 所有活动 shows, and each project's conversations for 项目活动.
+ */
+const activityCandidates = computed<ActivityCandidate[]>(() => {
+  const state = list.state.value
+  if (!state.activity && !state.allActivity && !state.projectActivity) return []
+  const rows: ActivityCandidate[] = []
+  const seen = new Set<string>()
+  const push = (row: ActivityCandidate) => {
+    const key = selectionKey(row.session)
+    if (seen.has(key)) return
+    seen.add(key)
+    rows.push(row)
+  }
+  if (state.activity) conversationRows.value.slice(0, ACTIVITY_LIMIT).forEach(push)
+  if (state.allActivity) conversationRows.value.forEach(push)
+  if (state.projectActivity) {
+    for (const workspace of projectWorkspaces.value) {
+      for (const session of allSessions(workspace.key)) push({ session, projectName: workspace.name })
+    }
+  }
+  return rows
+})
+const { runs: activityRuns, refresh: refreshActivity } = useRecentActivity(
+  () => activityCandidates.value,
+  { enabled: () => activityEnabled.value },
+)
+watch(activityEnabled, enabled => {
   syncActivityClock(enabled)
   if (enabled) void refreshActivity()
 })
-const activityIcons: Record<ActivityTone, Component> = {
-  awaiting: Hourglass,
-  active: Loader,
-  completed: CircleCheck,
-  failed: CircleX,
-  cancelled: CircleSlash,
-  unknown: CircleDot,
-  idle: CircleDashed,
-}
-function activityStateLabel(tone: ActivityTone): string {
-  switch (tone) {
-    case 'awaiting': return t('sidebar.activityState.awaiting')
-    case 'active': return t('sidebar.activityState.active')
-    case 'completed': return t('sidebar.activityState.completed')
-    case 'failed': return t('sidebar.activityState.failed')
-    case 'cancelled': return t('sidebar.activityState.cancelled')
-    case 'unknown': return t('sidebar.activityState.unknown')
-    default: return t('sidebar.activityState.idle')
-  }
-}
-const activities = computed(() => activityCandidates.value.map(candidate => {
+// A view restored from the local record is already on at mount: without this it would sit on
+// "状态未知" until the next session change moved the roster signature.
+onMounted(() => {
+  if (!activityEnabled.value) return
+  syncActivityClock(true)
+  void refreshActivity()
+})
+/** One card's worth of facts: the run it lands on, plus whether that roster was ever read. */
+function activityCard(candidate: ActivityCandidate) {
   const key = selectionKey(candidate.session)
   // "No run in a roster I read" and "I never read this roster" are different facts: the second
   // one must not render as an idle task.
   const read = key in activityRuns.value
   const run = activityRuns.value[key] ?? null
   return { ...candidate, run, facts: presentActivity(run, candidate.session, activityNow.value, locale.value, read) }
-}))
+}
+const activities = computed(() => conversationRows.value.slice(0, ACTIVITY_LIMIT).map(activityCard))
+const allActivities = computed(() => conversationRows.value.map(activityCard))
+/** 项目活动: the same project groups, one card per conversation, name dropped from each card. */
+function workspaceActivities(workspace: WorkspaceRow) {
+  return shownSessions(workspace.key).map(session => activityCard({ session, projectName: workspace.name }))
+}
+/**
+ * What the scrollport renders: one entry per visible block, in the order the options menu holds.
+ * The toggles hide a block without touching the flat lists, so conversations stay reachable from
+ * 最近对话 / 所有活动 when their groups are off.
+ */
+type ActivityCardView = ReturnType<typeof activityCard>
+interface ActivityItem {
+  key: string
+  kind: 'activity'
+  title: string
+  empty: string
+  cards: ActivityCardView[]
+  /** False for cards nested in a project group, whose header already names the workspace. */
+  showWorkspace: boolean
+}
+interface WorkspaceItem {
+  key: string
+  kind: 'workspace'
+  workspace: WorkspaceRow
+  /** 项目对话 draws compact session rows; 项目活动 draws the same conversations as cards. */
+  variant: 'rows' | 'activity'
+  cards: ActivityCardView[]
+}
+type ListItem = { key: string; kind: 'recent' } | ActivityItem | WorkspaceItem
+const listItems = computed<ListItem[]>(() => {
+  const state = list.state.value
+  const projectItems = (variant: 'rows' | 'activity'): WorkspaceItem[] => projectWorkspaces.value.map(workspace => ({
+    // The variant is part of the key: both toggles on means the same project is rendered twice.
+    key: `${variant}:${workspace.key}`,
+    kind: 'workspace',
+    workspace,
+    variant,
+    cards: variant === 'activity' ? workspaceActivities(workspace) : [],
+  }))
+  const items: ListItem[] = []
+  for (const section of state.sectionOrder) {
+    if (section === 'recent') {
+      if (state.recent) items.push({ key: 'recent', kind: 'recent' })
+    } else if (section === 'activity') {
+      if (state.activity) items.push({ key: 'activity', kind: 'activity', title: t('sidebar.recentActivity'), empty: t('sidebar.activityEmpty'), cards: activities.value, showWorkspace: true })
+    } else if (section === 'allActivity') {
+      if (state.allActivity) items.push({ key: 'all-activity', kind: 'activity', title: t('sidebar.allActivity'), empty: t('sidebar.activityEmpty'), cards: allActivities.value, showWorkspace: true })
+    } else if (section === 'projects') {
+      if (state.projectConversations) items.push(...projectItems('rows'))
+    } else if (section === 'projectActivity') {
+      if (state.projectActivity) items.push(...projectItems('activity'))
+    } else if (state.freeConversation && freeWorkspace.value) {
+      const workspace = freeWorkspace.value
+      items.push({ key: `rows:${workspace.key}`, kind: 'workspace', workspace, variant: 'rows', cards: [] })
+    }
+  }
+  return items
+})
 const optionsMenuId = `sidebar-workspace-options-${useId()}`
 const optionsMenuOpen = ref(false)
 const optionsMenuStyle = ref({ left: '0px', top: '0px' })
@@ -462,6 +503,8 @@ interface SidebarSectionOption { id: SidebarSection; label: string; checked: boo
 const sectionOptions = computed<SidebarSectionOption[]>(() => [
   { id: 'recent', label: t('sidebar.recentConversations'), checked: list.state.value.recent, toggle: list.setRecent },
   { id: 'activity', label: t('sidebar.recentActivity'), checked: list.state.value.activity, toggle: list.setActivity },
+  { id: 'allActivity', label: t('sidebar.allActivity'), checked: list.state.value.allActivity, toggle: list.setAllActivity },
+  { id: 'projectActivity', label: t('sidebar.projectActivity'), checked: list.state.value.projectActivity, toggle: list.setProjectActivity },
   { id: 'projects', label: t('sidebar.projectConversations'), checked: list.state.value.projectConversations, toggle: list.setProjectConversations },
   { id: 'free', label: t('chat.freeConversation'), checked: list.state.value.freeConversation, toggle: list.setFreeConversation },
 ])
@@ -506,61 +549,7 @@ function handleNewThread() {
 // 'Tinadec session' title until its first message generates one, so hiding that
 // title made every fresh free conversation invisible.
 
-// ---- Token usage (current storage scope, last 7 days) ----
-const USAGE_PAGE_LIMIT = 200
-const USAGE_MAX_PAGES = 5
-const tokenUsage = ref<SidebarUsage | null>(null)
-let tokenUsageGeneration = 0
-
-function formatTokenCount(value: number): string {
-  return value.toLocaleString(locale.value)
-}
-
-function usageDayTitle(bar: SidebarUsageBar): string {
-  const date = bar.date.toLocaleDateString(locale.value, { month: 'short', day: 'numeric' })
-  return bar.tokens === null
-    ? t('sidebar.tokenUsageDayEmpty', { date })
-    : t('sidebar.tokenUsageDay', { date, tokens: formatTokenCount(bar.tokens) })
-}
-
-const tokenUsageTotal = computed(() => {
-  const usage = tokenUsage.value
-  if (!usage || usage.total === null) return ''
-  return `${usage.truncated ? '≥ ' : ''}${formatCompactCount(usage.total, locale.value)}`
-})
-
-const tokenUsageSummary = computed(() => {
-  const usage = tokenUsage.value
-  if (!usage || usage.total === null) return ''
-  const key = usage.truncated ? 'sidebar.tokenUsageSummaryTruncated' : 'sidebar.tokenUsageSummary'
-  return t(key, { days: SIDEBAR_USAGE_DAYS, tokens: formatTokenCount(usage.total) })
-})
-
-async function loadTokenUsage(): Promise<void> {
-  const generation = ++tokenUsageGeneration
-  const storage = selectedStorage.value
-  // Pin the scope across pages: a project switch mid-walk must not stitch two stores together.
-  const usageApi = scopedApi(api, () => storage)
-  const days = usageWindow()
-  const rows: ModelInvocationDto[] = []
-  let cursor: string | undefined
-  try {
-    for (let page = 0; page < USAGE_MAX_PAGES; page += 1) {
-      const result = await usageApi.listModelInvocations({ from: days[0]!.toISOString(), limit: USAGE_PAGE_LIMIT, cursor })
-      rows.push(...result.items)
-      cursor = result.next_cursor ?? undefined
-      if (!cursor || result.items.length === 0) break
-    }
-    if (generation !== tokenUsageGeneration || storage !== selectedStorage.value) return
-    tokenUsage.value = buildSidebarUsage(rows, { truncated: Boolean(cursor) })
-  } catch {
-    // The chart is supplementary; the personal page owns the visible failure state.
-    if (generation === tokenUsageGeneration) tokenUsage.value = null
-  }
-}
-
 onMounted(() => {
-  void loadTokenUsage()
   // An option that is already on when the window opens still needs its first read; the clock
   // only exists while the view does.
   syncActivityClock(list.state.value.activity)
@@ -568,11 +557,9 @@ onMounted(() => {
 })
 watch(() => props.busy, (busy, wasBusy) => {
   if (!wasBusy || busy) return
-  void loadTokenUsage()
   // A finished run is exactly what turns one activity card from "进行中" into its outcome.
   void refreshActivity()
 })
-watch(selectedStorage, () => { void loadTokenUsage() })
 
 function openDebugStudio() {
   if (!debugStudioEnabled.value) return
@@ -649,7 +636,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   footerResizeObserver?.disconnect()
   footerResizeObserver = null
-  tokenUsageGeneration += 1
   if (activityClock) { clearInterval(activityClock); activityClock = null }
 })
 watch([nickname, () => props.collapsed], async () => {
@@ -746,31 +732,20 @@ watch([nickname, () => props.collapsed], async () => {
               </div>
               <div v-if="!recentConversations.length" class="session-empty">{{ t('sidebar.noSessions') }}</div>
             </div>
-            <div v-else-if="item.kind === 'activity'" class="activity-group" role="group" :aria-label="t('sidebar.recentActivity')">
-              <div class="activity-group-heading">{{ t('sidebar.recentActivity') }}</div>
-              <button
-                v-for="entry in activities"
+            <div v-else-if="item.kind === 'activity'" class="activity-group" role="group" :aria-label="item.title">
+              <div class="activity-group-heading">{{ item.title }}</div>
+              <SidebarActivityCard
+                v-for="entry in item.cards"
                 :key="selectionKey(entry.session)"
-                type="button"
-                class="activity-card"
-                :class="{ active: isActiveSession(entry.session) }"
-                :title="`${entry.session.title} · ${entry.projectName}`"
-                @click="handleSessionClick(selectionKey(entry.session))"
-                @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
-              >
-                <span class="activity-title">{{ entry.session.title }}</span>
-                <span class="activity-meta">
-                  <span class="activity-state" :class="`activity-state--${entry.facts.tone}`">
-                    <component :is="activityIcons[entry.facts.tone]" :size="12" class="activity-state-icon" />
-                    <span class="activity-state-label">{{ activityStateLabel(entry.facts.tone) }}</span>
-                  </span>
-                  <span class="activity-facts">
-                    <span class="activity-duration">{{ entry.facts.measure }}</span>
-                    <span class="activity-workspace">{{ entry.projectName }}</span>
-                  </span>
-                </span>
-              </button>
-              <div v-if="!activities.length" class="session-empty">{{ t('sidebar.activityEmpty') }}</div>
+                :session="entry.session"
+                :project-name="entry.projectName"
+                :facts="entry.facts"
+                :show-workspace="item.showWorkspace"
+                :active="isActiveSession(entry.session)"
+                @select="handleSessionClick(selectionKey(entry.session))"
+                @menu="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
+              />
+              <div v-if="!item.cards.length" class="session-empty">{{ item.empty }}</div>
             </div>
             <div v-else-if="item.kind === 'workspace'" class="project-group" :class="{ 'free-conversation-group': !item.workspace.project }" :data-workspace-key="item.workspace.key">
               <div class="project-row" :class="{
@@ -794,40 +769,35 @@ watch([nickname, () => props.collapsed], async () => {
                 <div v-else-if="workspaceLoadStates?.[item.workspace.key]?.status === 'error' || item.workspace.project?.availability === 'error'" class="workspace-load-error" role="status">
                   <span :title="workspaceLoadStates?.[item.workspace.key]?.message ?? errorCodeMessage(item.workspace.project?.availability_code, undefined, { t, te }) ?? item.workspace.project?.availability_error">{{ t('home.loadFailed') }}</span><button @click="emit('retry-workspaces', item.workspace.key)">{{ t('common.retry') }}</button>
                 </div>
-                <div v-for="session in shownSessions(item.workspace.key)" :key="selectionKey(session)" class="session-row" :class="{ active: isActiveSession(session) }" @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(session), session.title)">
-                  <button class="session-item" :aria-current="isActiveSession(session) ? 'page' : undefined" :title="session.title" @click="handleSessionClick(selectionKey(session))" @dblclick.stop="renaming = { kind: 'session', id: selectionKey(session) }">
-                    <InlineRenameInput v-if="renaming?.kind === 'session' && renaming.id === selectionKey(session)" :model-value="session.title" class="session-title" @submit="submitRename" @cancel="cancelRename" /><span v-else class="session-title">{{ session.title }}</span>
-                  </button>
-                  <button class="session-more" :title="t('sidebar.moreActions')" @click.stop="openMenuAtButton($event, 'session', selectionKey(session), session.title)"><MoreHorizontal :size="13" /></button>
-                </div>
+                <template v-if="item.variant === 'rows'">
+                  <div v-for="session in shownSessions(item.workspace.key)" :key="selectionKey(session)" class="session-row" :class="{ active: isActiveSession(session) }" @contextmenu.prevent="openMenuAtCursor($event, 'session', selectionKey(session), session.title)">
+                    <button class="session-item" :aria-current="isActiveSession(session) ? 'page' : undefined" :title="session.title" @click="handleSessionClick(selectionKey(session))" @dblclick.stop="renaming = { kind: 'session', id: selectionKey(session) }">
+                      <InlineRenameInput v-if="renaming?.kind === 'session' && renaming.id === selectionKey(session)" :model-value="session.title" class="session-title" @submit="submitRename" @cancel="cancelRename" /><span v-else class="session-title">{{ session.title }}</span>
+                    </button>
+                    <button class="session-more" :title="t('sidebar.moreActions')" @click.stop="openMenuAtButton($event, 'session', selectionKey(session), session.title)"><MoreHorizontal :size="13" /></button>
+                  </div>
+                </template>
+                <!-- 项目活动: the same conversations, drawn as activity cards. The group header already
+                     names the workspace, so each card drops the trailing name. -->
+                <template v-if="item.variant === 'activity'">
+                  <SidebarActivityCard
+                    v-for="entry in item.cards"
+                    :key="`card:${selectionKey(entry.session)}`"
+                    :session="entry.session"
+                    :project-name="entry.projectName"
+                    :facts="entry.facts"
+                    :show-workspace="false"
+                    :active="isActiveSession(entry.session)"
+                    @select="handleSessionClick(selectionKey(entry.session))"
+                    @menu="openMenuAtCursor($event, 'session', selectionKey(entry.session), entry.session.title)"
+                  />
+                </template>
                 <div v-if="!allSessions(item.workspace.key).length && (!workspaceLoadStates?.[item.workspace.key] || workspaceLoadStates[item.workspace.key]?.status === 'ready') && item.workspace.project?.availability !== 'error'" class="session-empty">{{ t('sidebar.noSessions') }}</div>
                 <button v-if="allSessions(item.workspace.key).length > shownSessions(item.workspace.key).length || list.state.value.allKeys.includes(item.workspace.key)" class="workspace-show-more" @click="list.toggle(item.workspace.key, 'allKeys')">{{ list.state.value.allKeys.includes(item.workspace.key) ? t('sidebar.showFewer') : t('sidebar.showAll') }}</button>
               </div>
             </div>
           </template>
         </template>
-      </div>
-    </div>
-
-    <div v-if="tokenUsage && tokenUsage.calls > 0" class="token-usage-area">
-      <div class="token-usage-heading">
-        <span class="token-usage-label">{{ t('sidebar.tokenUsage', { days: SIDEBAR_USAGE_DAYS }) }}</span>
-        <span
-          v-if="tokenUsage.total !== null"
-          class="token-usage-total"
-          :title="tokenUsage.truncated ? t('sidebar.tokenUsageTruncated', { count: USAGE_PAGE_LIMIT * USAGE_MAX_PAGES }) : undefined"
-        >{{ tokenUsageTotal }}</span>
-      </div>
-      <div v-if="tokenUsage.total === null" class="token-usage-unreported">{{ t('sidebar.tokenUsageUnreported') }}</div>
-      <div v-else class="token-usage-chart" role="img" :aria-label="tokenUsageSummary">
-        <div
-          v-for="bar in tokenUsage.bars"
-          :key="bar.dayKey"
-          class="token-usage-bar"
-          :class="bar.level"
-          :style="{ height: bar.tokens === null || bar.tokens === 0 ? '2px' : `${bar.height}%` }"
-          :title="usageDayTitle(bar)"
-        />
       </div>
     </div>
 

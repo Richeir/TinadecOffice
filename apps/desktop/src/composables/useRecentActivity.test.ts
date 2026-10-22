@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { SessionDto } from '@/api'
 import { setSelectedStorage } from '@/lib/storageScope'
-import { ACTIVITY_LIMIT, ACTIVITY_TTL_MS, latestRun, useRecentActivity, type ActivityCandidate } from './useRecentActivity'
+import { ACTIVITY_CONCURRENCY, ACTIVITY_LIMIT, ACTIVITY_TTL_MS, latestRun, useRecentActivity, type ActivityCandidate } from './useRecentActivity'
 
 const { listRunsMock } = vi.hoisted(() => ({
   listRunsMock: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
@@ -26,11 +26,11 @@ function candidate(id: string, updatedAt = '2026-10-21T10:00:00Z'): ActivityCand
   }
 }
 
-function harness(candidates: () => ActivityCandidate[], enabled = ref(true)) {
+function harness(candidates: () => ActivityCandidate[], enabled = ref(true), limit?: () => number) {
   let activity!: ReturnType<typeof useRecentActivity>
   const wrapper = mount(defineComponent({
     setup() {
-      activity = useRecentActivity(candidates, { enabled: () => enabled.value })
+      activity = useRecentActivity(candidates, { enabled: () => enabled.value, limit })
       return () => null
     },
   }))
@@ -48,13 +48,36 @@ beforeEach(() => {
 })
 
 describe('useRecentActivity', () => {
-  it('asks only for the conversations the activity view renders', async () => {
+  it('reads exactly the conversations it is handed, and honours an explicit cap', async () => {
     const rows = Array.from({ length: ACTIVITY_LIMIT + 3 }, (_, index) => candidate(`s-${index}`))
+    // The caller owns the width: 所有活动 hands over the whole list, and every entry is read.
+    const wide = harness(() => rows)
+    await wide.activity.refresh()
+    expect(listRunsMock).toHaveBeenCalledTimes(rows.length)
+    expect(listRunsMock).toHaveBeenCalledWith('s-0', expect.anything())
+    wide.wrapper.unmount()
+
+    listRunsMock.mockClear()
+    const capped = harness(() => rows, ref(true), () => ACTIVITY_LIMIT)
+    await capped.activity.refresh()
+    expect(listRunsMock).toHaveBeenCalledTimes(ACTIVITY_LIMIT)
+    capped.wrapper.unmount()
+  })
+
+  it('fans out in batches so a wide view does not fire one burst', async () => {
+    let inFlight = 0, peak = 0
+    listRunsMock.mockImplementation(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await Promise.resolve()
+      inFlight -= 1
+      return []
+    })
+    const rows = Array.from({ length: ACTIVITY_CONCURRENCY * 2 + 3 }, (_, index) => candidate(`s-${index}`))
     const { activity, wrapper } = harness(() => rows)
     await activity.refresh()
-
-    expect(listRunsMock).toHaveBeenCalledTimes(ACTIVITY_LIMIT)
-    expect(listRunsMock).toHaveBeenCalledWith('s-0', expect.anything())
+    expect(peak).toBeLessThanOrEqual(ACTIVITY_CONCURRENCY)
+    expect(listRunsMock).toHaveBeenCalledTimes(rows.length)
     wrapper.unmount()
   })
 

@@ -685,6 +685,8 @@ export default {
     recentConversations: "最近の会話",
     projectConversations: "プロジェクト会話",
     recentActivity: "最近のアクティビティ",
+    allActivity: 'すべてのアクティビティ',
+    projectActivity: 'プロジェクトのアクティビティ',
     activityEmpty: "アクティビティはまだありません",
     activityState: {
       awaiting: "あなたの対応待ち",

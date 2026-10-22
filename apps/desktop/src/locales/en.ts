@@ -469,6 +469,8 @@ export default {
     recentConversations: 'Recent conversations',
     projectConversations: 'Project conversations',
     recentActivity: 'Recent activity',
+    allActivity: 'All activity',
+    projectActivity: 'Project activity',
     activityEmpty: 'No activity yet',
     activityState: {
       awaiting: 'Waiting for you',

@@ -1,0 +1,197 @@
+{
+  "presets": {
+    "codex": {
+      "stored": "codex",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": null,
+      "nodes": [],
+      "groups": 0,
+      "tools": 0,
+      "failedTools": 0,
+      "agents": 0,
+      "agentRow": null,
+      "agentResult": null,
+      "agentOpen": null,
+      "agentToggle": null,
+      "frame": {
+        "turnHeight": 159,
+        "viewportHeight": 1156
+      }
+    },
+    "claude": {
+      "stored": "claude",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": null,
+      "nodes": [
+        "reasoning",
+        "agents",
+        "wait",
+        "plan",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool"
+      ],
+      "groups": 0,
+      "tools": 10,
+      "failedTools": 1,
+      "agents": 2,
+      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults",
+      "agentResult": null,
+      "agentOpen": null,
+      "agentToggle": "DIV",
+      "frame": {
+        "turnHeight": 664,
+        "viewportHeight": 1156
+      }
+    },
+    "openchamber": {
+      "stored": "openchamber",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": "更早 2 步",
+      "nodes": [
+        "earlier",
+        "agents",
+        "plan",
+        "group",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool"
+      ],
+      "groups": 1,
+      "tools": 7,
+      "failedTools": 1,
+      "agents": 2,
+      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults",
+      "agentResult": null,
+      "agentOpen": null,
+      "agentToggle": "DIV",
+      "frame": {
+        "turnHeight": 586,
+        "viewportHeight": 1156
+      }
+    },
+    "trae": {
+      "stored": "trae",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": null,
+      "nodes": [
+        "reasoning",
+        "agents",
+        "wait",
+        "plan",
+        "group",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool"
+      ],
+      "groups": 1,
+      "tools": 7,
+      "failedTools": 1,
+      "agents": 2,
+      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults Found 4 callers",
+      "agentResult": "Found 4 callers",
+      "agentOpen": "false",
+      "agentToggle": "BUTTON",
+      "frame": {
+        "turnHeight": 648,
+        "viewportHeight": 1156
+      },
+      "detailAfterClick": {
+        "capped": true,
+        "maxHeight": "320px",
+        "overscroll": "contain"
+      }
+    },
+    "qoder": {
+      "stored": "qoder",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": null,
+      "nodes": [
+        "reasoning",
+        "agents",
+        "wait",
+        "plan",
+        "group",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool"
+      ],
+      "groups": 1,
+      "tools": 7,
+      "failedTools": 1,
+      "agents": 2,
+      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults Found 4 callers",
+      "agentResult": "Found 4 callers",
+      "agentOpen": "false",
+      "agentToggle": "BUTTON",
+      "frame": {
+        "turnHeight": 648,
+        "viewportHeight": 1156
+      },
+      "detailAfterClick": {
+        "capped": true,
+        "maxHeight": "320px",
+        "overscroll": "contain"
+      }
+    }
+  },
+  "settings": {
+    "label": "对话流",
+    "rows": [
+      {
+        "checked": "false",
+        "name": "Codex",
+        "density": "简洁",
+        "nameColor": "rgb(234, 222, 247)",
+        "densityColor": "rgb(145, 135, 158)"
+      },
+      {
+        "checked": "false",
+        "name": "Claude Code",
+        "density": "详细",
+        "nameColor": "rgb(234, 222, 247)",
+        "densityColor": "rgb(145, 135, 158)"
+      },
+      {
+        "checked": "false",
+        "name": "OpenChamber",
+        "density": "详细",
+        "nameColor": "rgb(234, 222, 247)",
+        "densityColor": "rgb(145, 135, 158)"
+      },
+      {
+        "checked": "false",
+        "name": "Trae",
+        "density": "丰富",
+        "nameColor": "rgb(234, 222, 247)",
+        "densityColor": "rgb(145, 135, 158)"
+      },
+      {
+        "checked": "true",
+        "name": "Qoder",
+        "density": "丰富",
+        "nameColor": "rgb(210, 189, 245)",
+        "densityColor": "rgb(210, 189, 245)"
+      }
+    ]
+  }
+}

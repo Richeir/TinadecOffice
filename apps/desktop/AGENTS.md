@@ -24,7 +24,7 @@
 
 改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增五条覆盖 `quiet: 'listed'`、预算计数、预算从不折子智能体行/计划/失败、运行时不裁剪与默认不变；`ConversationActivity.test.ts` 用 `finishedTeamRun` 钉住同一件事的观感（两个子智能体行、计划与失败的构建调用在 `openchamber` 下仍可见，折叠只吃掉思考与等待两行）。
 
-验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 156 例）；全量 vitest **1501 通过 / 13 失败 / 12 跳过**，失败的 13 例全部是既有的 `ComposerBar`（6）/ `HostAvailabilityBanner`（6）/ `OrchestrationTab`（1）文案断言，与本次改动无关（本轮开工时记录的既有基线是 14 例，少的那一例是 `message-scroller` 的时序抖动这次恰好绿）；`vue-tsc` 0 错；生产 `npm run build` 退出 0（1m50s）。**未做**：真 Electron / 真实渲染器的观感复看——本次在 Vite 预览里设置页导航被横向裁到视口外（`button[aria-label="常规"]` 的 x 为负），点不到常规页；命令面板能搜到「常规」这一行并执行，但设置页**已经挂载**时不会再消费 `pendingSettingsSection`（`consumeRequest` 只在 setup 跑一次），所以那一跳在预览里同样到不了常规页。因此五档选项卡的实际排版只有组件级断言（名称 + 密度词 + 说明行）与 CSS 复核，没有像素级结论。也没有跑打包链与 Electron `node --test`（本轮不碰主进程）。
+验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation`）；全量 vitest 的既有失败与本轮无关（`ComposerBar` / `HostAvailabilityBanner` / `OrchestrationTab` 的文案断言）；`vue-tsc` 0 错；生产 `npm run build` 退出 0。**像素证据**在 `.tinadec_dev/evidence/2026-10-22-conversation-flow-shapes/`：`qa.mjs` 用无头 Chrome（CDP）打开 Debug Studio → 预览 → 对话消息流，按常规设置里的五个单选逐个切换，对同一个已落定的团队回合（`finished-team-run`：两个交回摘要的子智能体、一张计划、一次失败构建、12 个 flow row）记录读数并截图。结论：`codex` 只剩摘要一行；`claude` 14 行、安静步骤逐条；`openchamber` 折掉思考与等待两行（“更早 2 步”）而子智能体行、计划、失败构建仍在；`trae`/`qoder` 12 行 + 结果首行 `Found 4 callers`，就地展开 `max-height: 320px`、`overscroll-behavior-y: contain`，行是 `button`，`claude`/`openchamber` 是 `div`。设置页在 1440 宽窗口里导航可达（此前记录的“导航被裁到视口外”是预览窗口宽度所致，不是布局缺陷）。**仍未做**：`qoder` 的“正在跑的子智能体自动展开”只能由 `SubAgents.test.ts`（`parallel-sub-agents`）证明，fixture 里的两个子智能体都已结束；就地展开时结果首行与摘要首行重复一次，按 Qoder 的读法保留。
 
 ## 2026-10-22 Mermaid 主渲染器改为 Pele（mermaid 延迟兜底）
 
@@ -243,7 +243,7 @@ scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两
 
 **Last Updated:** 2026-10-22
 **Last Updated By:** 对话流档位（常规设置里的五种转写形状，默认 qoder）；同日早前是 Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底，并收尾依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
-**Last Verified Commit:** 0b73b71b + 本轮未提交工作树（对话流档位）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
+**Last Verified Commit:** 8a9698ad + 本轮工作树（对话流档位的密度词与五档像素复核）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

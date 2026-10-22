@@ -9,6 +9,7 @@ import { groupRun, isCompactAnswer, type GroupedRun } from '@/lib/conversation/g
 import type { RunActivity, ToolEntry } from '@/lib/conversation/reducer'
 import { isLiveRunStatus, isParkedRunStatus, type ConversationTurn } from '@/lib/conversation/turns'
 import { elapsedMs } from '@/lib/conversation/format'
+import { conversationFlowRules } from '@/lib/conversationFlowStyle'
 import UserMessage from './UserMessage.vue'
 import TurnWork from './TurnWork.vue'
 import ApprovalCard from './ApprovalCard.vue'
@@ -80,8 +81,11 @@ function gateReview(
 
 const runs = computed<RunView[]>(() => {
   void props.revision
+  const shape = conversationFlowRules.value
   return props.turn.runs.map(({ run, activity, streamingText }) => {
-    const grouped = activity ? groupRun(activity, isLiveRunStatus(run.status)) : null
+    // Only the settled run is trimmed: while it works the newest rows are the point, and a
+    // parked run is something the reader has to decide on.
+    const grouped = activity ? groupRun(activity, isLiveRunStatus(run.status), { quiet: shape.quiet, budget: shape.budget }) : null
     const known = new Set(grouped?.approvals.map((approval) => approval.entry.approvalId).filter(Boolean))
     const orphanApprovals = props.approvals.filter((approval) =>
       approval.run_id === run.id && approval.status === 'pending' && !known.has(approval.id))
@@ -153,6 +157,7 @@ const toolCount = computed(() => {
         v-if="run.activity && run.grouped?.nodes.length"
         :activity="run.activity"
         :nodes="run.grouped.nodes"
+        :folded="run.grouped.folded"
         :working="run.working"
         :open-by-default="run.live"
         :run-id="run.id"

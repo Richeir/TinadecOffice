@@ -4601,6 +4601,7 @@ export default {
       retry: "Повторить",
       retryHint: "Вернуть это сообщение в поле ввода",
       newTurns: "Новых: {count}",
+      foldedEarlier: "Раньше: {count} шаг | Раньше: {count} шага | Раньше: {count} шагов",
       awaiting: { awaiting_user: "Ждёт вашего решения", awaiting_approval: "Ждёт вашего одобрения", awaiting_delegate: "Ждёт вашего делегирования", generic: "Ждёт вашего действия" },
     },
     tool: {

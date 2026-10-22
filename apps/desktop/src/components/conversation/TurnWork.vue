@@ -24,6 +24,8 @@ import TurnActivity from './TurnActivity.vue'
 const props = defineProps<{
   activity: RunActivity
   nodes: FeedNode[]
+  /** Leading nodes the row budget hides behind one "N earlier steps" row (0 = none). */
+  folded?: number
   /**
    * Producing work right now: drives the spinner, the live step line and the timer. A run
    * parked on a person is NOT working — nothing is arriving, so claiming a step is in
@@ -176,7 +178,7 @@ const summary = computed(() => {
       <ChevronRight class="conversation-fold-chevron" aria-hidden="true" />
     </CollapsibleTrigger>
     <CollapsibleContent class="conversation-fold-content">
-      <TurnActivity :nodes="nodes" :run-id="runId" :workspace-root="workspaceRoot" />
+      <TurnActivity :nodes="nodes" :folded="folded" :run-id="runId" :workspace-root="workspaceRoot" />
     </CollapsibleContent>
   </Collapsible>
 </template>

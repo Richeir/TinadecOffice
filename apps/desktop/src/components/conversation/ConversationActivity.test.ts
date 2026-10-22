@@ -111,6 +111,41 @@ describe('turn work fold', () => {
     expect(wrapper.get('[data-testid="turn-work"] > [data-slot="collapsible-content"]').attributes('hidden')).toBeUndefined()
   })
 
+  it('folds all but the last rows of a settled turn when the shape sets a budget', async () => {
+    setConversationFlowPreset('openchamber')
+    const s = new EventScript()
+    for (let i = 1; i <= 9; i += 1) {
+      s.toolCall('run-1', `e-${i}`, 'replace_lines', { resource_path: `/w/f${i}.ts` }).toolDone('run-1', `e-${i}`, 'replace_lines')
+    }
+    const messages = [
+      { id: 'm-1', session_id: 's', role: 'user', content: 'Touch nine files', created_at: '2026-10-13T09:00:00Z', run_id: null, attachments: [] },
+      { id: 'm-2', session_id: 's', role: 'assistant', content: 'Done.', created_at: '2026-10-13T09:00:09Z', run_id: 'run-1', attachments: [] },
+    ] as never
+    const runs = [{ id: 'run-1', status: 'completed', trigger_message_id: 'm-1', created_at: '2026-10-13T09:00:01Z', updated_at: '2026-10-13T09:00:09Z' }]
+    const wrapper = track(mount(ConversationView, { props: { messages, runs, feed: feedOf(s.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
+
+    expect(wrapper.findAll('[data-testid="tool-sentence"]')).toHaveLength(7)
+    const earlier = wrapper.get('[data-testid="turn-earlier"]')
+    expect(earlier.text()).toBe('2 earlier steps')
+    await earlier.trigger('click')
+    await flush()
+    expect(wrapper.findAll('[data-testid="tool-sentence"]')).toHaveLength(9)
+    expect(wrapper.find('[data-testid="turn-earlier"]').exists()).toBe(false)
+  })
+
+  it('never hides rows of a run that is still going', async () => {
+    setConversationFlowPreset('openchamber')
+    const s = new EventScript()
+    for (let i = 1; i <= 9; i += 1) {
+      s.toolCall('run-1', `e-${i}`, 'replace_lines', { resource_path: `/w/f${i}.ts` }).toolDone('run-1', `e-${i}`, 'replace_lines')
+    }
+    const messages = [{ id: 'm-1', session_id: 's', role: 'user', content: 'Touch nine files', created_at: '2026-10-13T09:00:00Z', run_id: null, attachments: [] }] as never
+    const runs = [{ id: 'run-1', status: 'executing', trigger_message_id: 'm-1', created_at: '2026-10-13T09:00:01Z', updated_at: '2026-10-13T09:00:09Z' }]
+    const wrapper = track(mount(ConversationView, { props: { messages, runs, feed: feedOf(s.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
+    expect(wrapper.find('[data-testid="turn-earlier"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="tool-sentence"]')).toHaveLength(9)
+  })
+
   it('reports the same "worked for" in the answer footer as in the work summary', () => {
     const fixture = exploreEditShell()
     const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages, runs: fixture.runs, feed: feedOf(fixture.events) }, global, attachTo: document.body }))

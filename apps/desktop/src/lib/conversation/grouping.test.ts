@@ -4,10 +4,10 @@ import { GROUP_TEXT_MAX_CHARS, groupRun, isCompactAnswer, type ActivityGroupNode
 import { EventScript } from './fixtures/builder'
 import { compactedRun, exploreEditShell, parallelSubAgents, pendingApproval, simpleAnswer } from './fixtures'
 
-function grouped(events: Parameters<typeof applyEvents>[1], live = false) {
+function grouped(events: Parameters<typeof applyEvents>[1], live = false, options: Parameters<typeof groupRun>[2] = {}) {
   const state = createFeedState()
   applyEvents(state, events)
-  return groupRun(state.runs.get('run-1')!, live)
+  return groupRun(state.runs.get('run-1')!, live, options)
 }
 
 describe('groupRun', () => {
@@ -68,6 +68,37 @@ describe('groupRun', () => {
     s.emit('run-1', 'supervision.completed', { decision: 'revise', reasons: ['tests missing'] })
     expect(grouped(s.events).nodes.map((n) => n.type === 'supervision' && n.entry.decision)).toEqual(['revise'])
     expect(grouped(compactedRun().events).nodes.map((n) => n.type)).toEqual(['reasoning', 'marker'])
+  })
+})
+
+describe('groupRun shapes', () => {
+  it('gives every quiet step its own row when the shape lists them', () => {
+    const folded = grouped(exploreEditShell().events).nodes
+    expect(folded.map((n) => n.type)).toEqual(['group', 'tool', 'tool'])
+    // One thought, one search, two reads, one listing, then the edit and the command.
+    const listed = grouped(exploreEditShell().events, false, { quiet: 'listed' }).nodes
+    expect(listed.map((n) => n.type)).toEqual(['reasoning', 'tool', 'tool', 'tool', 'tool', 'tool', 'tool'])
+    expect(listed.map((n) => (n.type === 'tool' ? n.entry.toolId : 'thought'))).toEqual(['thought', 'file_search', 'read_file', 'read_file', 'ls', 'replace_lines', 'shell'])
+  })
+
+  it('counts the leading rows a budget hides without dropping them', () => {
+    const result = grouped(exploreEditShell().events, false, { budget: 2 })
+    expect(result.nodes).toHaveLength(3)
+    expect(result.folded).toBe(1)
+    expect(grouped(exploreEditShell().events, false, { budget: 3 }).folded).toBe(0)
+    expect(grouped(exploreEditShell().events, false, { budget: 9 }).folded).toBe(0)
+  })
+
+  it('never trims a run that is still going or parked on a person', () => {
+    // `live` covers both: the newest rows are what a running reader watches, and a parked run
+    // is the thing they have to decide on.
+    expect(grouped(exploreEditShell().events, true, { budget: 1 }).folded).toBe(0)
+  })
+
+  it('leaves the shapes alone by default', () => {
+    const plain = grouped(exploreEditShell().events)
+    expect(plain.folded).toBe(0)
+    expect(plain.nodes.map((n) => n.type)).toEqual(['group', 'tool', 'tool'])
   })
 })
 

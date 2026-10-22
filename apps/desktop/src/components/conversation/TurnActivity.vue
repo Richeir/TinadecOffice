@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Hourglass } from '@lucide/vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import type { FeedNode } from '@/lib/conversation/grouping'
@@ -18,10 +19,20 @@ defineOptions({ name: 'TurnActivity' })
  * The work area of a run: reasoning blocks, folded exploration groups, one line per loud
  * tool call, plans, waits, sub-agents and system lines. Rows have no border and no
  * background; status is carried by the glyph. Parallel dispatches render as an AgentGroup.
+ *
+ * `folded` is the row budget of the chosen transcript shape: that many leading nodes wait
+ * behind one "N earlier steps" row, which the reader can open. The nodes are still here —
+ * this component only decides whether to draw them.
  */
-defineProps<{ nodes: FeedNode[]; runId: string; workspaceRoot?: string | null }>()
+const props = defineProps<{ nodes: FeedNode[]; runId: string; workspaceRoot?: string | null; folded?: number }>()
 const { t } = useI18n()
 const { nameFor } = useAgentDirectory()
+
+const expanded = ref(false)
+const foldCount = computed(() => Math.min(props.folded ?? 0, props.nodes.length))
+const shown = computed(() => (foldCount.value > 0 && !expanded.value ? props.nodes.slice(foldCount.value) : props.nodes))
+// A run failure is shown by the turn, outside this fold.
+const visible = computed(() => shown.value.filter((item) => item.type !== 'marker' || item.entry.type !== 'run_failed'))
 
 function waitNames(entry: WaitEntry): string {
   return entry.awaited.map((item) => nameFor(item.handle ?? item.taskKey)).filter(Boolean).join(t('conversation.listSeparator'))
@@ -30,8 +41,12 @@ function waitNames(entry: WaitEntry): string {
 
 <template>
   <ul class="conversation-activity" role="list">
-    <!-- A run failure is shown by the turn, outside this fold. -->
-    <li v-for="node in nodes.filter((item) => item.type !== 'marker' || item.entry.type !== 'run_failed')" :key="node.id" class="conversation-activity-row" :data-node="node.type">
+    <li v-if="foldCount > 0 && !expanded" class="conversation-activity-row" data-node="earlier">
+      <button type="button" class="conversation-link-button" data-testid="turn-earlier" @click="expanded = true">
+        {{ t('conversation.turn.foldedEarlier', { count: foldCount }, foldCount) }}
+      </button>
+    </li>
+    <li v-for="node in visible" :key="node.id" class="conversation-activity-row" :data-node="node.type">
       <ActivityGroup v-if="node.type === 'group'" :node="node" :workspace-root="workspaceRoot" />
       <ReasoningBlock v-else-if="node.type === 'reasoning'" :entry="node.entry" />
       <ToolRow v-else-if="node.type === 'tool'" :entry="node.entry" :run-id="runId" :workspace-root="workspaceRoot" />

@@ -3770,7 +3770,7 @@ retry: '重试',
     },
     turn: {
       workedFor: '已工作 {duration}', toolCount: '工具 {count} 次', sending: '发送中…', edits: '编辑 {count} 处', commands: '运行 {count} 条命令',
-      loading: '正在加载对话…', retry: '重试', retryHint: '把这条消息放回输入框', newTurns: '{count} 条新消息',
+      loading: '正在加载对话…', retry: '重试', retryHint: '把这条消息放回输入框', newTurns: '{count} 条新消息', foldedEarlier: '更早 {count} 步',
       awaiting: { awaiting_user: '等待你的裁决', awaiting_approval: '等待你批准', awaiting_delegate: '等待你授权委派', generic: '等待你的操作' },
     },
     tool: {

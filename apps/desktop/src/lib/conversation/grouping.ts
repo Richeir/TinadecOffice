@@ -68,6 +68,13 @@ export interface PendingApproval {
 
 export interface GroupedRun {
   nodes: FeedNode[]
+  /**
+   * How many leading nodes the row budget hides behind "N earlier steps" (0 when nothing is
+   * folded). The nodes are still in `nodes`; the renderer decides whether to show them. Only
+   * a settled run is trimmed — while a run is live its newest rows are what the reader is
+   * watching, and parked rows are what they must decide on.
+   */
+  folded: number
   approvals: PendingApproval[]
   /** Sub-agents of this run, in dispatch order (the right-column roster reads this). */
   agents: SubAgentNode[]
@@ -143,6 +150,8 @@ interface Context {
   approvals: PendingApproval[]
   agents: SubAgentNode[]
   live: boolean
+  /** `listed`: a quiet step gets its own row instead of joining an exploration group. */
+  quiet: 'grouped' | 'listed'
 }
 
 function scopeOf(record: RunActivity, entry: FeedEntry): string | null {
@@ -171,7 +180,12 @@ function build(context: Context, scope: string | null, requester: SubAgent | nul
     // A call that finished without a thought or a word leaves nothing to read: no empty row.
     if (entry.kind === 'reasoning' && entry.status !== 'running' && !entry.text.trim() && !entry.output.trim()) continue
     if (isQuiet(entry)) {
-      quiet.push(entry as QuietEntry)
+      if (context.quiet === 'listed') {
+        flush()
+        nodes.push(single(entry as QuietEntry))
+      } else {
+        quiet.push(entry as QuietEntry)
+      }
       continue
     }
     flush()
@@ -223,11 +237,24 @@ function subAgent(context: Context, agent: SubAgent, dispatch: DispatchEntry): S
   return node
 }
 
+export interface GroupOptions {
+  /**
+   * `listed` gives every quiet step its own row (the Claude Code shape: one line per read,
+   * search or thought). `grouped` — the default — folds adjacent ones into "Explored 6 files".
+   */
+  quiet?: 'grouped' | 'listed'
+  /**
+   * How many flow nodes a settled turn keeps in view; the rest fold behind one "N earlier
+   * steps" row. 0 or absent keeps everything. Ignored while the run is live.
+   */
+  budget?: number
+}
+
 /**
  * Groups one run. `live` is true while the run can still change (not settled), which is
- * what lets the last exploration group stay open.
+ * what lets the last exploration group stay open and what suppresses the row budget.
  */
-export function groupRun(record: RunActivity, live: boolean): GroupedRun {
+export function groupRun(record: RunActivity, live: boolean, options: GroupOptions = {}): GroupedRun {
   const byScope = new Map<string | null, FeedEntry[]>()
   const ordered = [...record.entries].sort((a, b) => a.seq - b.seq)
   for (const entry of ordered) {
@@ -236,10 +263,12 @@ export function groupRun(record: RunActivity, live: boolean): GroupedRun {
     if (list) list.push(entry)
     else byScope.set(scope, [entry])
   }
-  const context: Context = { record, byScope, approvals: [], agents: [], live }
+  const context: Context = { record, byScope, approvals: [], agents: [], live, quiet: options.quiet ?? 'grouped' }
   const nodes = build(context, null, null)
+  const budget = live ? 0 : options.budget ?? 0
+  const folded = budget > 0 && nodes.length > budget ? nodes.length - budget : 0
   const running = context.agents.filter((node) => node.status === 'running' || node.status === 'awaiting_approval').length
-  return { nodes, approvals: context.approvals, agents: context.agents, running, review: record.review }
+  return { nodes, folded, approvals: context.approvals, agents: context.agents, running, review: record.review }
 }
 
 /** Longest interim answer that still reads as a note between steps (Qoder's groupText). */

@@ -4601,6 +4601,7 @@ export default {
       retry: "重試",
       retryHint: "把這條訊息放回輸入框",
       newTurns: "{count} 條新訊息",
+      foldedEarlier: "更早 {count} 步",
       awaiting: { awaiting_user: "等待你的裁決", awaiting_approval: "等待你批准", awaiting_delegate: "等待你授權委派", generic: "等待你的操作" },
     },
     tool: {

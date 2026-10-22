@@ -4601,6 +4601,7 @@ export default {
       retry: "再試行",
       retryHint: "このメッセージを入力欄に戻す",
       newTurns: "新着 {count} 件",
+      foldedEarlier: "前の {count} ステップ",
       awaiting: { awaiting_user: "あなたの判断待ち", awaiting_approval: "あなたの承認待ち", awaiting_delegate: "あなたの委任待ち", generic: "あなたの操作待ち" },
     },
     tool: {

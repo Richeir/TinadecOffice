@@ -3772,7 +3772,7 @@ retry: 'Retry',
     },
     turn: {
       workedFor: 'Worked for {duration}', toolCount: '{count} tool | {count} tools', sending: 'Sending…', edits: '{count} edit | {count} edits', commands: '{count} command | {count} commands',
-      loading: 'Loading conversation…', retry: 'Retry', retryHint: 'Put this message back in the composer', newTurns: '{count} new',
+      loading: 'Loading conversation…', retry: 'Retry', retryHint: 'Put this message back in the composer', newTurns: '{count} new', foldedEarlier: '{count} earlier step | {count} earlier steps',
       awaiting: { awaiting_user: 'Waiting for your decision', awaiting_approval: 'Waiting for your approval', awaiting_delegate: 'Waiting for you to delegate', generic: 'Waiting for you' },
     },
     tool: {

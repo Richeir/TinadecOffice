@@ -37,7 +37,9 @@ const runtimePolicy = ref<AgentRuntimePolicyDto | null>(null)
 const runtimePolicyLoaded = ref(false)
 const runtimePolicyFailed = ref(false)
 
-interface PolicyRow { key: string; label: string; value: string; help: string; changed: boolean }
+// `help` is optional: a label that already names its unit needs no restating tooltip, and an
+// undefined title binding simply drops the attribute.
+interface PolicyRow { key: string; label: string; value: string; help?: string; changed: boolean }
 
 const runtimePolicyRows = computed<PolicyRow[]>(() => {
   const policy = runtimePolicy.value
@@ -47,10 +49,10 @@ const runtimePolicyRows = computed<PolicyRow[]>(() => {
   const disabled = t('settings.runtimeCeilings.disabled')
   const rows: Omit<PolicyRow, 'changed'>[] = [
     { key: 'spawn.max_depth', label: t('settings.runtimeCeilings.depth'), value: String(policy.spawn.max_depth), help: t('settings.runtimeCeilings.depthHint') },
-    { key: 'spawn.max_agents_per_run', label: t('settings.runtimeCeilings.agentsPerRun'), value: String(policy.spawn.max_agents_per_run), help: t('settings.runtimeCeilings.agentsPerRunHint') },
-    { key: 'spawn.max_parallel_workers', label: t('settings.runtimeCeilings.parallelWorkers'), value: String(policy.spawn.max_parallel_workers), help: t('settings.runtimeCeilings.parallelWorkersHint') },
+    { key: 'spawn.max_agents_per_run', label: t('settings.runtimeCeilings.agentsPerRun'), value: String(policy.spawn.max_agents_per_run) },
+    { key: 'spawn.max_parallel_workers', label: t('settings.runtimeCeilings.parallelWorkers'), value: String(policy.spawn.max_parallel_workers) },
     { key: 'scheduling.max_active_runs_per_session', label: t('settings.runtimeCeilings.activeRuns'), value: String(policy.scheduling.max_active_runs_per_session), help: t('settings.runtimeCeilings.activeRunsHint') },
-    { key: 'scheduling.worker_retry_limit', label: t('settings.runtimeCeilings.workerRetries'), value: String(policy.scheduling.worker_retry_limit), help: t('settings.runtimeCeilings.workerRetriesHint') },
+    { key: 'scheduling.worker_retry_limit', label: t('settings.runtimeCeilings.workerRetries'), value: String(policy.scheduling.worker_retry_limit) },
     { key: 'supervision.max_revision_rounds', label: t('settings.runtimeCeilings.revisionRounds'), value: String(policy.supervision.max_revision_rounds), help: t('settings.runtimeCeilings.revisionRoundsHint') },
     { key: 'context.default_token_budget', label: t('settings.runtimeCeilings.contextWindow'), value: String(policy.context.default_token_budget), help: t('settings.runtimeCeilings.contextWindowHint') },
     {

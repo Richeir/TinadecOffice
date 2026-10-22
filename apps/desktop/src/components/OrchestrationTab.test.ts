@@ -276,7 +276,7 @@ describe('OrchestrationTab model usage', () => {
     listModelInvocations.mockRejectedValue(new Error('gateway down'))
 
     const block = (await mountLoaded()).get('[data-testid="model-usage"]')
-    expect(block.get('[data-testid="model-usage-unavailable"]').text()).toContain('not a zero-cost run')
+    expect(block.get('[data-testid="model-usage-unavailable"]').text()).toContain('that is not zero cost')
     expect(block.findAll('[data-testid="model-usage-group"]')).toHaveLength(0)
     expect(block.text()).not.toMatch(/\b0 tokens\b/)
   })

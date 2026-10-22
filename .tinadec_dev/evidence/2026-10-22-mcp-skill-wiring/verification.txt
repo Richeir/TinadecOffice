@@ -1,0 +1,70 @@
+# 2026-10-22 MCP / Skill 贯通核查 — 命令与结果
+
+环境：Windows，仓库 `C:\git\agent\TinadecOffice`，dotnet 10.0.303，Bun 1.3.14。
+数据根：`C:\Users\lincu\.tinadec`（当前安装，GraphSeedPack 3.2.0）。
+
+## 1. Core API：MCP 清单 + 工作区技能
+
+```
+dotnet test TinadecCore\tests\TinadecCore.Api.Tests\TinadecCore.Api.Tests.csproj \
+  --filter "FullyQualifiedName~McpInventoryApiTests|FullyQualifiedName~WorkspaceSkillApiTests"
+```
+
+结果：**通过 36 / 失败 0 / 跳过 0**，耗时 5m34s，退出码 0。
+
+说明：首次与 Tools 测试并行启动时，共享的 `TinadecTools.Generators` 被另一构建锁定，
+报 `CS2012 ... being used by another process`，那是并行构建冲突，不是产品失败；
+单独重跑后全绿。定向集包含 MCP 人类侧读面（10 例）与工作区/共享技能（26 例）。
+
+## 2. Tools：真实 Node stdio MCP 夹具的透传
+
+```
+dotnet test tests\TinadecTools.Tests\TinadecTools.Tests.csproj \
+  --filter "FullyQualifiedName~McpPassThroughTests"
+```
+
+结果：**通过 8 / 失败 0 / 跳过 0**，耗时 43s，退出码 0。
+
+说明：`McpPassThroughTests.ConfigureRuntime` 用 `node <fixtures>/mcp-mock-server.js`
+起真实 stdio MCP 子进程（`McpPassThroughTests.cs:163-183`），覆盖 list/search/invoke
+与错误返回，不是纯 mock 客户端。
+
+## 3. Gateway：MCP 读代理 + 工具设置/Skill 代理
+
+```
+cd TinadecGateway
+bun test src/mcpProxy.test.ts src/toolsSettingsProxy.test.ts
+```
+
+结果：**8 pass / 0 fail**，2 个文件，1.93s，退出码 0。
+
+说明：这是 Bun 内 `app.handle` 级别的代理测试，上游为模拟 Core，不启动真 Core。
+
+## 4. 当前安装的授权事实（只读 SQLite）
+
+```
+python tmp\dump-wiring-evidence.py "C:\Users\lincu\.tinadec\data\tinadec.db" \
+  ".tinadec_dev\evidence\2026-10-22-mcp-skill-wiring\installed-agent-scopes.json"
+```
+
+关键点：
+- GraphSeedPack 当前安装版本 3.2.0（2026-10-21 安装）。
+- `meeting` 37 个工具，`mcp_*` = 0；`solo_master` 37 个，`mcp_*` = 0。
+- `search` 19 个，含 `mcp_list/mcp_search/mcp_invoke`；`artex_worker` 37 个，含三个 `mcp_*`。
+- Solo 模式节点 `meeting`（conversation=true，37 工具，无 mcp），
+  `relationship.agent_types = [search, global_engineering]`（search 可作为 spawnable 执行体）。
+- `free_director` / `review` / `spec` 的 meeting 节点 `effective_tools = []`（纯协调者）。
+- `vibe_graph` 的 `search` 节点 19 工具，含 `mcp_*`。
+- `tool_mcp_resources` 行数 0；`tool_skill_resources` 行数 0。
+
+工作区与用户技能目录：
+- `C:\Users\lincu\.tinadec\skills` 为空。
+- `C:\git\agent\TinadecOffice\.tinadec\skills` 不存在。
+- `C:\git\agent\TinadecOffice\.claude\skills` 有 4 个技能
+  （codegraph-usage、ponytail、shadcn-vue、terminal-hygiene），产品不扫描这个目录。
+
+## 5. 未在本轮跑的验证
+
+- 真实 Electron 设置页点击、真实模型 run（没有启动 Core/Gateway/Electron 全栈）。
+- 真实第三方 MCP server（本轮只有 Node 夹具；历史报告 2026-10-08 有真实 Node stdio 证据）。
+- PostgreSQL、Linux/macOS。

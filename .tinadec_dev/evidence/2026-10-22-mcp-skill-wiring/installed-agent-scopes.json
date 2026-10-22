@@ -1,0 +1,1221 @@
+{
+  "database": "C:\\Users\\lincu\\.tinadec\\data\\tinadec.db",
+  "pack_versions": [
+    {
+      "pack_version": "3.2.0",
+      "created_at": "2026-10-21 16:26:17.965646+00:00"
+    },
+    {
+      "pack_version": "3.1.2",
+      "created_at": "2026-10-20 06:28:45.0304012+00:00"
+    },
+    {
+      "pack_version": "3.1.1",
+      "created_at": "2026-10-19 11:44:22.4225776+00:00"
+    },
+    {
+      "pack_version": "3.0.1",
+      "created_at": "2026-10-09 14:19:29.3196567+00:00"
+    },
+    {
+      "pack_version": "0.1.0",
+      "created_at": "2026-10-09 06:16:01.8142939+00:00"
+    }
+  ],
+  "agents": [
+    {
+      "slug": "artex_director",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:artex_director",
+      "tool_count": 22,
+      "mcp_tools": []
+    },
+    {
+      "slug": "artex_planner",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:artex_planner",
+      "tool_count": 15,
+      "mcp_tools": []
+    },
+    {
+      "slug": "artex_verifier",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:artex_verifier",
+      "tool_count": 18,
+      "mcp_tools": []
+    },
+    {
+      "slug": "artex_worker",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:artex_worker",
+      "tool_count": 37,
+      "mcp_tools": [
+        "mcp_invoke",
+        "mcp_list",
+        "mcp_search"
+      ]
+    },
+    {
+      "slug": "context_compressor",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:context_compressor",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "evolution",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:evolution",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "git_steward",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:git_steward",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "global_engineering",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:global_engineering",
+      "tool_count": 30,
+      "mcp_tools": []
+    },
+    {
+      "slug": "governance_reviewer",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:governance_reviewer",
+      "tool_count": 8,
+      "mcp_tools": []
+    },
+    {
+      "slug": "meeting",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:meeting",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "meeting",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:meeting",
+      "tool_count": 37,
+      "mcp_tools": []
+    },
+    {
+      "slug": "reviewer",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:reviewer",
+      "tool_count": 11,
+      "mcp_tools": []
+    },
+    {
+      "slug": "search",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:search",
+      "tool_count": 19,
+      "mcp_tools": [
+        "mcp_invoke",
+        "mcp_list",
+        "mcp_search"
+      ]
+    },
+    {
+      "slug": "skill_recommender",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:skill_recommender",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "solo_master",
+      "managed": true,
+      "source": "tinadec.graph.seed-pack:solo_master",
+      "tool_count": 37,
+      "mcp_tools": []
+    },
+    {
+      "slug": "supervisor",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:supervisor",
+      "tool_count": 0,
+      "mcp_tools": []
+    },
+    {
+      "slug": "task_planner",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:task_planner",
+      "tool_count": 1,
+      "mcp_tools": []
+    },
+    {
+      "slug": "worker.browser",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.browser",
+      "tool_count": 4,
+      "mcp_tools": [
+        "mcp_invoke",
+        "mcp_search"
+      ]
+    },
+    {
+      "slug": "worker.code",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.code",
+      "tool_count": 4,
+      "mcp_tools": [
+        "mcp_invoke"
+      ]
+    },
+    {
+      "slug": "worker.data",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.data",
+      "tool_count": 2,
+      "mcp_tools": []
+    },
+    {
+      "slug": "worker.document",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.document",
+      "tool_count": 2,
+      "mcp_tools": []
+    },
+    {
+      "slug": "worker.file",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.file",
+      "tool_count": 2,
+      "mcp_tools": []
+    },
+    {
+      "slug": "worker.general",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.general",
+      "tool_count": 1,
+      "mcp_tools": []
+    },
+    {
+      "slug": "worker.git",
+      "managed": true,
+      "source": "tinadec.tests.bootstrap-pack:worker.git",
+      "tool_count": 21,
+      "mcp_tools": []
+    }
+  ],
+  "modes": [
+    {
+      "slug": "artex",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "artex_director",
+          "conversation": true,
+          "tool_count": 22,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "artex_planner"
+          ],
+          "allowed_dispatch_targets": [
+            "artex_planner"
+          ]
+        },
+        {
+          "node_key": "artex_planner",
+          "conversation": false,
+          "tool_count": 15,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "artex_worker",
+            "artex_verifier"
+          ],
+          "allowed_dispatch_targets": [
+            "artex_worker",
+            "artex_verifier"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "conversation.agent",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-context-compressor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-skill-recommender",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-supervisor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-05-evolution",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-06-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-07-worker-code",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-08-worker-document",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-09-worker-data",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-10-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-11-worker-file",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-12-worker-general",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-13-worker-git",
+          "conversation": false,
+          "tool_count": 21,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "conversation.ask",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "conversation.auto",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-context-compressor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-skill-recommender",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-supervisor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-05-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-06-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-07-worker-document",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-08-worker-file",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-09-worker-general",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "conversation.plan",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-context-compressor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-supervisor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-05-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-06-worker-document",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "conversation.spec",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-context-compressor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-supervisor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-05-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-06-worker-document",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "conversation.vibe",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-worker-general",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "correction",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 36,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "correction",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 36,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "correction",
+      "version": 3,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 36,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "default-mode",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "n-01-meeting",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-02-context-compressor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-03-skill-recommender",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-04-supervisor",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-05-evolution",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-06-git-steward",
+          "conversation": false,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-07-task-planner",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-08-worker-code",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-09-worker-document",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-10-worker-data",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-11-worker-browser",
+          "conversation": false,
+          "tool_count": 4,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-12-worker-file",
+          "conversation": false,
+          "tool_count": 2,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-13-worker-general",
+          "conversation": false,
+          "tool_count": 1,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "n-14-worker-git",
+          "conversation": false,
+          "tool_count": 21,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "fixed_pipeline",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "global_engineering",
+          "conversation": false,
+          "tool_count": 30,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        },
+        {
+          "node_key": "search",
+          "conversation": false,
+          "tool_count": 19,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_list",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "fixed_pipeline",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "global_engineering",
+          "conversation": false,
+          "tool_count": 30,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        },
+        {
+          "node_key": "search",
+          "conversation": false,
+          "tool_count": 19,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_list",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "free_director",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "governance_reviewer",
+          "conversation": false,
+          "tool_count": 8,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "free_director",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "governance_reviewer",
+          "conversation": false,
+          "tool_count": 8,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "free_director",
+      "version": 3,
+      "nodes": [
+        {
+          "node_key": "governance_reviewer",
+          "conversation": false,
+          "tool_count": 8,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "plan",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 16,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search"
+          ],
+          "allowed_dispatch_targets": [
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "plan",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 16,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search"
+          ],
+          "allowed_dispatch_targets": [
+            "search"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "review",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "reviewer"
+          ],
+          "allowed_dispatch_targets": [
+            "reviewer"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "review",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "reviewer"
+          ],
+          "allowed_dispatch_targets": [
+            "reviewer"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "review",
+      "version": 3,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "reviewer"
+          ],
+          "allowed_dispatch_targets": [
+            "reviewer"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "solo",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 37,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "solo",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 37,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "spec",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "spec",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [
+            "search",
+            "global_engineering"
+          ],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "vibe_graph",
+      "version": 1,
+      "nodes": [
+        {
+          "node_key": "global_engineering",
+          "conversation": false,
+          "tool_count": 30,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        },
+        {
+          "node_key": "search",
+          "conversation": false,
+          "tool_count": 19,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_list",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    },
+    {
+      "slug": "vibe_graph",
+      "version": 2,
+      "nodes": [
+        {
+          "node_key": "global_engineering",
+          "conversation": false,
+          "tool_count": 30,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        },
+        {
+          "node_key": "meeting",
+          "conversation": true,
+          "tool_count": 0,
+          "mcp_tools": [],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": [
+            "search",
+            "global_engineering"
+          ]
+        },
+        {
+          "node_key": "search",
+          "conversation": false,
+          "tool_count": 19,
+          "mcp_tools": [
+            "mcp_invoke",
+            "mcp_list",
+            "mcp_search"
+          ],
+          "relationship_agent_types": [],
+          "allowed_dispatch_targets": []
+        }
+      ]
+    }
+  ],
+  "resources": {
+    "tool_mcp_resources": 0,
+    "tool_skill_resources": 0
+  }
+}

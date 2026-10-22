@@ -3311,11 +3311,29 @@ margin-top: 4px;
   border-left: 0;
 }
 
-/* Mermaid diagrams: the rendered SVG is centred in the card and shrinks with a narrow
-   column only down to --diagram-min-width (80% of its natural width, labels stay ~10px);
-   past that it scrolls sideways instead of turning into unreadable text. Centred with
-   auto margins, not justify-content, so an overflowing diagram still scrolls to its left
-   edge. Falls back to its own source. */
+/* Pele paints from CSS variables, so light/dark and accent changes repaint without a
+   re-render. --pele-bg also backs edge labels and C4 backgrounds, so it matches the
+   island card surface. --pele-series-* stay at Pele's defaults: the app's status colours
+   would read as error/warning series in a chart. */
+.markdown-diagram-body {
+  --pele-bg: var(--surface-section);
+  --pele-fg: var(--text-primary);
+  --pele-muted: var(--text-muted);
+  --pele-line: var(--text-muted);
+  --pele-surface: var(--surface-raised);
+  --pele-surface-alt: var(--surface-section);
+  --pele-border: var(--border-default);
+  --pele-accent: var(--accent-primary);
+  --pele-critical: var(--accent-danger);
+  --pele-error: var(--accent-danger);
+  --pele-font-mono: var(--font-mono);
+}
+
+/* Diagrams: the rendered SVG is centred in the card and shrinks with a narrow column only
+   down to --diagram-min-width (80% of its natural width, labels stay ~10px); past that it
+   scrolls sideways instead of turning into unreadable text. Centred with auto margins, not
+   justify-content, so an overflowing diagram still scrolls to its left edge. Falls back to
+   its own source. */
 .markdown-diagram-svg {
   display: flex;
   padding: 12px;

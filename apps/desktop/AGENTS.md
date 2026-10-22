@@ -1,5 +1,19 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-22 Mermaid 主渲染器改为 Pele（mermaid 延迟兜底）
+
+`components/MarkdownDiagram.vue` 现在 Pele 主渲染、mermaid 兜底。主引擎只走 `import('pele/lazy')` 的 `renderAsync`；**不要 import `pele` 根入口**（一次拉全部 37 种图，695KB raw / 259KB gzip）。`pele` 精确锁 `1.8.0`，并加入 `vite.config.ts` 的 `optimizeDeps.exclude`。生产构建里 lazy 入口 38KB raw / 16KB gzip，首张 flowchart 在已加载的 app index chunk 之上增量约 149KB raw / 61KB gzip，sequence 约 59KB / 26KB gzip；dist 里无整包 `pele.js`，33 个按图类型动态 chunk，mermaid chunk 仍在。
+
+**失败兜底必须延迟**：流式半截围栏在 Pele 里是语法错误，立即兜底会在每条流式图上提前拉 mermaid（约 690KB raw 入口）。`DIAGRAM_FALLBACK_DELAY_MS = 1000`；源码变化、新 draw、卸载都会取消。等待期间只显示源码、不显示错误提示；两边都失败或超 20,000 字符才出 `chat.markdownDiagramError`。空围栏不再标记为失败。
+
+Pele 由 `RenderResult.width` 直接给出 80% `--diagram-min-width`；`diagramMinWidth()` 的 `max-width` 正则只剩 mermaid 兜底使用。主题在全局 `styles.css` 的 `.markdown-diagram-body` 上映射 `--pele-*`（`--pele-bg` = `--surface-section`，边标签与 C4 背景同卡面；`--pele-critical/error` = `--accent-danger`；`--pele-series-*` 用 Pele 默认，避免语义色当分类色）。Pele 图不随 `data-theme` 重绘，observer 只对 `engine === 'mermaid'` 生效。字体通过 render options 传 `fontSize:12` 与计算后的 `fontFamily` / `--font-mono`，不设 `--pele-font`（`inherit` 作为自定义属性值不可靠）。
+
+Pele SVG 不过 DOMPurify；`sanitizePeleSvg()` 是唯一安全接缝。测试钉住 `<img onerror>` 变文本、`javascript:` click 不产出链接、无 `<script>` / `foreignObject` / `on*`。`data-engine` 属性供测试与诊断。
+
+**并行会话的依赖升级在本轮收尾（全部有读数）**：① dompurify 3.4.5→3.4.8 后 `MarkdownRender` 15 例挂 11 的根因是 happy-dom 的 `Node.prototype.nodeName` getter 对任何节点都返回空串（真名在 Element/CharacterData 层），而 DOMPurify ≥3.4.8 的 realm 加固恰好用这个缓存 getter 读 tagName——元素"无名"被解包。真实浏览器不受影响；修复在 `src/testSetup.ts` 打按规范委托的 shim（自检发现已修则自动失效），dompurify 升到 ^3.4.8，不再钉版。② monaco-editor 0.56 重构导出，`esm/vs/...` deep 子路径全部失效，`monaco.config.ts` 五个 `?worker` 导入与 optimizeDeps include 改为 `monaco-editor/<editor|language>/…`。③ esbuild 随 vite 7.3.7 提升到根并升到 0.28.2，根 `optionalDependencies` 三个平台二进制同步到 0.28.2；`check-lockfile-natives.mjs` 新增"二进制版本 == 提升后 esbuild 本体版本"交叉检查，`lockfileNatives.test.mjs` 家族守卫改为不限提升位置并新增漂移用例。
+
+验证：`MarkdownDiagram.test.ts` 10 + `MarkdownDiagram.fallback.test.ts` 8（999/1000ms、流式取消、双失败、串行 id、主题重绘）+ `MarkdownRender.test.ts` 15 全绿；`vue-tsc` 0；`vite build` exit 0（monaco 0.56 的五个 worker chunk 齐）；electron/scripts `node --test` 207 pass / 1 skip（含新增 natives 漂移用例）。全量 vitest 1476 passed / 12 skipped / 14 failed，失败为 `ComposerBar` / `HostAvailabilityBanner` / `OrchestrationTab` 的既有文案断言、`message-scroller` 既有抖动与 Vue 3.6-rc + happy-dom `insertBefore` 问题，隔离复跑同样失败且不引用本次模块。未验证：真实 Electron 观感、canvas 字体测量、`app://bundle` 动态 chunk、1 秒兜底手感、各图类型与 monaco 0.56 编辑器视觉质量。
+
 ## 2026-10-21 工作区选项改为单行复选列表
 
 `工作区选项` 弹层不再使用右侧开关 + 说明文字，改为左侧 `UiCheckbox`、右侧「最近对话」标签的单行复选列表；勾选后弹层保持打开，方便继续增加选项。`recentConversationsHint` 五语键随说明一起删除。此前为半透明轨道做的开关样式与守卫已随组件删除。
@@ -201,9 +215,9 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
-**Last Updated:** 2026-10-11
-**Last Updated By:** 合并上游 APP-HOME-107 智能体/模型目录读取恢复与本地 UiSelectField 迁移、设置语言迁入常规页、首页 Git 信息卡。
-**Last Verified Commit:** df0977f（Settings 与共享读取修复）+ ff16bf4（合并上游后工作树）；上游对账见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md，下拉迁移、死 CSS/aria 更正与 CodeRabbit 修正见 select-field.test.ts 与 Desktop 全量 142 文件/1295 通过、TinadecUI 187 通过，Home Git 见 .tinadec_dev/reports/2026-10-11-home-git-widget.zh-CN.md。
+**Last Updated:** 2026-10-22
+**Last Updated By:** Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底；并收尾并行会话的依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
+**Last Verified Commit:** 1bcdbb29 + 本轮未提交工作树（Pele 渲染切换与依赖升级收尾）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置
@@ -212,7 +226,7 @@ scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两
 
 共享总览的工具使用者从各启用定义的Core有效配置读取，不能只拿tool_scope推算；并发读取限制为四，项目/Agent切换后迟到结果丢弃。资源绑定和技能启用复选框复用settings-checkbox，避免全局文本输入宽度规则把勾选框撑满资源行。
 
-`src/monaco.config.ts` uses Vite `?worker` entrypoints for editor, JSON, TypeScript, CSS and HTML workers. Do not replace them with plain `new URL(..., import.meta.url)` assets: the language entrypoints have relative imports that fail when a packaged `app://bundle` renderer turns them into data URLs. The production Electron walkthrough verified JSON schema completion and a minimum-value diagnostic in the isolated bundle; see `.tinadec_dev/evidence/2026-10-08-tools-settings/desktop-production-json-completion.png` and `desktop-production-json-validation.png`. An earlier failing run is retained as `desktop-production-worker-initial-error.png` to document the regression and its fix.
+`src/monaco.config.ts` uses Vite `?worker` entrypoints for editor, JSON, TypeScript, CSS and HTML workers（2026-10-22 起 monaco-editor 0.56 的子路径为 `monaco-editor/<editor|language>/…`，旧 `esm/vs/...` 拼写不再解析，见顶部同日条目）. Do not replace them with plain `new URL(..., import.meta.url)` assets: the language entrypoints have relative imports that fail when a packaged `app://bundle` renderer turns them into data URLs. The production Electron walkthrough verified JSON schema completion and a minimum-value diagnostic in the isolated bundle; see `.tinadec_dev/evidence/2026-10-08-tools-settings/desktop-production-json-completion.png` and `desktop-production-json-validation.png`. An earlier failing run is retained as `desktop-production-worker-initial-error.png` to document the regression and its fix.
 
 ### 2026-10-08 命令面板导航修复与语言讨论
 
@@ -234,7 +248,7 @@ permissionChoices集中图标与风险元数据：default中性、auto-approve/�
 
 ### 2026-10-08 对话流 Markdown 扩展语法
 
-MarkdownRender 仍是唯一入口（MessageItem 历史、MessageList 流式、SpatialWorkCard 详情共用），解析/分块/高亮/块级行为都在该组件，样式集中在 styles.css，只新增异步的 MarkdownDiagram 子组件。代码岛加语言标签与悬停显现的复制按钮（clipboard 异步失败或缺失时回退旧路径，失败在按钮上报"复制失败"）；highlight.js 按需注册 20 语言并按"语言+正文"记忆化，未知语言静默退化；marked-katex-extension + katex@0.18 渲染行内/块级公式（display 自带横滚），marked-footnote 渲染脚注并把标题与返回引用读屏文案本地化；`> [!NOTE/TIP/IMPORTANT/WARNING/CAUTION]` 渲染为分类型提示块（支持自定义标题），普通引用不受影响；标题注入 md- 前缀去重 id 与锚点，点击在组件内滚动并高亮、绝不改写 URL hash（应用使用 hash 路由）；mermaid@12 懒加载并按 data-theme 用主题 token 重绘，流式围栏落定后布局、超 20000 字符与解析失败都回退显示源码。表格容器满宽、表头加深、行 hover、末行去边，行内代码圆角 4px；高亮 token 全部取主题变量。定向 18（另有 MarkdownDiagram 3）、Desktop 全量 1028 passed/14 skipped、类型检查与 Electron 夹具 passed（真实剪贴板、MathML、Mermaid、三宽度无横向溢出、流式不重建已完成块）。**外链打开**：正文 http(s) 链接点击现已由 `electron/externalLinks.cjs` 的 `will-navigate` 守卫接管并交给系统浏览器，见下方 2026-10-08 打包态 origin 一节（该节写于 Markdown 批次之后，本条旧结论已作废）。依赖提醒：安装 mermaid 会把 dompurify 顺带升到 3.4.16，该版本会剥掉消毒片段首个元素标签并破坏分块，应用侧已固定回 3.4.5，升级依赖后必须复验分块。
+MarkdownRender 仍是唯一入口（MessageItem 历史、MessageList 流式、SpatialWorkCard 详情共用），解析/分块/高亮/块级行为都在该组件，样式集中在 styles.css，只新增异步的 MarkdownDiagram 子组件。代码岛加语言标签与悬停显现的复制按钮（clipboard 异步失败或缺失时回退旧路径，失败在按钮上报"复制失败"）；highlight.js 按需注册 20 语言并按"语言+正文"记忆化，未知语言静默退化；marked-katex-extension + katex@0.18 渲染行内/块级公式（display 自带横滚），marked-footnote 渲染脚注并把标题与返回引用读屏文案本地化；`> [!NOTE/TIP/IMPORTANT/WARNING/CAUTION]` 渲染为分类型提示块（支持自定义标题），普通引用不受影响；标题注入 md- 前缀去重 id 与锚点，点击在组件内滚动并高亮、绝不改写 URL hash（应用使用 hash 路由）；mermaid@12 懒加载并按 data-theme 用主题 token 重绘，流式围栏落定后布局、超 20000 字符与解析失败都回退显示源码（2026-10-22 起主渲染器改为 Pele，mermaid 仅作兜底，见文件顶部同日条目）。表格容器满宽、表头加深、行 hover、末行去边，行内代码圆角 4px；高亮 token 全部取主题变量。定向 18（另有 MarkdownDiagram 3）、Desktop 全量 1028 passed/14 skipped、类型检查与 Electron 夹具 passed（真实剪贴板、MathML、Mermaid、三宽度无横向溢出、流式不重建已完成块）。**外链打开**：正文 http(s) 链接点击现已由 `electron/externalLinks.cjs` 的 `will-navigate` 守卫接管并交给系统浏览器，见下方 2026-10-08 打包态 origin 一节（该节写于 Markdown 批次之后，本条旧结论已作废）。依赖提醒：安装 mermaid 会把 dompurify 顺带升到 3.4.16，该版本会剥掉消毒片段首个元素标签并破坏分块，应用侧已固定回 3.4.5，升级依赖后必须复验分块（2026-10-22 已作废：剥标签只发生在 happy-dom 测试环境，根因与修复见顶部同日条目，dompurify 现为 ^3.4.8 且不再钉版）。
 
 ### 2026-10-08 输入框命令面板
 

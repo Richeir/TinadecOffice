@@ -88,6 +88,8 @@ export default defineConfig({
       '@lobehub/icons-static-svg',
       'mermaid',
       'monaco-editor',
+      'pele',
+      'pele/lazy',
       'recharts',
       'simple-icons',
     ],

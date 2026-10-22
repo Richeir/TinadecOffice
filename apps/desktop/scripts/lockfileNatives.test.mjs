@@ -70,11 +70,31 @@ test("A pin that drifts from what the lockfile resolved is refused", () => {
 });
 
 test("Both native families are still in the tree, so the check above is not vacuous", () => {
-	// A guard that silently skips a family nobody imports goes green forever. Pinning the parents
-	// means an upgrade has to touch this test on purpose.
-	for (const parent of ["node_modules/rollup", "node_modules/vite/node_modules/esbuild"]) {
-		assert.ok(lock.packages[parent], `${parent} disappeared from the lockfile`);
+	// A guard that silently skips a family nobody imports goes green forever. Pinning the
+	// families (wherever npm hoists them — vite used to nest esbuild, re-installs hoist it to
+	// the root) means an upgrade has to touch this test on purpose.
+	for (const parent of ["rollup", "esbuild"]) {
+		assert.ok(
+			Object.keys(lock.packages).some((key) => key === `node_modules/${parent}` || key.endsWith(`/node_modules/${parent}`)),
+			`${parent} disappeared from the lockfile`,
+		);
 	}
+});
+
+test("A hoisted parent whose version drifted from the root pin is refused", () => {
+	// The per-entry checks compare declared to locked, so a re-install that bumps the hoisted
+	// esbuild while the root-declared binaries stay behind leaves every one of them green. The
+	// cross-check against the parent's own version is what catches that shape.
+	const drifted = {
+		packages: Object.fromEntries(
+			Object.entries(lock.packages).map(([key, entry]) =>
+				key === "node_modules/esbuild" ? [key, { ...entry, version: "9.9.9" }] : [key, entry],
+			),
+		),
+	};
+
+	const problems = missingNativePackages(drifted, RUNTIME_TARGETS["win-x64"], declared);
+	assert.match(problems[0], /pinned at .* but esbuild resolved to 9\.9\.9/);
 });
 
 test("A pruned variant is reported for the target that needs it, and only that one", () => {

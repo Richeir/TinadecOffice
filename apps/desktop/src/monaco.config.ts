@@ -9,11 +9,11 @@
  * `vite.config.ts` integration — it is not consumed at runtime here.
  */
 
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
-import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
-import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
-import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
+import TypeScriptWorker from 'monaco-editor/language/typescript/ts.worker?worker'
+import JsonWorker from 'monaco-editor/language/json/json.worker?worker'
+import CssWorker from 'monaco-editor/language/css/css.worker?worker'
+import HtmlWorker from 'monaco-editor/language/html/html.worker?worker'
 
 interface MonacoEnvironment {
   getWorker?(workerId: string, label: string): Worker
@@ -30,7 +30,7 @@ function installMonacoEnvironment(): void {
   if (typeof window === 'undefined') return
   if (window.MonacoEnvironment && typeof window.MonacoEnvironment.getWorker === 'function') return
 
-  // `import('monaco-editor')` resolves to editor.main, which registers the
+  // `import('monaco-editor')` resolves to the package index, which registers the
   // FULL language-service clients (typescript/json/css/html). Each client
   // spawns a worker by label and issues RPCs like `getNavigationTree` — those
   // handlers only exist in the matching language worker, so routing every
@@ -40,6 +40,10 @@ function installMonacoEnvironment(): void {
   // A URL stored in a variable is processed as a plain asset, so small worker
   // entrypoints become data URLs with unresolved relative imports in production.
   // ?worker bundles each entrypoint and its dependencies into a runnable worker.
+  //
+  // monaco-editor 0.56 reorganized its exports: deep subpaths are now
+  // `monaco-editor/<editor|language>/…` (mapped to ./esm/vs/…), and the old
+  // `esm/vs/…` spelling no longer resolves.
 
   window.MonacoEnvironment = {
     getWorker(_workerId: string, label: string): Worker {
@@ -75,7 +79,7 @@ installMonacoEnvironment()
  */
 export const monacoVitePluginConfig = {
   optimizeDeps: {
-    include: ['monaco-editor/esm/vs/editor/editor.api'],
+    include: ['monaco-editor/editor/editor.api'],
   },
   worker: {
     format: 'es' as const,

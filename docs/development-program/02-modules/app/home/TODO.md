@@ -176,9 +176,9 @@
 - 状态：已完成
 - 优先级：P1
 - 主责模块：APP-HOME
-- 前置依赖：无；复用现有 MarkdownRender、UiIslandCard 与主题 token；新增 highlight.js、katex、marked-katex-extension、marked-footnote、mermaid
+- 前置依赖：无；复用现有 MarkdownRender、UiIslandCard 与主题 token；新增 highlight.js、katex、marked-katex-extension、marked-footnote、mermaid（兜底）、pele 1.8.0（主渲染器）
 - 关联功能：APP-HOME-F004
-- 完成证据：[扩展语法报告](../../../../../.tinadec_dev/reports/2026-10-08-markdown-extended-syntax.zh-CN.md)；Electron 夹具 passed（真实剪贴板、MathML、Mermaid、三宽度）、定向 23 项、Desktop 全量 1028 passed/14 skipped、类型检查通过；生产 vite build 本轮未取得证据
+- 完成证据：[扩展语法报告](../../../../../.tinadec_dev/reports/2026-10-08-markdown-extended-syntax.zh-CN.md)；Electron 夹具 passed（真实剪贴板、MathML、Mermaid、三宽度）、定向 23 项、Desktop 全量 1028 passed/14 skipped、类型检查通过；生产 vite build 本轮未取得证据（2026-10-22 Pele 切换补：定向 33、vue-tsc、vite build 与 node 门禁通过）
 
 **问题与目标**
 
@@ -192,13 +192,13 @@
 - [x] 脚注渲染且脚注区标题、返回引用读屏文案本地化。
 - [x] `> [!NOTE/TIP/IMPORTANT/WARNING/CAUTION]` 渲染为分类型提示块（支持自定义标题），普通引用不受影响。
 - [x] 标题得到 md- 前缀去重 id 与锚点；点击在组件内滚动并标记落点，不改写 URL hash。
-- [x] Mermaid 懒加载、跟随主题重绘，解析失败回退显示源码；超长图表不交给 mermaid。
+- [x] Pele 懒加载并按图类型拆包，同步渲染；Pele 拒绝且源码稳定 1 秒后才加载 mermaid 兜底；两边都失败或超长才回退源码。
 - [x] 表格容器满宽、表头加深、行 hover、末行去边；三宽度下正文视口无横向溢出，表格/代码/公式在卡片内滚动。
 - [x] 流式更新不重建已完成代码块 DOM 与表格滚动容器（含焦点）；亮暗主题与强调色跟随。
 
 **边界**
 
-外链打开（`will-navigate`/`openExternal`）按用户本轮决定不做；Mermaid 未 Worker 化，性能未压测；生产构建证据缺失见报告第 4 节。
+外链打开（`will-navigate`/`openExternal`）按用户本轮决定不做；Pele 主渲染与 mermaid 兜底均未 Worker 化，性能未压测；2026-10-08 报告的生产构建缺失是历史边界，2026-10-22 Pele 切换的 `vite build` 已 exit 0，但真实 Electron 观感与 canvas 字体测量仍未验证。
 
 <a id="app-home-001"></a>
 

@@ -5,14 +5,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import MarkdownRender from './MarkdownRender.vue'
 import UiIslandCard from './ui/island-card.vue'
 
-// The real mermaid bundle is heavy and needs a full browser; the diagram itself is
-// covered by MarkdownDiagram.test.ts and the Electron fixture.
+// The diagram engines are covered by MarkdownDiagram.test.ts and the Electron fixture;
+// mocking both here keeps this file about markdown block structure.
 vi.mock('mermaid', () => ({
   default: {
     initialize: vi.fn(),
     parse: vi.fn(async () => true),
     render: vi.fn(async () => ({ svg: '<svg data-testid="diagram"></svg>' })),
   },
+}))
+
+vi.mock('pele/lazy', () => ({
+  renderAsync: vi.fn(async () => ({
+    svg: '<svg data-testid="diagram" viewBox="0 0 10 10" width="10" height="10"></svg>',
+    width: 10,
+    height: 10,
+  })),
 }))
 
 function render(content: string) {
@@ -205,6 +213,7 @@ describe('Markdown extended syntax', () => {
     const wrapper = render('```mermaid\ngraph TD\n  A --> B\n```')
     await flushPromises()
     expect(wrapper.get('.markdown-diagram').find('.markdown-diagram-svg svg').exists()).toBe(true)
+    expect(wrapper.get('.markdown-diagram-svg').attributes('data-engine')).toBe('pele')
     expect(wrapper.find('.markdown-code').exists()).toBe(false)
     wrapper.unmount()
   })

@@ -63,9 +63,10 @@ or via `dotnet list package --include-transitive` / NuGet.org:
   reka-ui (2.11.0)                                     : MIT
   lucide-vue / lucide-react + simple-icons             : ISC / CC0-1.0
   @lobehub/icons-static-svg (1.94.0)                   : MIT (brand SVGs)
-  monaco-editor (0.55.1) + @monaco-editor/loader       : MIT
+  monaco-editor (0.56.0) + @monaco-editor/loader       : MIT
   xterm.js (5.5.0) + addons                            : MIT
   node-pty (1.1.0)                                     : MIT
+  pele (1.8.0)                                        : MIT (diagram renderer)
   Others (date-fns, marked, dompurify, etc.)           : MIT / BSD / ISC / Apache-2.0
     See package.json + bun.lock / package-lock.json for full transitive list.
     Each package retains its upstream license under node_modules/<pkg>/LICENSE.

@@ -104,6 +104,18 @@ export function missingNativePackages(lock, target, rootOptionalDependencies) {
 					`${entry.version}; pin the version ${family.parent} actually resolved`,
 			);
 		}
+
+		// A hoisted parent (root `node_modules/<parent>`) is the copy the toolchain actually
+		// resolves, so the root-declared binary has to match ITS version. This cross-check is
+		// what catches a re-install that bumps the parent while every per-entry check above
+		// (declared == locked) stays green.
+		const hoistedParent = entries.find(([key]) => key === `node_modules/${family.parent}`);
+		if (hoistedParent && typeof hoistedParent[1].version === "string" && hoistedParent[1].version !== entry.version) {
+			problems.push(
+				`'${required}' is pinned at ${entry.version} but ${family.parent} resolved to ` +
+					`${hoistedParent[1].version}; pin the version ${family.parent} actually resolved`,
+			);
+		}
 	}
 
 	return problems;

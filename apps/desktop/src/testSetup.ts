@@ -37,3 +37,38 @@ if (!('localStorage' in target) || target.localStorage == null) {
     value: createMemoryStorage(),
   })
 }
+
+/**
+ * happy-dom's `Node.prototype.nodeName` getter returns '' for every node — the real
+ * name lives one level down on Element/CharacterData prototypes, which is why direct
+ * reads work. DOMPurify ≥ 3.4.8 hardened its walk to read tag names through exactly
+ * that cached Node-level getter (realm-safety), so under happy-dom every element
+ * looked "unnamed" and the sanitizer unwrapped the first top-level element of a
+ * document (headings, tables and fences lost their tags in MarkdownRender). Real
+ * browsers implement the Node-level getter per spec, so this is a test-environment
+ * repair, not an app change. The shim delegates to the nearest concrete getter and
+ * disarms itself if happy-dom ever fixes the Node-level read.
+ */
+if (typeof Node !== 'undefined' && typeof document !== 'undefined') {
+  const nodeProto = Node.prototype
+  const original = Object.getOwnPropertyDescriptor(nodeProto, 'nodeName')
+  const nodeGetter = original?.get
+  const probe = document.createElement('div')
+  const readsEmpty = nodeGetter
+    ? (nodeGetter as (this: Node) => string).call(probe) === ''
+    : false
+  if (nodeGetter && readsEmpty && probe.nodeName !== '') {
+    Object.defineProperty(nodeProto, 'nodeName', {
+      configurable: true,
+      get(this: Node): string {
+        let proto: object | null = Object.getPrototypeOf(this)
+        while (proto && proto !== nodeProto) {
+          const desc = Object.getOwnPropertyDescriptor(proto, 'nodeName')
+          if (desc?.get) return desc.get.call(this) as string
+          proto = Object.getPrototypeOf(proto)
+        }
+        return (nodeGetter as (this: Node) => string).call(this)
+      },
+    })
+  }
+}

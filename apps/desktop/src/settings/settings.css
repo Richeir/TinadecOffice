@@ -1173,9 +1173,15 @@ box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--swatch-color);
   color: var(--text-primary);
 }
 
+/* The density word is a tag, not a second heading: muted until the row is the chosen one, so
+   only the selected shape carries accent text. */
 .flow-style-option-density {
   font-size: 11px;
   font-weight: 600;
+  color: var(--text-muted);
+}
+
+.flow-style-option.active .flow-style-option-density {
   color: var(--accent-primary);
 }
 
@@ -1189,6 +1195,7 @@ box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--swatch-color);
 .flow-style-option.active .flow-style-option-name {
   color: var(--accent-primary);
 }
+
 .api-docs-frame {
   width: 100%;
   height: calc(100vh - 120px);

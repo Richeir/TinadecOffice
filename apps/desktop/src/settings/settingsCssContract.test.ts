@@ -88,6 +88,17 @@ describe('settings.css contract', () => {
   })
 })
 
+describe('conversation flow options contract', () => {
+  const css = normalizeLineEndings(settingsCss)
+
+  // Five accent-coloured density words read as five headings and leave the chosen row with no
+  // accent of its own. The word is a tag: muted everywhere, accent only on the chosen row.
+  it('mutes the density word until its row is the chosen one', () => {
+    expectSelectorDeclarations(css, '.flow-style-option-density', /color\s*:\s*var\(--text-muted\)\s*;/)
+    expectSelectorDeclarations(css, '.flow-style-option.active .flow-style-option-density', /color\s*:\s*var\(--accent-primary\)\s*;/)
+  })
+})
+
 describe('settings integrated material contract', () => {
   const css = normalizeLineEndings(settingsCss)
 

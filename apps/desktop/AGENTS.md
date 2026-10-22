@@ -20,7 +20,7 @@
 
 子智能体行不能是"点了没反应的按钮"：`panel` 档下头部渲染成 `div`（无 `aria-expanded`、无折叠箭头），⤢ 仍在。就地展开的步骤区在行内**限高 20rem + `overscroll-behavior: contain`**（右栏面板本身是滚动容器，不加限高），否则一个啰嗦的子智能体能把答案推到三屏之外。耗时复用 `useElapsed` 的共享秒表。
 
-默认 `qoder`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里一个原生 `role="radiogroup"`（方向键同时移动选择与焦点），五语键在 `settings.conversationFlow*`，每个档位带密度词与一行说明。
+默认 `qoder`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里一个原生 `role="radiogroup"`（方向键同时移动选择与焦点），五语键在 `settings.conversationFlow*`，每个档位带密度词与一行说明。密度词是标签不是第二个标题：默认 `--text-muted`，只有被选中的那一行取 `--accent-primary`（`settingsCssContract` 钉住这两条），否则五个强调词读起来像五个标题，选中的那行反而没有自己的强调。
 
 改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增四条覆盖 `quiet: 'listed'`、预算计数、运行时不裁剪与默认不变。
 

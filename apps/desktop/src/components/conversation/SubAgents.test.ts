@@ -9,6 +9,7 @@ import { parallelSubAgents, type FeedFixture } from '@/lib/conversation/fixtures
 import { conversationSelection, selectSubAgent } from '@/lib/conversation/selection'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import { resetAgentDirectory } from '@/composables/useAgentDirectory'
+import { resetConversationFlowStyleForTests, setConversationFlowPreset } from '@/lib/conversationFlowStyle'
 
 /**
  * APP-HOME-108 P5: parallel sub-agents each get a compact card under one "N agents
@@ -55,9 +56,10 @@ const track = <T extends VueWrapper>(wrapper: T): T => { mounted.push(wrapper); 
 beforeEach(() => {
   vi.clearAllMocks()
   resetAgentDirectory()
+  resetConversationFlowStyleForTests()
   selectSubAgent(null)
 })
-afterEach(() => { mounted.forEach((wrapper) => wrapper.unmount()); mounted = [] })
+afterEach(() => { mounted.forEach((wrapper) => wrapper.unmount()); mounted = []; resetConversationFlowStyleForTests() })
 
 /** The parallel fixture, with search#1 finished and reporting back. */
 function withSummary(): FeedFixture {
@@ -113,6 +115,74 @@ describe('sub-agent cards in the feed', () => {
   })
 })
 
+/**
+ * How much a sub-agent row says, and whether it opens in place, belongs to the conversation-flow
+ * shape the reader picked in Settings → General. One case per shape, so each rule has an owner.
+ */
+describe('sub-agent rows under each conversation-flow shape', () => {
+  const mountFeed = (fixture: FeedFixture) =>
+    track(mount(ConversationView, { props: { messages: fixture.messages, runs: fixture.runs, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
+
+  it('codex says only which agent it is: no task line, no result, no in-place detail', async () => {
+    setConversationFlowPreset('codex')
+    const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
+    await flush()
+    expect(card.text()).toContain('search#1 · Search')
+    expect(card.text()).not.toContain('Research the callers of useResults')
+    expect(card.find('[data-testid="sub-agent-result"]').exists()).toBe(false)
+    // A row that cannot open anything is a line of text, not a button that does nothing.
+    const toggle = card.get('[data-testid="sub-agent-toggle"]')
+    expect(toggle.element.tagName).toBe('DIV')
+    await toggle.trigger('click')
+    expect(card.find('[data-testid="sub-agent-summary"]').exists()).toBe(false)
+  })
+
+  it('openchamber names the task and the time, and leaves the detail to the panel', async () => {
+    setConversationFlowPreset('openchamber')
+    const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
+    await flush()
+    expect(card.text()).toContain('Research the callers of useResults')
+    expect(card.find('.conversation-sub-agent-time').exists()).toBe(true)
+    expect(card.get('[data-testid="sub-agent-toggle"]').element.tagName).toBe('DIV')
+    // The panel is still one click away.
+    expect(card.find('[data-testid="sub-agent-open-panel"]').exists()).toBe(true)
+  })
+
+  it('trae adds the first line of the report and opens it in place on a click', async () => {
+    setConversationFlowPreset('trae')
+    const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
+    await flush()
+    expect(card.get('[data-testid="sub-agent-result"]').text()).toBe('Found 3 callers')
+    const toggle = card.get('[data-testid="sub-agent-toggle"]')
+    expect(toggle.element.tagName).toBe('BUTTON')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    await flush()
+    expect(card.get('[data-testid="sub-agent-summary"]').html()).toContain('<strong>3</strong>')
+    // A thorough agent's steps scroll inside the card instead of pushing the answer away.
+    expect(card.get('[data-testid="sub-agent-detail"]').classes()).toContain('is-capped')
+  })
+
+  it('qoder opens a running agent by itself, leaves a finished one closed, and the reader still wins', async () => {
+    setConversationFlowPreset('qoder')
+    // task-a is still running: its steps are in view without a click.
+    const running = mountFeed(parallelSubAgents()).findAll('[data-testid="sub-agent-card"]')[0]!
+    await flush()
+    const runningToggle = running.get('[data-testid="sub-agent-toggle"]')
+    expect(runningToggle.attributes('aria-expanded')).toBe('true')
+    expect(running.find('[data-testid="sub-agent-latest"]').exists()).toBe(true)
+    // Closing it by hand sticks: the auto-open is the default, not a lock.
+    await runningToggle.trigger('click')
+    expect(runningToggle.attributes('aria-expanded')).toBe('false')
+
+    // A finished agent has nothing to watch, so its card starts closed.
+    const settled = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
+    await flush()
+    expect(settled.get('[data-testid="sub-agent-toggle"]').attributes('aria-expanded')).toBe('false')
+    expect(settled.get('[data-testid="sub-agent-result"]').text()).toBe('Found 3 callers')
+  })
+})
+
 describe('Sub-agents panel', () => {
   it('shows the agent selected from the feed, from the same feed', async () => {
     const fixture = parallelSubAgents()
@@ -124,6 +194,8 @@ describe('Sub-agents panel', () => {
     expect(detail.text()).toContain('Implement the fix')
     expect(detail.find('[data-testid="sub-agent-open-panel"]').exists()).toBe(false)
     expect(detail.get('[data-testid="sub-agent-toggle"]').attributes('aria-expanded')).toBe('true')
+    // The panel is the scroll container itself; a cap inside it would nest two of them.
+    expect(detail.get('[data-testid="sub-agent-detail"]').classes()).not.toContain('is-capped')
     expect(panel.findAll('[data-testid="sub-agents-roster-item"]').map((item) => item.attributes('aria-selected'))).toEqual(['false', 'true'])
   })
 

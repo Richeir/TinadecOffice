@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component 
 import { ArrowLeft, Bot, Check, ChevronRight, FileText, GitBranch, Image, Layers, ListChecks, MessageSquare, Network, Search, Settings, Sparkles, Users, Workflow, X } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { api as baseApi, type AgentModeTopologyDto, type SpaceOptionsDto } from '@/api'
-import { scopedApi } from '@/lib/storageScope'
+import { selectedStorage } from '@/lib/storageScope'
 import type { PermissionLevel } from '@/types/mode'
 import { usePanelStyles } from '@/composables/usePanelStyles'
 import { isCommandAvailable, slashCommands, type AppCommand, type CommandHost } from '@/lib/appCommands'
@@ -17,7 +17,6 @@ import type { AgentDirectoryItemDto } from '@/api'
 import type { ReasoningEffortChoice } from '@/lib/reasoningEffort'
 import ReasoningEffortSlider from './ReasoningEffortSlider.vue'
 
-const globalApi = scopedApi(baseApi, () => 'user')
 const props = defineProps<{
   open: boolean
   anchor: HTMLElement | null
@@ -73,7 +72,6 @@ const query = ref('')
 const rootQuery = ref('')
 const index = ref(0)
 const modes = ref<AgentModeTopologyDto[]>([])
-const legacyModes = ref<AgentModeTopologyDto[]>([])
 const loading = ref(false)
 const modeError = ref(false)
 const space = computed(() => props.spaceOptions ?? defaultSpaceOptions())
@@ -137,11 +135,13 @@ watch(page, async (next, previous) => {
   if (props.open && page.value === next && next !== previous) animateContent(pageDepth(next) < pageDepth(previous) ? -8 : 8, previousHeight)
 })
 
+// Only versions this conversation's own storage scope can resolve: a version id borrowed from
+// another scope (the user scope, another workspace) freezes into the session and every send then
+// fails with mode_unavailable — an error whose advice ("pick a mode again") cannot be followed
+// while the picker is itself full of foreign ids.
 const availableModes = computed(() => {
   const seen = new Set<string>()
-  const published = (list: AgentModeTopologyDto[]) => list.some(mode => mode.status === 'published' && mode.latest_published_mode_version_id)
-  const catalog = published(modes.value) ? modes.value : legacyModes.value
-  return sortModes(catalog.filter(mode => {
+  return sortModes(modes.value.filter(mode => {
     if (mode.status !== 'published' || !mode.latest_published_mode_version_id) return false
     const key = (mode.slug ?? mode.display_name).trim().toLowerCase()
     if (seen.has(key)) return false
@@ -149,7 +149,7 @@ const availableModes = computed(() => {
     return true
   }))
 })
-const selectedMode = computed(() => [...availableModes.value, ...legacyModes.value]
+const selectedMode = computed(() => availableModes.value
   .find(mode => mode.latest_published_mode_version_id === props.modeVersionId))
 watch([selectedMode, () => props.modeVersionId, loading, locale], () => {
   emit('mode-label', selectedMode.value ? modeName(selectedMode.value) : t('commandPanel.mode'), !!props.modeVersionId && !selectedMode.value && !loading.value, selectedMode.value ? modeIcon(selectedMode.value.slug) : Layers)
@@ -453,12 +453,18 @@ async function loadCatalogs() {
   loading.value = true
   void props.defaultModel?.load()
   void props.agentModels?.load()
-  const results = await Promise.allSettled([globalApi.listAgentModeTopologies(), baseApi.listAgentModeTopologies()])
+  // One read, in the scope the conversation belongs to: `baseApi` stamps the selected storage id,
+  // so a project conversation lists the project's published modes and a free one lists the user's.
+  let failed = false
+  try {
+    const catalog = await baseApi.listAgentModeTopologies()
+    if (sequence !== loadSequence) return
+    modes.value = Array.isArray(catalog) ? catalog : []
+  } catch {
+    failed = true
+  }
   if (sequence !== loadSequence) return
-  const [modeResult, legacyResult] = results
-  modeError.value = modeResult.status === 'rejected'
-  if (modeResult.status === 'fulfilled') modes.value = Array.isArray(modeResult.value) ? modeResult.value : []
-  if (legacyResult.status === 'fulfilled') legacyModes.value = Array.isArray(legacyResult.value) ? legacyResult.value : []
+  modeError.value = failed
   loading.value = false
 }
 watch(() => props.open, async open => {
@@ -475,6 +481,9 @@ watch(() => props.open, async open => {
   if (props.slashQuery == null) searchRef.value?.focus()
 }, { immediate: true })
 watch(() => props.initialPage, next => { if (props.open && next) selectPage(next) })
+// Switching workspace retargets the catalog: the ids listed here must belong to the scope that
+// will freeze them, or the next send is rejected as mode_unavailable.
+watch(selectedStorage, () => { if (props.open) void loadCatalogs() })
 watch(() => props.anchor, (anchor, previous) => {
   if (previous) anchorObserver?.unobserve(previous)
   if (anchor) anchorObserver?.observe(anchor)

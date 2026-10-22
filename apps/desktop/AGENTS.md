@@ -1,5 +1,11 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-23 模式目录只能读会话自己的存储作用域
+
+输入框的模式列表曾经读两份：`user` 作用域（`scopedApi(baseApi, () => 'user')`）和当前作用域，且**user 优先**；`#60`（`8c875aaa`）引入。两个作用域各自 bootstrap 一套模式，同一个模式在两边的 id 不同，于是“优先 user”等于把项目作用域解析不了的 `mode_version_id` 写进会话——发送时 Core 按会话所在作用域冻结 roster，找不到就 409 `mode_unavailable`，而用户看到的提示是“重新选择模式”，可菜单里全是同一批坏 id，重新选择永远修不好。
+
+规则：**任何会被写进会话的 mode version，必须是这个会话所在作用域里已发布的那一条**。做法是只读一次 `baseApi.listAgentModeTopologies()`（`storageScope` 给请求盖上当前作用域的 `x-tinadec-storage-id`），删掉跨作用域的第二份列表；切换工作区要重读。`ComposerBar.test.ts` 的 "reads the catalog once, from the conversation's own scope only" 按读取次数钉住这条。已经在库里的脏绑定不迁移：打开会话时 ⚠ 会亮，重新选一次即可（此刻菜单里是可解析的版本）。详见 `.tinadec_dev/reports/2026-10-23-mode-unavailable-cross-scope.zh-CN.md`。
+
 ## 2026-10-22 对话流密度（常规设置里的五档阶梯）
 
 平面模式的对话流过去只有一种详略：运行中的一轮展开，落定后折成一行 `Worked for 1m 20s · 6 files · 2 edits · 2 commands`，子智能体行永远是"句柄 · 任务行 · 当前步骤"，并且总是可以就地展开自己的步骤。那是一种合理的转写，不是唯一的一种，也不是这套对话流当初参照的那一种。
@@ -243,9 +249,9 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
-**Last Updated:** 2026-10-22
-**Last Updated By:** 对话流密度（常规设置里一个分段控件，极简/简洁/适中/详细/丰富，默认丰富，档位名不再借用参照产品）；同日早前是 Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底，并收尾依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
-**Last Verified Commit:** ad6617f3 + 本轮工作树（对话流改名与分段控件）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
+**Last Updated:** 2026-10-23
+**Last Updated By:** 模式目录只读会话所在存储作用域（修 `mode_unavailable` 死循环）；前一日是对话流密度（常规设置里一个分段控件，极简/简洁/适中/详细/丰富，默认丰富）与 Mermaid 主渲染器改为 Pele。
+**Last Verified Commit:** 0ca6e0fb + 本轮工作树（模式目录作用域修复）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

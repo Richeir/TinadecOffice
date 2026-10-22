@@ -395,6 +395,21 @@ describe('ComposerBar mode selector (single source: the published modes)', () =>
     apiMock.api.listAgentModeTopologies.mockResolvedValue([])
   })
 
+  it('reads the catalog once, from the conversation\'s own scope only', async () => {
+    apiMock.api.listAgentModeTopologies.mockResolvedValue([WORKSPACE_TOPOLOGY] as never)
+    const before = apiMock.api.listAgentModeTopologies.mock.calls.length
+    const wrapper = mountComposer({ hero: true, })
+    await flushPromises()
+    // A second read in the user scope is what let this picker offer versions the conversation's
+    // scope cannot resolve: the id froze into the session and every send failed with
+    // mode_unavailable, while "pick a mode again" only offered more foreign ids.
+    expect(apiMock.api.listAgentModeTopologies.mock.calls.length - before).toBe(1)
+    expect(wrapper.emitted('update:modeVersionId')![0]![0]).toBe('mv-custom-1')
+    wrapper.unmount()
+    document.body.innerHTML = ''
+    apiMock.api.listAgentModeTopologies.mockResolvedValue([])
+  })
+
   it('a stale modeVersionId marks the trigger without pretending the default is selected', async () => {
     apiMock.api.listAgentModeTopologies.mockResolvedValue([WORKSPACE_TOPOLOGY] as never)
     const wrapper = mountComposer({ hero: true, modeVersionId: 'mv-gone' })

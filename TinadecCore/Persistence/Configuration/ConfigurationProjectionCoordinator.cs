@@ -23,6 +23,10 @@ public sealed class ConfigurationProjectionCoordinator : IConfigurationProjectio
     private readonly ITenantContextAccessor _tenant;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, ScopeConfigurationDocument> _projectedDocuments = new(StringComparer.Ordinal);
+    // A scope's migrations cannot become pending again inside one process lifetime
+    // (the migration assembly is fixed at build time), so the history read is paid
+    // once per context type instead of once per attached context.
+    private readonly HashSet<Type> _migrationsSettled = new();
     private static readonly MethodInfo QueryMethod = typeof(ConfigurationProjectionCoordinator).GetMethod(nameof(QueryRows), BindingFlags.Static | BindingFlags.NonPublic)!;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
 
@@ -101,10 +105,21 @@ public sealed class ConfigurationProjectionCoordinator : IConfigurationProjectio
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Migrations own the schema of any context that has them. This read runs
+            // before the coordinated migrations, so reconciling columns from the
+            // current model here adds a column that a pending migration is about to
+            // add — the column lands, the history row never does, and every later
+            // mount dies on "duplicate column name". Apply the pending migrations
+            // first; bootstrap-owned contexts without migrations fall through to the
+            // additive reconciliation, which then only fills what no migration covers.
+            if (!_migrationsSettled.Contains(db.GetType()))
+            {
+                if (db.Database.GetPendingMigrations().Any())
+                    await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                _migrationsSettled.Add(db.GetType());
+            }
             // Projection reads use the current EF model, so an older existing table
-            // needs its new columns before LoadRowsAsync. Do not create tables here:
-            // this read can run before the coordinated migrations, and creating the
-            // current shape first makes those migrations try to add its columns again.
+            // may still need columns that no migration declares before LoadRowsAsync.
             await DbContextSchemaBootstrapper.EnsureColumnsAsync(db, cancellationToken).ConfigureAwait(false);
             var entities = SelectedEntities(db).ToArray();
             if (!await TablesExistAsync(db, entities, cancellationToken).ConfigureAwait(false)) return;

@@ -12,6 +12,17 @@
 - 终端 IPC 不可再放开：`terminal:create` 只认 shell 目录内的条目、argv 取目录值、id 服务端生成；write/resize/destroy/snapshot 校验 sender 归属。
 - 外链统一走 `electron/externalLinks.cjs`（`setWindowOpenHandler` + `will-navigate`，仅 http/https 交给系统浏览器）。
 
+## 侧栏辅助控件的显隐（2026-10-21 定案）
+- **`.sidebar-extra` 会吃掉同特异性的「默认隐藏」**：它只声明 `opacity: 1`（一个类，0-1-0），却写在 `styles.css` 后段，所以 `.workspace-section-add { opacity: 0 }` 这类基础规则被它整条盖掉，控件变成常显。隐藏态必须写成 `.workspace-section .workspace-section-add`（0-2-0）或更高，别靠书写顺序。
+- 悬停区域：`.workspace-section`（标题 + `#sidebar-workspaces` 滚动区）是「新建工作区」的唯一显隐范围；`.workspace-section` 接管 `flex: 1/min-height: 0`，`.sidebar-list` 保留滚动端口（列表折叠时底部区域仍被钉住）。隐藏态配 `pointer-events: none`，避免隐形可点热区。
+- 验证 CSS 级联**不必起 Electron**：happy-dom 注入整份 `styles.css` + 最小 DOM，`getComputedStyle` 会按真实级联求值（`:hover` 不求值），可对照修复前后。单文件 vitest 本机需 `--pool=threads`：默认 forks worker 报 `Timeout waiting for worker to respond`，且 CLI 不认 `--poolOptions.*`。
+
+## 侧栏区块与排序（2026-10-21 定案）
+- 工作区列表里的**最近对话 / 最近活动 / 自由对话 / 项目分组是同级兄弟区块**，不是"工作区整块 + 三个开关"。先后存 `tinadec.sidebar.workspaces.v1` 的 `sectionOrder`（默认 `recent, activity, free, projects`，即上线时的渲染顺序）；齿轮面板的每一行就是其中一块，右侧把手是拖拽源、整行是落点，`Alt+↑/↓` 等价。
+- **关掉的块保留槽位**：`listItems` = `sectionOrder` × 四个开关，重开回原位。渲染分支必须写 `item.kind === 'workspace'` 而不是 `v-else`，否则模板里联合类型收窄不到 `item.workspace`；`v-for` 与 `v-if` 不能同挂一个节点。
+- **自由对话不参与 `order`**（`reorderableWorkspace` 守卫）：它靠区块顺序定位，右键上移/下移走 `stepSection('free')`；项目行之间仍用 `order`，`reconcile` 仍以自由对话为锚插入新工作区。选项行用 `div` 不用 `<label>`，把手 `@click.stop`。
+- 活动视图的状态**只归并 Core 的 12 态词表**（`TinadecGateway/src/contracts/runStatuses.ts` 是唯一出处，禁止自造 running/ready），词表外与请求失败都报 unknown，不伪装成"无任务"；无跨会话活动端点，只读列表渲染的 5 个会话 + `updated_at` 复用 + 60s TTL。
+
 ## 依赖行为判据（别照抄 issue/文档的结论）
 - **elysia 1.4.29 会自己钳制 2xx**：`dist/compose.js` 的路由 catch 里 `if(!set.status||set.status<300)set.status=error?.status||500`。所以"路由暂存 201 后出错 → 响应 201"这类指控**默认先复现再采信**；但 4xx/5xx 会被保留。
 - 网关上游不可达必须回 **502**（`src/upstreamFailure.ts`），且**不能**走 `toProblemDetails`（`normalizeCode` 会把 code 抹成 `conflict`，丢掉 `CORE_UNREACHABLE` 指纹）。`TINADEC_GATEWAY_TIMEOUT_MS` 至今无人消费。

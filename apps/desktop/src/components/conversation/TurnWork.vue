@@ -7,6 +7,7 @@ import { useAutoDisclosure } from '@/composables/useAutoDisclosure'
 import { useJustSettled } from '@/composables/useJustSettled'
 import { useElapsed } from '@/composables/useElapsed'
 import { formatDuration } from '@/lib/conversation/format'
+import { conversationFlowRules } from '@/lib/conversationFlowStyle'
 import type { FeedNode } from '@/lib/conversation/grouping'
 import { latestReasoningTitle } from '@/lib/conversation/reasoning'
 import type { FeedEntry, PlanEntry, ReasoningEntry, RunActivity, ToolEntry } from '@/lib/conversation/reducer'
@@ -44,10 +45,17 @@ const props = defineProps<{
 }>()
 const { t } = useI18n()
 
-const { open } = useAutoDisclosure(toRef(() => props.openByDefault))
+/**
+ * The chosen transcript shape decides whether a settled turn keeps its work in view.
+ * `hidden` follows the run (open while it works); every other shape leaves it open until
+ * the reader closes it themselves, which is the whole point of those presets.
+ */
+const autoOpen = toRef(() => conversationFlowRules.value.settled !== 'hidden' || props.openByDefault)
+const { open } = useAutoDisclosure(autoOpen)
 // The summary that replaces the status line sweeps once, only when this run finished in view.
 const justSettled = useJustSettled(toRef(() => props.openByDefault))
-const elapsed = useElapsed(toRef(() => props.activity.firstAt), toRef(() => (props.openByDefault ? null : props.activity.lastAt)))
+// The timer stops when the run stops producing, not when the fold happens to be closed.
+const elapsed = useElapsed(toRef(() => props.activity.firstAt), toRef(() => (props.working ? null : props.activity.lastAt)))
 
 function isLive(entry: FeedEntry): boolean {
   if (entry.kind === 'tool') return entry.status === 'requested' || entry.status === 'running'

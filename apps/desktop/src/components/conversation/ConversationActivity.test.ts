@@ -9,6 +9,7 @@ import { EventScript } from '@/lib/conversation/fixtures/builder'
 import { exploreEditShell, parallelSubAgents, pendingApproval, type FeedFixture } from '@/lib/conversation/fixtures'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import { clearToolPreviewCache } from '@/composables/useToolPreview'
+import { resetConversationFlowStyleForTests, setConversationFlowPreset } from '@/lib/conversationFlowStyle'
 
 /**
  * APP-HOME-108 P4 exit criteria: folds are open while work runs, collapse when it settles
@@ -61,14 +62,19 @@ function track<T extends VueWrapper>(wrapper: T): T { mounted.push(wrapper); ret
 beforeEach(() => {
   clearToolPreviewCache()
   vi.clearAllMocks()
+  resetConversationFlowStyleForTests()
 })
 afterEach(() => {
   mounted.forEach((wrapper) => wrapper.unmount())
   mounted = []
+  resetConversationFlowStyleForTests()
 })
 
 describe('turn work fold', () => {
   it('is open with a live status while running, folds to a summary when settled, and keeps a reader\'s choice', async () => {
+    // The compact shape is the one that folds a finished turn away; the fuller shapes keep it
+    // open and are covered by the next case. Behaviour is chosen in Settings → General.
+    setConversationFlowPreset('codex')
     const fixture = exploreEditShell()
     const runs = ref([{ ...fixture.runs[0]!, status: 'executing' }])
     const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages.slice(0, 1), runs: runs.value, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
@@ -89,6 +95,20 @@ describe('turn work fold', () => {
     await wrapper.setProps({ runs: [{ ...fixture.runs[0]!, status: 'completed', updated_at: '2026-10-13T11:00:00Z' }] })
     await flush()
     expect(wrapper.findAll('[data-testid="tool-sentence"]').length).toBeGreaterThan(0)
+  })
+
+  it('keeps a settled turn open in the shapes that are meant to show the work', async () => {
+    setConversationFlowPreset('qoder')
+    const fixture = exploreEditShell()
+    const runs = ref([{ ...fixture.runs[0]!, status: 'executing' }])
+    const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages.slice(0, 1), runs: runs.value, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
+
+    await wrapper.setProps({ runs: [{ ...fixture.runs[0]!, status: 'completed' }], messages: fixture.messages })
+    await flush()
+    // The rows are still there: the summary line is the fold's heading, not a replacement for it.
+    expect(wrapper.findAll('[data-testid="tool-sentence"]').map((row) => row.text())).toEqual(['Edited src/a.ts', 'Ran npm test'])
+    expect(wrapper.get('[data-testid="turn-summary"]').text()).toContain('Worked for')
+    expect(wrapper.get('[data-testid="turn-work"] > [data-slot="collapsible-content"]').attributes('hidden')).toBeUndefined()
   })
 
   it('reports the same "worked for" in the answer footer as in the work summary', () => {

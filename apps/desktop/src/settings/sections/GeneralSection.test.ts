@@ -4,6 +4,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import zh from '@/locales/zh-CN'
+import {
+  CONVERSATION_FLOW_KEY,
+  conversationFlowPreset,
+  resetConversationFlowStyleForTests,
+} from '@/lib/conversationFlowStyle'
 import GeneralSection from './GeneralSection.vue'
 
 /**
@@ -71,6 +76,8 @@ function switchState(wrapper: ReturnType<typeof create>): string | undefined {
 beforeEach(() => {
   vi.clearAllMocks()
   trayListener = undefined
+  localStorage.clear()
+  resetConversationFlowStyleForTests()
   bridge.getAppConfig.mockResolvedValue({ gateway_url: 'http://127.0.0.1:48730', source: 'default', managed: false, close_to_tray: false })
   bridge.saveCloseToTray.mockImplementation(async (enabled: boolean) => ({ close_to_tray: enabled }))
   vi.stubGlobal('tinadec', bridge)
@@ -118,5 +125,63 @@ describe('window and tray settings', () => {
     // Unmounting must drop the IPC listener so a hidden window does not keep a stale closure alive.
     expect(bridge.onCloseToTrayChanged).toHaveBeenCalledTimes(1)
     expect(trayListener).toBeUndefined()
+  })
+})
+
+/**
+ * The conversation-flow picker is a radio group of five transcript shapes. What a shape *does*
+ * is the consumers' business (lib/grouping, SubAgentCard, TurnWork); this file only has to prove
+ * the page shows the stored choice, writes a new one, and behaves like a radio group on the keys.
+ */
+describe('conversation flow', () => {
+  function radios(wrapper: ReturnType<typeof create>) {
+    return wrapper.findAll('[data-testid^="flow-style-"]')
+  }
+
+  it('lists all five shapes and marks the stored one', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const rows = radios(wrapper)
+    expect(rows.map((row) => row.attributes('data-testid'))).toEqual([
+      'flow-style-codex',
+      'flow-style-claude',
+      'flow-style-openchamber',
+      'flow-style-trae',
+      'flow-style-qoder',
+    ])
+    // The default shape is the one the flat feed was modelled on, and it is the only checked row.
+    expect(rows.filter((row) => row.attributes('aria-checked') === 'true').map((row) => row.attributes('data-testid'))).toEqual(['flow-style-qoder'])
+    // Every row shows a density word next to its name, so "which one is quiet" is readable.
+    expect(wrapper.get('[data-testid="flow-style-codex"]').text()).toContain('简洁')
+    expect(wrapper.get('[data-testid="flow-style-qoder"]').text()).toContain('丰富')
+  })
+
+  it('stores the picked shape instead of only restyling the page', async () => {
+    const wrapper = create()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="flow-style-openchamber"]').trigger('click')
+    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('openchamber')
+    expect(conversationFlowPreset.value).toBe('openchamber')
+    expect(wrapper.get('[data-testid="flow-style-openchamber"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="flow-style-qoder"]').attributes('aria-checked')).toBe('false')
+  })
+
+  it('moves the choice and the focus together on the arrow keys, as a radio group does', async () => {
+    const wrapper = create()
+    await flushPromises()
+
+    const first = wrapper.get('[data-testid="flow-style-codex"]')
+    await first.trigger('keydown', { key: 'ArrowDown' })
+    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('claude')
+    expect(wrapper.get('[data-testid="flow-style-claude"]').attributes('aria-checked')).toBe('true')
+
+    // Wrapping: up from the second shape lands on the first, not on nothing.
+    await wrapper.get('[data-testid="flow-style-claude"]').trigger('keydown', { key: 'ArrowUp' })
+    expect(conversationFlowPreset.value).toBe('codex')
+
+    // A key the group does not own must not steal the choice.
+    await wrapper.get('[data-testid="flow-style-codex"]').trigger('keydown', { key: 'a' })
+    expect(conversationFlowPreset.value).toBe('codex')
   })
 })

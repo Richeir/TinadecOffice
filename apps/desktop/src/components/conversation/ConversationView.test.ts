@@ -10,6 +10,7 @@ import zh from '@/locales/zh-CN'
 import { applyEvents, createFeedState, type MarkerType } from '@/lib/conversation/reducer'
 import { exploreEditShell, failedRun, parallelSubAgents, pendingApproval, simpleAnswer, type FeedFixture } from '@/lib/conversation/fixtures'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
+import { resetConversationFlowStyleForTests, setConversationFlowPreset } from '@/lib/conversationFlowStyle'
 
 /**
  * The flat feed's behaviour, migrated from the deleted MessageList.test.ts: the first turn shows its tool work and
@@ -54,7 +55,7 @@ function mountView(fixture: FeedFixture, extra: Record<string, unknown> = {}) {
 const user = (id: string, content = `user ${id}`, over: Partial<MessageDto> = {}) =>
   ({ id, session_id: 's', role: 'user', content, created_at: '2026-10-13T09:00:00Z', run_id: null, attachments: [], ...over }) as MessageDto
 
-afterEach(() => { document.body.innerHTML = '' })
+afterEach(() => { document.body.innerHTML = ''; resetConversationFlowStyleForTests() })
 
 const flush = async () => {
   for (let i = 0; i < 3; i += 1) { await nextTick(); await Promise.resolve() }
@@ -96,6 +97,9 @@ describe('ConversationView turns', () => {
   })
 
   it('puts activity on the turn that ran it, not on every assistant answer', async () => {
+    // A settled turn's outline is a user choice; this case pins the compact one, where finished
+    // work collapses behind its summary.
+    setConversationFlowPreset('codex')
     const first = simpleAnswer()
     const second = exploreEditShell()
     const fixture: FeedFixture = {

@@ -1126,6 +1126,69 @@ box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--swatch-color);
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
+
+/* Conversation flow: five transcript shapes, each a row with its density and what it shows. */
+.flow-style-options {
+  display: grid;
+  gap: 6px;
+}
+
+.flow-style-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-button);
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.flow-style-option:hover {
+  background: var(--surface-button-hover);
+}
+
+.flow-style-option.active {
+  background: var(--surface-selected);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 72%, transparent);
+}
+
+.flow-style-option:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.flow-style-option-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.flow-style-option-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.flow-style-option-density {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.flow-style-option-summary {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.flow-style-option.active .flow-style-option-name {
+  color: var(--accent-primary);
+}
 .api-docs-frame {
   width: 100%;
   height: calc(100vh - 120px);

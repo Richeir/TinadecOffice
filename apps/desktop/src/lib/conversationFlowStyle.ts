@@ -119,7 +119,3 @@ export function setConversationFlowPreset(next: ConversationFlowPreset): void {
 export function resetConversationFlowStyleForTests(): void {
   preset.value = DEFAULT_CONVERSATION_FLOW_PRESET
 }
-
-export function detachConversationFlowStorageListenerForTests(): void {
-  if (typeof window !== 'undefined') window.removeEventListener('storage', followStored)
-}

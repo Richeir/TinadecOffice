@@ -6,7 +6,7 @@ import { nextTick, ref, shallowRef } from 'vue'
 import en from '@/locales/en'
 import { applyEvents, createFeedState, type PlanEntry, type ReasoningEntry, type ToolEntry } from '@/lib/conversation/reducer'
 import { EventScript } from '@/lib/conversation/fixtures/builder'
-import { exploreEditShell, parallelSubAgents, pendingApproval, type FeedFixture } from '@/lib/conversation/fixtures'
+import { exploreEditShell, finishedTeamRun, parallelSubAgents, pendingApproval, type FeedFixture } from '@/lib/conversation/fixtures'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import { clearToolPreviewCache } from '@/composables/useToolPreview'
 import { resetConversationFlowStyleForTests, setConversationFlowPreset } from '@/lib/conversationFlowStyle'
@@ -131,6 +131,24 @@ describe('turn work fold', () => {
     await flush()
     expect(wrapper.findAll('[data-testid="tool-sentence"]')).toHaveLength(9)
     expect(wrapper.find('[data-testid="turn-earlier"]').exists()).toBe(false)
+  })
+
+  it('never spends the budget on a sub-agent row, a plan or a failure', async () => {
+    setConversationFlowPreset('openchamber')
+    const fixture = finishedTeamRun()
+    const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages, runs: fixture.runs, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
+    await flush()
+    // The thought and the wait are the two rows this budget folds; everything a settled team
+    // run is about stays in view without a click.
+    expect(wrapper.get('[data-testid="turn-earlier"]').text()).toBe('2 earlier steps')
+    expect(wrapper.findAll('[data-testid="sub-agent-card"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="agent-todos"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="tool-sentence"]').map((row) => row.text())).toContain('Failed: npm run build')
+    // Opening the fold adds only the rows it was hiding, in their original place.
+    await wrapper.get('[data-testid="turn-earlier"]').trigger('click')
+    await flush()
+    expect(wrapper.find('[data-testid="turn-earlier"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="sub-agent-card"]')).toHaveLength(2)
   })
 
   it('never hides rows of a run that is still going', async () => {

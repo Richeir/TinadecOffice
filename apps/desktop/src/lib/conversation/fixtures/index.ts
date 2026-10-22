@@ -100,6 +100,56 @@ export function parallelSubAgents(): FeedFixture {
   }
 }
 
+/**
+ * The same team run, finished: both workers report back with a summary, the coordinator keeps
+ * working past them, and the answer lands. Twelve flow rows — more than the row budget — so the
+ * quiet shapes have something to fold and the fuller ones have something to show: two
+ * sub-agent rows with a result line, a plan, a failed build and nine rows a budget may hide.
+ */
+export function finishedTeamRun(): FeedFixture {
+  const s = new EventScript()
+  s.thought('run-1', 'resp-1', '**Splitting the work**\nSearch and implement in parallel.')
+  s.emit('run-1', 'task.dispatched', { directive_id: 'd-1', dispatch_id: 'task-a', dispatched_by: null, task_key: 'research', title: 'Research the callers of useResults', agent: 'search', follow_up_of: null })
+  s.emit('run-1', 'task.dispatched', { directive_id: 'd-2', dispatch_id: 'task-b', dispatched_by: null, task_key: 'implement', title: 'Implement the fix', agent: 'global_engineering', follow_up_of: null })
+  s.emit('run-1', 'worker.assigned', { task_id: 'task-a', task_key: 'research', handle: 'search#1', requested_agent: 'search', agent_slug: 'search', reason: 'coordinator_assigned' })
+  s.emit('run-1', 'worker.assigned', { task_id: 'task-b', task_key: 'implement', handle: 'global_engineering#1', requested_agent: 'global_engineering', agent_slug: 'global_engineering', reason: 'coordinator_assigned' })
+  s.emit('run-1', 'task.wait_started', { run_id: 'run-1', task_id: null, task_key: null, handle: null, call_id: 'w-1', awaited: [{ task_key: 'research', handle: 'search#1', title: 'Research the callers of useResults', agent: 'search', status: 'running' }, { task_key: 'implement', handle: 'global_engineering#1', title: 'Implement the fix', agent: 'global_engineering', status: 'running' }] })
+
+  s.thought('run-1', 'resp-2', 'Look in src/graph.ts', { task_id: 'task-a', handle: 'search#1', agent_name: 'search' })
+  s.toolCall('run-1', 'e-1', 'file_search', { task_id: 'task-a', query: 'useResults' }).toolDone('run-1', 'e-1', 'file_search', 'task-a')
+  s.toolCall('run-1', 'e-2', 'read_file', { task_id: 'task-a', resource_path: '/w/src/graph.ts' }).toolDone('run-1', 'e-2', 'read_file', 'task-a')
+  s.emit('run-1', 'worker.completed', { task_id: 'task-a', summary: '## Found 4 callers\n- `src/graph.ts:12`\n- `src/panel.ts:88`' })
+
+  s.thought('run-1', 'resp-2', 'Rename it at the source', { task_id: 'task-b', handle: 'global_engineering#1', agent_name: 'global_engineering' })
+  s.toolCall('run-1', 'e-3', 'replace_lines', { task_id: 'task-b', resource_path: '/w/src/graph.ts' }).toolDone('run-1', 'e-3', 'replace_lines', 'task-b')
+  s.toolCall('run-1', 'e-4', 'shell', { task_id: 'task-b', command: 'npm test' }).toolDone('run-1', 'e-4', 'shell', 'task-b')
+  s.emit('run-1', 'worker.completed', { task_id: 'task-b', summary: 'Build is green: 3 files changed, 12 tests pass.' })
+  s.emit('run-1', 'task.wait_resolved', { run_id: 'run-1', task_id: null, task_key: null, handle: null, call_id: 'w-1', awaited: [{ task_key: 'research', status: 'completed' }, { task_key: 'implement', status: 'completed' }] })
+
+  s.emit('run-1', 'plan.updated', { task_id: null, steps: [{ step: 'Find the callers', status: 'completed' }, { step: 'Rename the hook', status: 'completed' }, { step: 'Run the suite', status: 'in_progress' }] })
+  s.toolCall('run-1', 'e-5', 'file_search', { query: 'useResults' }).toolDone('run-1', 'e-5', 'file_search')
+  s.toolCall('run-1', 'e-6', 'read_file', { resource_path: '/w/src/panel.ts' }).toolDone('run-1', 'e-6', 'read_file')
+  s.toolCall('run-1', 'e-7', 'read_file', { resource_path: '/w/src/graph.ts' }).toolDone('run-1', 'e-7', 'read_file')
+  s.toolCall('run-1', 'e-8', 'replace_lines', { resource_path: '/w/src/panel.ts' }).toolDone('run-1', 'e-8', 'replace_lines')
+  s.toolCall('run-1', 'e-9', 'shell', { command: 'npm run build' })
+  s.emit('run-1', 'tool.execution.failed', { execution_id: 'e-9', task_id: null, tool_id: 'shell', attempt: 1, retryable: false, error_category: 'tool_error', summary: 'tsc: 2 errors in src/panel.ts' })
+  s.toolCall('run-1', 'e-10', 'read_file', { resource_path: '/w/src/panel.ts' }).toolDone('run-1', 'e-10', 'read_file')
+  s.toolCall('run-1', 'e-11', 'shell', { command: 'npm test' }).toolDone('run-1', 'e-11', 'shell')
+  s.toolCall('run-1', 'e-12', 'replace_lines', { resource_path: '/w/src/graph.ts' }).toolDone('run-1', 'e-12', 'replace_lines')
+  s.toolCall('run-1', 'e-13', 'shell', { command: 'npm test' }).toolDone('run-1', 'e-13', 'shell')
+  s.toolCall('run-1', 'e-14', 'replace_lines', { resource_path: '/w/src/panel.ts' }).toolDone('run-1', 'e-14', 'replace_lines')
+  const events = s.events
+  return {
+    name: 'finished-team-run',
+    messages: [
+      message('m-1', 'user', 'Fix useResults across the graph', '2026-10-13T09:00:00Z'),
+      message('m-2', 'assistant', 'Renamed the hook at all four call sites; the suite is green.', events.at(-1)!.ts, 'run-1'),
+    ],
+    runs: [runRow('run-1', 'completed', 'm-1', events)],
+    events,
+  }
+}
+
 export function failedRun(): FeedFixture {
   const s = new EventScript()
   s.emit('run-1', 'run.model_retry_scheduled', { run_id: 'run-1', retry_number: 1, retry_limit: 3, retry_at: '', delay_ms: 2000, error_category: 'model_unavailable', message: 'busy' })
@@ -215,4 +265,4 @@ export function richAnswer(): FeedFixture {
   }
 }
 
-export const FEED_FIXTURES = [simpleAnswer, exploreEditShell, pendingApproval, parallelSubAgents, failedRun, interruptedRun, compactedRun, nextDayStopped, richAnswer]
+export const FEED_FIXTURES = [simpleAnswer, exploreEditShell, pendingApproval, parallelSubAgents, finishedTeamRun, failedRun, interruptedRun, compactedRun, nextDayStopped, richAnswer]

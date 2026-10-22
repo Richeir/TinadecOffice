@@ -69,12 +69,13 @@ export interface PendingApproval {
 export interface GroupedRun {
   nodes: FeedNode[]
   /**
-   * How many leading nodes the row budget hides behind "N earlier steps" (0 when nothing is
-   * folded). The nodes are still in `nodes`; the renderer decides whether to show them. Only
-   * a settled run is trimmed — while a run is live its newest rows are what the reader is
-   * watching, and parked rows are what they must decide on.
+   * Ids of the earliest rows the row budget hides behind "N earlier steps" (empty when
+   * nothing is hidden). The nodes are still in `nodes`; the renderer decides whether to draw
+   * them, so opening the row costs no regroup. Only a settled run is trimmed — while a run is
+   * live its newest rows are what the reader is watching, and parked rows are what they must
+   * decide on — and only rows a reader can afford to miss (see `isBudgetRow`).
    */
-  folded: number
+  hidden: string[]
   approvals: PendingApproval[]
   /** Sub-agents of this run, in dispatch order (the right-column roster reads this). */
   agents: SubAgentNode[]
@@ -251,6 +252,26 @@ export interface GroupOptions {
 }
 
 /**
+ * Whether the row budget may hide this row. A short shape is allowed to drop the noise —
+ * thoughts, exploration groups, waits and the calls that finished cleanly — but not the
+ * things a turn is *about*: a sub-agent's row, the plan, a failure, a correction or a
+ * verdict. Those stay in view in every shape; only their neighbours can fold away.
+ */
+function isBudgetRow(node: FeedNode): boolean {
+  switch (node.type) {
+    case 'reasoning':
+    case 'group':
+    case 'wait':
+      return true
+    case 'tool':
+      // A tool that ran and failed its own way (`toolSuccess: false`) is a failure too.
+      return node.entry.status === 'completed' && node.entry.toolSuccess !== false
+    default:
+      return false
+  }
+}
+
+/**
  * Groups one run. `live` is true while the run can still change (not settled), which is
  * what lets the last exploration group stay open and what suppresses the row budget.
  */
@@ -266,9 +287,10 @@ export function groupRun(record: RunActivity, live: boolean, options: GroupOptio
   const context: Context = { record, byScope, approvals: [], agents: [], live, quiet: options.quiet ?? 'grouped' }
   const nodes = build(context, null, null)
   const budget = live ? 0 : options.budget ?? 0
-  const folded = budget > 0 && nodes.length > budget ? nodes.length - budget : 0
+  const foldable = budget > 0 ? nodes.filter(isBudgetRow) : []
+  const hidden = foldable.slice(0, Math.max(0, foldable.length - budget)).map((node) => node.id)
   const running = context.agents.filter((node) => node.status === 'running' || node.status === 'awaiting_approval').length
-  return { nodes, folded, approvals: context.approvals, agents: context.agents, running, review: record.review }
+  return { nodes, hidden, approvals: context.approvals, agents: context.agents, running, review: record.review }
 }
 
 /** Longest interim answer that still reads as a note between steps (Qoder's groupText). */

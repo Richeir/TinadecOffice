@@ -20,17 +20,19 @@ defineOptions({ name: 'TurnActivity' })
  * tool call, plans, waits, sub-agents and system lines. Rows have no border and no
  * background; status is carried by the glyph. Parallel dispatches render as an AgentGroup.
  *
- * `folded` is the row budget of the chosen transcript shape: that many leading nodes wait
- * behind one "N earlier steps" row, which the reader can open. The nodes are still here —
- * this component only decides whether to draw them.
+ * `hidden` is the row budget of the chosen transcript shape: those rows wait behind one
+ * "N earlier steps" row, which the reader can open. The nodes are still here — this
+ * component only decides whether to draw them, and sub-agent rows, plans and failures are
+ * never in the list.
  */
-const props = defineProps<{ nodes: FeedNode[]; runId: string; workspaceRoot?: string | null; folded?: number }>()
+const props = defineProps<{ nodes: FeedNode[]; runId: string; workspaceRoot?: string | null; hidden?: readonly string[] }>()
 const { t } = useI18n()
 const { nameFor } = useAgentDirectory()
 
 const expanded = ref(false)
-const foldCount = computed(() => Math.min(props.folded ?? 0, props.nodes.length))
-const shown = computed(() => (foldCount.value > 0 && !expanded.value ? props.nodes.slice(foldCount.value) : props.nodes))
+const hiddenIds = computed(() => new Set(props.hidden ?? []))
+const foldCount = computed(() => props.nodes.filter((node) => hiddenIds.value.has(node.id)).length)
+const shown = computed(() => (expanded.value || foldCount.value === 0 ? props.nodes : props.nodes.filter((node) => !hiddenIds.value.has(node.id))))
 // A run failure is shown by the turn, outside this fold.
 const visible = computed(() => shown.value.filter((item) => item.type !== 'marker' || item.entry.type !== 'run_failed'))
 

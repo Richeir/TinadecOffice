@@ -157,7 +157,7 @@ const toolCount = computed(() => {
         v-if="run.activity && run.grouped?.nodes.length"
         :activity="run.activity"
         :nodes="run.grouped.nodes"
-        :folded="run.grouped.folded"
+        :hidden="run.grouped.hidden"
         :working="run.working"
         :open-by-default="run.live"
         :run-id="run.id"

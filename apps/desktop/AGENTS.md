@@ -16,13 +16,13 @@
 
 **消费者只读 `conversationFlowRules`，不认档位名**：`ConversationTurn` 把 `quiet`/`budget` 交给 `groupRun`，`TurnWork` 用 `settled` 决定落定后是否保持展开，`SubAgentCard` 用 `subAgent`/`subAgentDetail`/`subAgentOpen` 决定一行说多少、能不能就地开。所以加第六种形状只是表里多一条。
 
-三条不能让步的规则：① **运行中与等待中的一轮永不裁剪**（`groupRun` 的 `live` 同时覆盖"在跑"与"停在等人"——前者最新几行是读者正在看的，后者正是他要裁决的对象）；② 裁剪**不丢节点**，`GroupedRun.folded` 只说前几行藏在"N 步更早"后面，`TurnActivity` 自己决定画不画，展开不需要重新分组；③ 审批与运行失败仍在折叠之外，`Collapsible` 关起来时照旧**卸载**内容（`ConversationActivity.test.ts` 的 "keeps approvals outside the folded work" 没改一行）。
+三条不能让步的规则：① **运行中与等待中的一轮永不裁剪**（`groupRun` 的 `live` 同时覆盖"在跑"与"停在等人"——前者最新几行是读者正在看的，后者正是他要裁决的对象）；② 裁剪**不丢节点**，`GroupedRun.hidden` 只列出被藏起来的那些行 id（`TurnActivity` 自己决定画不画，展开不需要重新分组），而且**只有安静行与干净收尾的调用可折**——子智能体行、计划、失败（含 `toolSuccess === false` 的调用）、纠正与裁决在任何档位都留在流里（`isBudgetRow`，`grouping.test.ts` 钉住）；③ 审批与运行失败仍在折叠之外，`Collapsible` 关起来时照旧**卸载**内容（`ConversationActivity.test.ts` 的 "keeps approvals outside the folded work" 没改一行）。
 
 子智能体行不能是"点了没反应的按钮"：`panel` 档下头部渲染成 `div`（无 `aria-expanded`、无折叠箭头），⤢ 仍在。就地展开的步骤区在行内**限高 20rem + `overscroll-behavior: contain`**（右栏面板本身是滚动容器，不加限高），否则一个啰嗦的子智能体能把答案推到三屏之外。耗时复用 `useElapsed` 的共享秒表。
 
 默认 `qoder`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里一个原生 `role="radiogroup"`（方向键同时移动选择与焦点），五语键在 `settings.conversationFlow*`，每个档位带密度词与一行说明。密度词是标签不是第二个标题：默认 `--text-muted`，只有被选中的那一行取 `--accent-primary`（`settingsCssContract` 钉住这两条），否则五个强调词读起来像五个标题，选中的那行反而没有自己的强调。
 
-改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增四条覆盖 `quiet: 'listed'`、预算计数、运行时不裁剪与默认不变。
+改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增五条覆盖 `quiet: 'listed'`、预算计数、预算从不折子智能体行/计划/失败、运行时不裁剪与默认不变；`ConversationActivity.test.ts` 用 `finishedTeamRun` 钉住同一件事的观感（两个子智能体行、计划与失败的构建调用在 `openchamber` 下仍可见，折叠只吃掉思考与等待两行）。
 
 验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 156 例）；全量 vitest **1501 通过 / 13 失败 / 12 跳过**，失败的 13 例全部是既有的 `ComposerBar`（6）/ `HostAvailabilityBanner`（6）/ `OrchestrationTab`（1）文案断言，与本次改动无关（本轮开工时记录的既有基线是 14 例，少的那一例是 `message-scroller` 的时序抖动这次恰好绿）；`vue-tsc` 0 错；生产 `npm run build` 退出 0（1m50s）。**未做**：真 Electron / 真实渲染器的观感复看——本次在 Vite 预览里设置页导航被横向裁到视口外（`button[aria-label="常规"]` 的 x 为负），点不到常规页；命令面板能搜到「常规」这一行并执行，但设置页**已经挂载**时不会再消费 `pendingSettingsSection`（`consumeRequest` 只在 setup 跑一次），所以那一跳在预览里同样到不了常规页。因此五档选项卡的实际排版只有组件级断言（名称 + 密度词 + 说明行）与 CSS 复核，没有像素级结论。也没有跑打包链与 Electron `node --test`（本轮不碰主进程）。
 

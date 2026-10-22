@@ -81,23 +81,40 @@ describe('groupRun shapes', () => {
     expect(listed.map((n) => (n.type === 'tool' ? n.entry.toolId : 'thought'))).toEqual(['thought', 'file_search', 'read_file', 'read_file', 'ls', 'replace_lines', 'shell'])
   })
 
-  it('counts the leading rows a budget hides without dropping them', () => {
+  it('names the leading rows a budget hides without dropping them', () => {
     const result = grouped(exploreEditShell().events, false, { budget: 2 })
     expect(result.nodes).toHaveLength(3)
-    expect(result.folded).toBe(1)
-    expect(grouped(exploreEditShell().events, false, { budget: 3 }).folded).toBe(0)
-    expect(grouped(exploreEditShell().events, false, { budget: 9 }).folded).toBe(0)
+    expect(result.hidden).toEqual([result.nodes[0]!.id])
+    expect(grouped(exploreEditShell().events, false, { budget: 3 }).hidden).toEqual([])
+    expect(grouped(exploreEditShell().events, false, { budget: 9 }).hidden).toEqual([])
+  })
+
+  it('never hides a sub-agent row, a plan or a failure behind the budget', () => {
+    // Two quiet rows around the dispatch group: the budget spends itself on the quiet ones.
+    const agents = grouped(parallelSubAgents().events, false, { budget: 1 })
+    expect(agents.nodes.map((n) => n.type)).toEqual(['reasoning', 'agents', 'wait'])
+    expect(agents.hidden).toEqual([agents.nodes[0]!.id])
+
+    const s = new EventScript()
+      .toolCall('run-1', 'a', 'read_file', { resource_path: '/w/a' }).toolDone('run-1', 'a', 'read_file')
+      .toolCall('run-1', 'b', 'replace_lines', { resource_path: '/w/b' }).toolDone('run-1', 'b', 'replace_lines', null, false)
+    s.emit('run-1', 'plan.updated', { task_id: null, steps: [{ step: 'Fix it', status: 'in_progress' }] })
+    s.toolCall('run-1', 'c', 'replace_lines', { resource_path: '/w/c' }).toolDone('run-1', 'c', 'replace_lines')
+    const rows = grouped(s.events, false, { budget: 1 })
+    // The failed edit and the plan stay; only the clean calls can be hidden.
+    expect(rows.nodes.map((n) => n.type)).toEqual(['tool', 'tool', 'plan', 'tool'])
+    expect(rows.hidden).toEqual(['a'])
   })
 
   it('never trims a run that is still going or parked on a person', () => {
     // `live` covers both: the newest rows are what a running reader watches, and a parked run
     // is the thing they have to decide on.
-    expect(grouped(exploreEditShell().events, true, { budget: 1 }).folded).toBe(0)
+    expect(grouped(exploreEditShell().events, true, { budget: 1 }).hidden).toEqual([])
   })
 
   it('leaves the shapes alone by default', () => {
     const plain = grouped(exploreEditShell().events)
-    expect(plain.folded).toBe(0)
+    expect(plain.hidden).toEqual([])
     expect(plain.nodes.map((n) => n.type)).toEqual(['group', 'tool', 'tool'])
   })
 })

@@ -1567,7 +1567,7 @@ export default {
       codex: { name: "Codex", summary: "要約 1 行だけを残し、作業はすべて畳みます。" },
       claude: { name: "Claude Code", summary: "各ステップを 1 行ずつ表示し、読み取りや検索も 1 行になります。" },
       openchamber: { name: "OpenChamber", summary: "直近のステップを残し、それ以前は 1 行に畳みます。" },
-      trae: { name: "Trae", summary: "サブエージェントはタスクと所要時間を 1 行で示し、その場で展開できます。" },
+      trae: { name: "Trae", summary: "サブエージェントはタスク・所要時間・結果を 1 行で示し、その場で展開できます。" },
       qoder: { name: "Qoder", summary: "すべてのステップを残し、実行中のサブエージェントは自動で展開されます。" },
     },
     defaultModeTopology: "既定のモードトポロジー",

@@ -24,7 +24,7 @@
 
 改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增四条覆盖 `quiet: 'listed'`、预算计数、运行时不裁剪与默认不变。
 
-验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 156 例）；全量 vitest **1501 通过 / 13 失败 / 12 跳过**，失败的 13 例全部是既有的 `ComposerBar`（6）/ `HostAvailabilityBanner`（6）/ `OrchestrationTab`（1）文案断言，与本次改动无关（本轮开工时记录的既有基线是 14 例，少的那一例是 `message-scroller` 的时序抖动这次恰好绿）；`vue-tsc` 0 错；生产 `npm run build` 退出 0（1m50s）。**未做**：真 Electron / 真实渲染器的观感复看——本次在 Vite 预览里设置页导航被横向裁到视口外（`button[aria-label="常规"]` 的 x 为负），点不到常规页，因此五档选项卡的实际排版只有组件级断言（名称 + 密度词 + 说明行）与 CSS 复核，没有像素级结论。也没有跑打包链与 Electron `node --test`（本轮不碰主进程）。
+验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 156 例）；全量 vitest **1501 通过 / 13 失败 / 12 跳过**，失败的 13 例全部是既有的 `ComposerBar`（6）/ `HostAvailabilityBanner`（6）/ `OrchestrationTab`（1）文案断言，与本次改动无关（本轮开工时记录的既有基线是 14 例，少的那一例是 `message-scroller` 的时序抖动这次恰好绿）；`vue-tsc` 0 错；生产 `npm run build` 退出 0（1m50s）。**未做**：真 Electron / 真实渲染器的观感复看——本次在 Vite 预览里设置页导航被横向裁到视口外（`button[aria-label="常规"]` 的 x 为负），点不到常规页；命令面板能搜到「常规」这一行并执行，但设置页**已经挂载**时不会再消费 `pendingSettingsSection`（`consumeRequest` 只在 setup 跑一次），所以那一跳在预览里同样到不了常规页。因此五档选项卡的实际排版只有组件级断言（名称 + 密度词 + 说明行）与 CSS 复核，没有像素级结论。也没有跑打包链与 Electron `node --test`（本轮不碰主进程）。
 
 ## 2026-10-22 Mermaid 主渲染器改为 Pele（mermaid 延迟兜底）
 

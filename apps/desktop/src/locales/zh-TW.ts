@@ -1567,7 +1567,7 @@ export default {
       codex: { name: "Codex", summary: "只留一行總結，工作全部收起。" },
       claude: { name: "Claude Code", summary: "每個步驟單獨一行，讀取檔案和搜尋也各佔一行。" },
       openchamber: { name: "OpenChamber", summary: "最近的步驟留在流裡，更早的折成一行。" },
-      trae: { name: "Trae", summary: "子智能體一行寫清任務與耗時，可以就地展開。" },
+      trae: { name: "Trae", summary: "子智能體一行寫清任務、耗時與結果，可以就地展開。" },
       qoder: { name: "Qoder", summary: "所有步驟都留在流裡，正在跑的子智能體自動展開。" },
     },
     defaultModeTopology: "預設模式拓撲",

@@ -30,5 +30,5 @@ export const SHARE_BRAND_WORDMARK: BrandGeometry = {
   viewBox: { width: 1383.750244140625, height: 300 },
 }
 
-/** Brand teal, from public/favicon.svg. */
-export const SHARE_BRAND_COLOR = '#2ec4b6'
+/** Brand lilac, from public/favicon.svg. Matches the default accent. */
+export const SHARE_BRAND_COLOR = '#d2bdf5'

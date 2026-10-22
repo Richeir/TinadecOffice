@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>强调色调色板对照 · 海报淡紫</title>
+    <!--
+      2026-10-22 的快照（= 改后的 apps/desktop/src/styles.css，逐字复制）。
+      用同目录副本而不是跨目录 link，是为了让预览面板从任意根路径打开都能加载。
+      这里看到的就是"强调色注入没跑到"时应用的真实兜底颜色。
+    -->
+    <link rel="stylesheet" href="./styles.snapshot.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 32px clamp(16px, 5vw, 56px) 64px;
+        font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+      }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      p.lead { color: var(--text-secondary); font-size: 13px; margin: 0 0 24px; max-width: 760px; line-height: 1.7; }
+      h2 { font-size: 14px; margin: 32px 0 12px; color: var(--text-secondary); font-weight: 600; letter-spacing: .02em; }
+      .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+      button.switch {
+        font: inherit; font-size: 12px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
+        border: 1px solid var(--border-default); background: var(--bg-button); color: var(--text-primary);
+      }
+      button.switch:hover { background: var(--bg-button-hover); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+      .card {
+        background: var(--bg-secondary); border: 1px solid var(--border-default);
+        border-radius: 10px; padding: 14px 16px;
+      }
+      .card .name { font-size: 11px; color: var(--text-muted); font-family: Consolas, monospace; }
+      .card .value { font-size: 16px; font-weight: 600; margin-top: 6px; font-family: Consolas, monospace; }
+      .swatch { height: 34px; border-radius: 7px; margin-top: 10px; border: 1px solid var(--border-muted); }
+      .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 18px;
+             background: var(--bg-secondary); border: 1px solid var(--border-default); border-radius: 10px; }
+      .primary-btn {
+        padding: 8px 18px; border-radius: 8px; border: 0; cursor: pointer; font: inherit; font-size: 13px;
+        background: var(--bg-primary-button); color: #fff;
+      }
+      .primary-btn:hover { background: var(--bg-primary-button-hover); }
+      a.link { color: var(--text-link); font-size: 13px; }
+      .selected {
+        padding: 8px 14px; border-radius: 8px; font-size: 13px;
+        background: var(--bg-selected); border: 1px solid var(--bg-selected-outline);
+      }
+      .focus-demo {
+        padding: 8px 14px; border-radius: 8px; font-size: 13px;
+        background: var(--bg-input); border: 1px solid var(--border-input-focus);
+        box-shadow: var(--shadow-focus);
+      }
+      .ok { padding: 4px 10px; border-radius: 6px; font-size: 12px;
+            background: var(--bg-status-ok); color: var(--accent-success); }
+      .bad { padding: 4px 10px; border-radius: 6px; font-size: 12px;
+             background: var(--bg-status-danger); color: var(--accent-danger); }
+      .before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 720px; }
+      .ba { border-radius: 10px; padding: 14px 16px; font-size: 12px; line-height: 1.9; }
+      .ba.before { background: #15121a; border: 1px solid #28242c; }
+      .ba.after { background: #15121a; border: 1px solid #28242c; }
+      .chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+      code { font-family: Consolas, monospace; background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+      .note { font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.8; }
+    </style>
+  </head>
+  <body>
+    <h1>强调色兜底色板 · 海报淡紫</h1>
+    <p class="lead">
+      页面加载的是 <code>apps/desktop/src/styles.css</code> 的当前快照，没有注入任何 Monet 变量——也就是
+      <strong>强调色注入没有跑到时，界面真正会呈现的那套颜色</strong>。最早这里是青蓝 <code>#2ec4b6</code>，
+      中间短暂变成过蓝，现在的品牌色是海报淡紫 <code>#d2bdf5</code>（浅色主题 <code>#675687</code>）。
+    </p>
+
+    <div class="bar">
+      <button class="switch" id="toggle">切换深色 / 浅色</button>
+      <span class="note" id="mode-label">当前：dark</span>
+    </div>
+
+    <h2>当前主题下的关键 token</h2>
+    <div class="grid" id="tokens"></div>
+
+    <h2>组件实际呈现</h2>
+    <div class="row">
+      <button class="primary-btn">主按钮</button>
+      <a class="link" href="#">链接文字</a>
+      <span class="selected">选中行</span>
+      <span class="focus-demo">输入框聚焦</span>
+      <span class="ok">运行成功</span>
+      <span class="bad">运行失败</span>
+    </div>
+    <p class="note">
+      成功/失败仍然是语义绿和语义红，不跟随强调色——这条是有意保留的。
+    </p>
+
+    <h2>改动前后</h2>
+    <div class="before-after">
+      <div class="ba before">
+        <div><span class="chip" style="background:#2ec4b6"></span>--accent-primary: #2ec4b6</div>
+        <div><span class="chip" style="background:#2ec4b6"></span>--text-link: #2ec4b6</div>
+        <div><span class="chip" style="background:#1f8f80"></span>--bg-primary-button: #1f8f80</div>
+        <div><span class="chip" style="background:#0d2e2a"></span>--bg-selected: #0d2e2a</div>
+        <div style="margin-top:8px;color:#7d8590">改前：品牌青蓝，与默认蓝色强调色打架</div>
+      </div>
+      <div class="ba after">
+        <div><span class="chip" style="background:#d2bdf5"></span>--accent-primary: #d2bdf5</div>
+        <div><span class="chip" style="background:#d2bdf5"></span>--text-link: #d2bdf5</div>
+        <div><span class="chip" style="background:#746294"></span>--bg-primary-button: #746294</div>
+        <div><span class="chip" style="background:#4f3e6e"></span>--bg-selected: #4f3e6e</div>
+        <div style="margin-top:8px;color:#a49ab1">现在：海报淡紫，与 useTheme 默认 purple 同源</div>
+      </div>
+    </div>
+
+    <script>
+      const TOKENS = [
+        ['--accent-primary', '强调色'],
+        ['--accent-brand', '品牌强调'],
+        ['--text-brand', '品牌文字'],
+        ['--text-link', '链接'],
+        ['--bg-primary-button', '主按钮底'],
+        ['--bg-selected', '选中底'],
+        ['--border-input-focus', '聚焦边框'],
+        ['--accent-success', '语义成功'],
+      ]
+
+      const root = document.documentElement
+      const label = document.getElementById('mode-label')
+
+      function paint() {
+        const styles = getComputedStyle(root)
+        const grid = document.getElementById('tokens')
+        grid.innerHTML = ''
+        for (const [token, desc] of TOKENS) {
+          const value = styles.getPropertyValue(token).trim()
+          const card = document.createElement('div')
+          card.className = 'card'
+          card.innerHTML =
+            '<div class="name">' + token + '</div>' +
+            '<div class="value">' + value + '</div>' +
+            '<div class="swatch" style="background:' + value + '"></div>' +
+            '<div class="name" style="margin-top:8px">' + desc + '</div>'
+          grid.appendChild(card)
+        }
+        label.textContent = '当前：' + root.getAttribute('data-theme')
+      }
+
+      document.getElementById('toggle').addEventListener('click', () => {
+        root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')
+        paint()
+      })
+
+      paint()
+    </script>
+  </body>
+</html>

@@ -32,7 +32,7 @@ const loading = ref(false)
 const failed = ref(false)
 
 const statusColors: Record<string, string> = {
-  enabled: '#58a6ff',
+  enabled: '#d2bdf5',
   disabled: '#6e7681',
 }
 
@@ -119,7 +119,7 @@ onMounted(fetchGraph)
         <rect
           :x="node.x - 70" :y="node.y - 24"
           width="140" height="48" rx="10"
-          fill="var(--surface-raised, #1a1f29)"
+          fill="var(--surface-raised, #28242c)"
           :stroke="statusColors[node.enabled ? 'enabled' : 'disabled']"
           stroke-width="1.5"
           style="filter: drop-shadow(0 1px 3px rgba(0,0,0,.08)) drop-shadow(0 4px 12px rgba(0,0,0,.05));"
@@ -169,7 +169,7 @@ onMounted(fetchGraph)
   height: 100%;
   gap: 8px;
   color: var(--text-muted, #6e7681);
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   margin: 12px;

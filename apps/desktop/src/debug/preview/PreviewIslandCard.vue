@@ -94,9 +94,9 @@ const materialAttrs = computed(() => getPanelDataAttributes())
 }
 
 .preview-island.selected:not(.immersive) {
-  border-color: var(--accent-primary, #2ec4b6);
+  border-color: var(--accent-primary, #d2bdf5);
   box-shadow:
-    0 0 0 1px var(--accent-primary, #2ec4b6),
+    0 0 0 1px var(--accent-primary, #d2bdf5),
     var(--shadow-card-subtle);
 }
 

@@ -289,7 +289,7 @@ function refresh() { refreshKey.value++ }
   height: 100%;
   padding: 8px;
   background: transparent;
-  color: var(--text-primary, #c9d1d9);
+  color: var(--text-primary, #eadef7);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
   font-size: 13px;
   min-height: 0;
@@ -317,7 +317,7 @@ function refresh() { refreshKey.value++ }
   gap: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent-primary, #2ec4b6);
+  color: var(--accent-primary, #d2bdf5);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   width: 100%;
@@ -349,7 +349,7 @@ function refresh() { refreshKey.value++ }
 .tree-group-head:hover { color: var(--text-secondary, #7d8590); }
 .tree-group-head small {
   margin-left: auto;
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   padding: 1px 6px;
   border-radius: 8px;
@@ -373,16 +373,16 @@ function refresh() { refreshKey.value++ }
   transition: background 0.15s, color 0.15s, box-shadow 0.18s, transform 0.18s, border-color 0.18s;
 }
 .tree-item:hover {
-  background: var(--surface-hover, #1a1f29);
-  color: var(--text-primary, #c9d1d9);
+  background: var(--surface-hover, #28242c);
+  color: var(--text-primary, #eadef7);
   border-color: var(--border-card, rgba(0,0,0,.08));
   box-shadow: var(--shadow-card-subtle);
   transform: translateY(-1px);
 }
 .tree-item.active {
   background: var(--surface-selected, #0d2e2a);
-  color: var(--accent-primary, #2ec4b6);
-  border-color: var(--accent-primary, #2ec4b6);
+  color: var(--accent-primary, #d2bdf5);
+  border-color: var(--accent-primary, #d2bdf5);
   box-shadow: var(--shadow-card-subtle);
   font-weight: 600;
 }
@@ -429,7 +429,7 @@ function refresh() { refreshKey.value++ }
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
-.toolbar-type.page { background: color-mix(in srgb, var(--accent-primary, #2ec4b6) 14%, transparent); color: var(--accent-primary, #2ec4b6); }
+.toolbar-type.page { background: color-mix(in srgb, var(--accent-primary, #d2bdf5) 14%, transparent); color: var(--accent-primary, #d2bdf5); }
 .toolbar-type.component { background: color-mix(in srgb, #bc8cff 14%, transparent); color: #bc8cff; }
 .toolbar-scenario { margin-left: 4px; }
 .toolbar-right { display: flex; gap: 4px; }
@@ -439,7 +439,7 @@ function refresh() { refreshKey.value++ }
   justify-content: center;
   width: 30px;
   height: 30px;
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 8px;
   color: var(--text-muted, #6e7681);
@@ -447,7 +447,7 @@ function refresh() { refreshKey.value++ }
   transition: background 0.15s, color 0.15s, box-shadow 0.18s, transform 0.18s;
 }
 .toolbar-btn:hover {
-  background: var(--surface-hover, #1a1f29);
+  background: var(--surface-hover, #28242c);
   color: var(--text-primary);
   box-shadow: var(--shadow-card-subtle);
   transform: translateY(-1px);
@@ -489,7 +489,7 @@ function refresh() { refreshKey.value++ }
 .status-stat strong { font-size: 12px; color: var(--text-primary); }
 .status-scenario { display: flex; align-items: center; gap: 4px; }
 .status-scenario-label { font-size: 11px; color: var(--text-muted, #6e7681); }
-.status-scenario strong { font-size: 12px; color: var(--accent-primary, #2ec4b6); }
+.status-scenario strong { font-size: 12px; color: var(--accent-primary, #d2bdf5); }
 
 /* ---- 右岛 ---- */
 .gallery-controls {
@@ -512,7 +512,7 @@ function refresh() { refreshKey.value++ }
 .controls-head {
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent-primary, #2ec4b6);
+  color: var(--accent-primary, #d2bdf5);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   width: 100%;
@@ -573,7 +573,7 @@ function refresh() { refreshKey.value++ }
   position: relative;
   width: 34px;
   height: 20px;
-  background: var(--border-default, #1a1f29);
+  background: var(--border-default, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 999px;
   cursor: pointer;
@@ -595,7 +595,7 @@ function refresh() { refreshKey.value++ }
 .toggle-switch.on .toggle-knob { transform: translateX(14px); }
 .width-slider {
   width: 100%;
-  accent-color: var(--accent-primary, #2ec4b6);
+  accent-color: var(--accent-primary, #d2bdf5);
 }
 
 .unmocked-list {

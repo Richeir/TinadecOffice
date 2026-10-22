@@ -425,15 +425,15 @@ function taskLabel(item: NotificationItem) {
 
 /* ── CAPSULES ── */
 .island-capsule {
-  --level: var(--accent-primary, #2ec4b6);
+  --level: var(--accent-primary, #d2bdf5);
   pointer-events: auto; -webkit-app-region: no-drag;
   display: flex; align-items: center; gap: 7px; height: 28px;
   min-width: 0; max-width: 160px; padding: 0 12px;
   border: none;
   border-radius: 999px;
-  background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 66%, transparent);
+  background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 66%, transparent);
   background-image: linear-gradient(color-mix(in srgb, var(--level) 12%, transparent), color-mix(in srgb, var(--level) 12%, transparent));
-  color: var(--text-primary, #c9d1d9);
+  color: var(--text-primary, #eadef7);
   box-shadow: 0 1px 2px rgb(0 0 0 / 18%), 0 6px 18px rgb(0 0 0 / 22%);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
@@ -441,16 +441,16 @@ function taskLabel(item: NotificationItem) {
   transition: max-width 200ms cubic-bezier(.2,.8,.2,1), padding 200ms cubic-bezier(.2,.8,.2,1),
     background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
-.island-capsule--status { background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 62%, transparent); }
-.island-capsule--transient { background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 72%, transparent); }
+.island-capsule--status { background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 62%, transparent); }
+.island-capsule--transient { background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 72%, transparent); }
 .island-capsule--active {
-  background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 52%, transparent);
+  background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 52%, transparent);
   box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
 }
-.island-capsule--success { --level: var(--accent-success, #2ec4b6); }
+.island-capsule--success { --level: var(--accent-success, #3fb950); }
 .island-capsule--warning { --level: var(--accent-warning, #d29922); }
 .island-capsule--error { --level: var(--accent-danger, #f85149); }
-.island-capsule--info { --level: var(--accent-primary, #2ec4b6); }
+.island-capsule--info { --level: var(--accent-primary, #d2bdf5); }
 .island-capsule__icon { flex: none; color: var(--level); }
 .island-capsule__text { min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; white-space: nowrap; }
 .island-capsule__title { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
@@ -463,7 +463,7 @@ function taskLabel(item: NotificationItem) {
   min-width: 0; flex: 1 1 0;
   cursor: pointer;
   font: inherit; font-size: 11px; line-height: 1;
-  color: var(--text-primary, #c9d1d9);
+  color: var(--text-primary, #eadef7);
 }
 
 /* capsule close button — revealed on hover */
@@ -497,29 +497,29 @@ function taskLabel(item: NotificationItem) {
 /* overflow badge */
 .island-capsule--overflow {
   max-width: 48px; padding: 0 10px;
-  background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 64%, transparent);
+  background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 64%, transparent);
   background-image: linear-gradient(color-mix(in srgb, var(--text-secondary, #7d8590) 10%, transparent), color-mix(in srgb, var(--text-secondary, #7d8590) 10%, transparent));
 }
 .island-capsule--overflow .island-capsule__icon { color: var(--text-secondary, #7d8590); }
 
 /* ── DETAIL CARD ── */
 .island-card {
-  --level: var(--accent-primary, #2ec4b6); pointer-events: auto;
+  --level: var(--accent-primary, #d2bdf5); pointer-events: auto;
   width: min(340px, 100cqw); margin-top: 8px; padding: 13px;
   border: none;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary, #0a0e14) 86%, transparent);
-  color: var(--text-primary, #c9d1d9);
+  background: color-mix(in srgb, var(--bg-primary, #15121a) 86%, transparent);
+  color: var(--text-primary, #eadef7);
   box-shadow: 0 16px 44px rgb(0 0 0 / 42%);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
   -webkit-app-region: no-drag;
   cursor: pointer; /* the whole card opens the detail dialog */
 }
-.island-card--success { --level: var(--accent-success, #2ec4b6); }
+.island-card--success { --level: var(--accent-success, #3fb950); }
 .island-card--warning { --level: var(--accent-warning, #d29922); }
 .island-card--error { --level: var(--accent-danger, #f85149); }
-.island-card--info { --level: var(--accent-primary, #2ec4b6); }
+.island-card--info { --level: var(--accent-primary, #d2bdf5); }
 
 .island-card__header { display: flex; align-items: center; gap: 9px; }
 .island-card__icon {
@@ -538,7 +538,7 @@ function taskLabel(item: NotificationItem) {
   color: var(--text-secondary, #7d8590); cursor: pointer;
 }
 .island-card__icon-btn:hover, .island-card__secondary:hover {
-  background: var(--bg-hover, #161b22); color: var(--text-primary, #c9d1d9);
+  background: var(--bg-hover, #231f29); color: var(--text-primary, #eadef7);
 }
 .island-card__summary { margin: 11px 0 0; color: var(--text-secondary, #7d8590); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .island-card__meta { margin: 5px 0 0; color: var(--text-tertiary, #656d76); font-size: 10px; line-height: 1.3; }
@@ -570,13 +570,13 @@ function taskLabel(item: NotificationItem) {
 .island-card__actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
 .island-card__actions button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 29px; padding: 5px 10px; border: 1px solid var(--border-default, #1a1f29);
+  min-height: 29px; padding: 5px 10px; border: 1px solid var(--border-default, #28242c);
   border-radius: 6px; font: inherit; font-size: 11px; cursor: pointer;
 }
 .island-card__secondary { background: transparent; color: var(--text-secondary, #7d8590); }
 .island-card__primary {
   border-color: color-mix(in srgb, var(--level) 55%, transparent) !important;
-  background: color-mix(in srgb, var(--level) 18%, var(--bg-secondary, #11151c));
+  background: color-mix(in srgb, var(--level) 18%, var(--bg-secondary, #1d1a22));
   color: var(--level); font-weight: 600;
 }
 .island-card__actions button:disabled { opacity: 0.55; cursor: wait; }
@@ -587,8 +587,8 @@ function taskLabel(item: NotificationItem) {
   pointer-events: auto; width: min(380px, 100cqw); max-height: 340px;
   margin-top: 8px; display: flex; flex-direction: column;
   border: none; border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary, #0a0e14) 88%, transparent);
-  color: var(--text-primary, #c9d1d9);
+  background: color-mix(in srgb, var(--bg-primary, #15121a) 88%, transparent);
+  color: var(--text-primary, #eadef7);
   box-shadow: 0 16px 44px rgb(0 0 0 / 42%);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
@@ -611,13 +611,13 @@ function taskLabel(item: NotificationItem) {
   display: flex; align-items: center; gap: 8px; padding: 8px 13px;
   font-size: 11px; transition: background 120ms ease;
 }
-.island-overflow__row:hover { background: var(--bg-hover, #161b22); }
+.island-overflow__row:hover { background: var(--bg-hover, #231f29); }
 .island-overflow__icon {
   flex: none; display: grid; place-items: center; width: 22px; height: 22px;
-  border-radius: 5px; background: color-mix(in srgb, var(--accent-primary, #2ec4b6) 12%, transparent);
-  color: var(--accent-primary, #2ec4b6);
+  border-radius: 5px; background: color-mix(in srgb, var(--accent-primary, #d2bdf5) 12%, transparent);
+  color: var(--accent-primary, #d2bdf5);
 }
-.island-overflow__icon--success { background: color-mix(in srgb, var(--accent-success, #2ec4b6) 12%, transparent); color: var(--accent-success, #2ec4b6); }
+.island-overflow__icon--success { background: color-mix(in srgb, var(--accent-success, #3fb950) 12%, transparent); color: var(--accent-success, #3fb950); }
 .island-overflow__icon--warning { background: color-mix(in srgb, var(--accent-warning, #d29922) 12%, transparent); color: var(--accent-warning, #d29922); }
 .island-overflow__icon--error { background: color-mix(in srgb, var(--accent-danger, #f85149) 12%, transparent); color: var(--accent-danger, #f85149); }
 .island-overflow__content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -631,7 +631,7 @@ function taskLabel(item: NotificationItem) {
   opacity: 0; transition: opacity 120ms ease, background 120ms ease;
 }
 .island-overflow__row:hover .island-overflow__action { opacity: 1; }
-.island-overflow__action:hover { background: var(--bg-hover, #161b22); color: var(--text-primary, #c9d1d9); }
+.island-overflow__action:hover { background: var(--bg-hover, #231f29); color: var(--text-primary, #eadef7); }
 /* static residency marker — same slot as the action buttons, never interactive */
 .island-overflow__action--static, .island-overflow__action--static:hover {
   background: transparent; color: var(--text-tertiary, #656d76); cursor: default; opacity: 0.75;
@@ -664,7 +664,7 @@ function taskLabel(item: NotificationItem) {
 /* ── AGGREGATED HERO ── */
 .island-capsule--hero { max-width: 200px; }
 .island-capsule--stack-open {
-  background-color: color-mix(in srgb, var(--bg-secondary, #11151c) 52%, transparent);
+  background-color: color-mix(in srgb, var(--bg-secondary, #1d1a22) 52%, transparent);
   box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
 }
 /* Fold badge — a small rounded count showing how many items are collapsed. */
@@ -687,8 +687,8 @@ function taskLabel(item: NotificationItem) {
   pointer-events: auto; width: min(340px, 100cqw); max-height: 320px;
   margin-top: 8px; display: flex; flex-direction: column;
   border: none; border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary, #0a0e14) 88%, transparent);
-  color: var(--text-primary, #c9d1d9);
+  background: color-mix(in srgb, var(--bg-primary, #15121a) 88%, transparent);
+  color: var(--text-primary, #eadef7);
   box-shadow: 0 16px 44px rgb(0 0 0 / 42%);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
@@ -711,14 +711,14 @@ function taskLabel(item: NotificationItem) {
   display: flex; align-items: center; gap: 8px; padding: 8px 13px;
   font-size: 11px; cursor: pointer; transition: background 120ms ease;
 }
-.island-stack__row:hover { background: var(--bg-hover, #161b22); }
+.island-stack__row:hover { background: var(--bg-hover, #231f29); }
 .island-stack__row--hero { box-shadow: inset 3px 0 0 var(--level); }
 .island-stack__icon {
   flex: none; display: grid; place-items: center; width: 22px; height: 22px;
-  border-radius: 5px; background: color-mix(in srgb, var(--accent-primary, #2ec4b6) 12%, transparent);
-  color: var(--accent-primary, #2ec4b6);
+  border-radius: 5px; background: color-mix(in srgb, var(--accent-primary, #d2bdf5) 12%, transparent);
+  color: var(--accent-primary, #d2bdf5);
 }
-.island-stack__icon--success { background: color-mix(in srgb, var(--accent-success, #2ec4b6) 12%, transparent); color: var(--accent-success, #2ec4b6); }
+.island-stack__icon--success { background: color-mix(in srgb, var(--accent-success, #3fb950) 12%, transparent); color: var(--accent-success, #3fb950); }
 .island-stack__icon--warning { background: color-mix(in srgb, var(--accent-warning, #d29922) 12%, transparent); color: var(--accent-warning, #d29922); }
 .island-stack__icon--error { background: color-mix(in srgb, var(--accent-danger, #f85149) 12%, transparent); color: var(--accent-danger, #f85149); }
 .island-stack__content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -733,7 +733,7 @@ function taskLabel(item: NotificationItem) {
   opacity: 0; transition: opacity 120ms ease, background 120ms ease;
 }
 .island-stack__row:hover .island-stack__action { opacity: 1; }
-.island-stack__action:hover { background: var(--bg-hover, #161b22); color: var(--text-primary, #c9d1d9); }
+.island-stack__action:hover { background: var(--bg-hover, #231f29); color: var(--text-primary, #eadef7); }
 .island-stack__action--static, .island-stack__action--static:hover {
   background: transparent; color: var(--text-tertiary, #656d76); cursor: default; opacity: 0.75;
 }

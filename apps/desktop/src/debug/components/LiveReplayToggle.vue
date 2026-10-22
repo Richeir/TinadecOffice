@@ -40,7 +40,7 @@ const mode = ref<'live' | 'replay'>('live')
   letter-spacing: 0.5px;
   transition: background 0.12s, color 0.12s;
 }
-.toggle-btn:hover { color: #c9d1d9; }
+.toggle-btn:hover { color: #eadef7; }
 .toggle-btn.active {
   background: #30363d;
   color: #e6edf3;

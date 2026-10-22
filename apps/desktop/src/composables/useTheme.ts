@@ -18,7 +18,23 @@ export const DYNAMIC_ACCENT_KEY = 'dynamic'
 export const CUSTOM_ACCENT_KEY = 'custom'
 
 /** Seed used when `custom` is selected before a color was ever picked. */
-const CUSTOM_ACCENT_FALLBACK = '#58a6ff'
+const CUSTOM_ACCENT_FALLBACK = '#d2bdf5'
+
+/**
+ * The shipped default. This is the "poster lilac" the brand moved to; the CSS
+ * floor in styles.css carries the same two hex values so the app looks the
+ * same whether or not the Monet injection has run.
+ */
+export const DEFAULT_ACCENT = 'purple'
+
+/**
+ * Builds before the lilac switch persisted the old default (`blue`) into
+ * localStorage the first time they booted, so changing the constant alone
+ * would leave every existing install on blue. The marker makes this a
+ * one-shot migration: anyone who deliberately picks blue afterwards keeps it.
+ */
+const ACCENT_MIGRATION_KEY = 'tinadec-accent-migrated-lilac'
+const LEGACY_DEFAULT_ACCENT = 'blue'
 
 export interface AccentColor {
   key: string
@@ -53,9 +69,9 @@ export const ACCENT_COLORS: AccentColor[] = [
     light: {
       accentPrimary: '#0969da',
       accentBrand: '#1f6feb',
-      textBrand: '#17484d',
-      borderInputFocus: '#2e7d76',
-      shadowFocus: '0 0 0 3px rgba(46, 125, 118, 0.14)',
+      textBrand: '#0969da',
+      borderInputFocus: '#0969da',
+      shadowFocus: '0 0 0 3px rgba(9, 105, 218, 0.14)',
     },
   },
   {
@@ -80,18 +96,18 @@ export const ACCENT_COLORS: AccentColor[] = [
     key: 'purple',
     labelKey: 'accentColors.purple',
     dark: {
-      accentPrimary: '#bc8cff',
-      accentBrand: '#bc8cff',
-      textBrand: '#bc8cff',
-      borderInputFocus: '#bc8cff',
-      shadowFocus: '0 0 0 3px rgba(188, 140, 255, 0.3)',
+      accentPrimary: '#d2bdf5',
+      accentBrand: '#d2bdf5',
+      textBrand: '#d2bdf5',
+      borderInputFocus: '#d2bdf5',
+      shadowFocus: '0 0 0 3px rgba(210, 189, 245, 0.3)',
     },
     light: {
-      accentPrimary: '#8250df',
-      accentBrand: '#8250df',
-      textBrand: '#6e40c9',
-      borderInputFocus: '#8250df',
-      shadowFocus: '0 0 0 3px rgba(130, 80, 223, 0.14)',
+      accentPrimary: '#675687',
+      accentBrand: '#675687',
+      textBrand: '#675687',
+      borderInputFocus: '#675687',
+      shadowFocus: '0 0 0 3px rgba(103, 86, 135, 0.14)',
     },
   },
   {
@@ -200,7 +216,18 @@ function getStoredTheme(): Ref<Theme> {
 
 function getStoredAccentColor(): Ref<string> {
   if (!storedAccentColor) {
-    storedAccentColor = useStorage<string>('tinadec-accent-color', 'blue')
+    const ref0 = useStorage<string>('tinadec-accent-color', DEFAULT_ACCENT)
+    try {
+      if (!localStorage.getItem(ACCENT_MIGRATION_KEY)) {
+        localStorage.setItem(ACCENT_MIGRATION_KEY, '1')
+        // Only the value the old build wrote for us is migrated — a user who
+        // picked a colour of their own (custom / dynamic / green…) is left alone.
+        if (ref0.value === LEGACY_DEFAULT_ACCENT) ref0.value = DEFAULT_ACCENT
+      }
+    } catch {
+      // Private mode / storage disabled: the stored value still wins.
+    }
+    storedAccentColor = ref0
   }
   return storedAccentColor
 }
@@ -242,8 +269,13 @@ const presetVarsCache = new Map<string, DynamicVars>()
 function resolveAccentVars(key: string, theme: 'dark' | 'light'): DynamicVars | null {
   if (key === DYNAMIC_ACCENT_KEY) {
     // Not memoized: a fresh extraction must take effect immediately.
+    // Before the first extraction lands (no wallpaper, or still booting) the
+    // pipeline falls back to the default brand seed. Returning null here used
+    // to leave every surface at the raw CSS values, which is how a user could
+    // end up staring at a palette nobody picked.
     const sourceColor = getDynamicPaletteRef().value?.sourceColor
-    return typeof sourceColor === 'number' ? buildDynamicVars(sourceColor >>> 0, theme) : null
+    const seed = typeof sourceColor === 'number' ? sourceColor >>> 0 : FALLBACK_SEED
+    return buildDynamicVars(seed, theme)
   }
   if (key === CUSTOM_ACCENT_KEY) {
     // Not memoized: the seed changes every time the user moves a slider.

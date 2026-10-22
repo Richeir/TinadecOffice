@@ -64,7 +64,7 @@ const expanded = ref(false)
 .sim-expand-btn {
   background: none;
   border: none;
-  color: #58a6ff;
+  color: #d2bdf5;
   cursor: pointer;
   font-size: 12px;
   padding: 4px 8px;
@@ -115,7 +115,7 @@ const expanded = ref(false)
 }
 .tool-input:focus {
   outline: none;
-  border-color: #58a6ff;
+  border-color: #d2bdf5;
 }
 .tool-input.small { width: 130px; flex: none; }
 

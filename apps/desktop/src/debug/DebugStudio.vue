@@ -179,8 +179,8 @@ onMounted(() => {
   height: 100vh;
   gap: 8px;
   padding: 8px;
-  background: var(--bg-primary, #0a0e14);
-  color: var(--text-primary, #c9d1d9);
+  background: var(--bg-primary, #15121a);
+  color: var(--text-primary, #eadef7);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -191,7 +191,7 @@ onMounted(() => {
 }
 .debug-shell-island :deep(.island-header) {
   padding: 0;
-  border-bottom: 1px solid var(--border-default, #1a1f29);
+  border-bottom: 1px solid var(--border-default, #28242c);
 }
 
 /* ---- Title Bar（岛 header 内） ---- */
@@ -214,7 +214,7 @@ onMounted(() => {
   -webkit-app-region: no-drag;
 }
 
-.debug-icon { color: var(--accent-primary, #2ec4b6); }
+.debug-icon { color: var(--accent-primary, #d2bdf5); }
 
 .debug-title {
   font-size: 13px;
@@ -226,7 +226,7 @@ onMounted(() => {
 .titlebar-divider {
   width: 1px;
   height: 16px;
-  background: var(--border-default, #1a1f29);
+  background: var(--border-default, #28242c);
   flex-shrink: 0;
 }
 
@@ -242,7 +242,7 @@ onMounted(() => {
   justify-content: center;
   transition: background 0.12s, color 0.12s;
 }
-.window-btn:hover { background: var(--surface-hover, #1a1f29); color: var(--text-primary); }
+.window-btn:hover { background: var(--surface-hover, #28242c); color: var(--text-primary); }
 .window-btn.close:hover { background: #da3633; color: #fff; }
 
 /* ---- Tab Bar（岛 body 内） ---- */
@@ -251,7 +251,7 @@ onMounted(() => {
   gap: 0;
   padding: 0 12px;
   flex-shrink: 0;
-  border-top: 1px solid var(--border-default, #1a1f29);
+  border-top: 1px solid var(--border-default, #28242c);
 }
 
 .debug-tab {
@@ -267,8 +267,8 @@ onMounted(() => {
 }
 .debug-tab:hover { color: var(--text-secondary); }
 .debug-tab.active {
-  color: var(--accent-primary, #2ec4b6);
-  border-bottom-color: var(--accent-primary, #2ec4b6);
+  color: var(--accent-primary, #d2bdf5);
+  border-bottom-color: var(--accent-primary, #d2bdf5);
 }
 
 .island-title {

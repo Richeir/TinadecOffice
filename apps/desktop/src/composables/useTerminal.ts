@@ -75,6 +75,18 @@ export interface ShellProfile {
  * Read CSS custom properties from the document root and build an xterm ITheme.
  * This adapts the terminal colors to match the current app theme.
  */
+/**
+ * Expand `#rrggbb` into `rgba()`. xterm rejects the `color-mix()`/triplet
+ * forms the rest of the app uses, so the selection tint is derived here from
+ * the same `--accent-primary` the surfaces read — one accent, one source.
+ */
+function withAlpha(color: string, alpha: number): string {
+  const hex = color.trim()
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return hex
+  const n = Number.parseInt(hex.slice(1), 16)
+  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`
+}
+
 function buildXtermTheme(): XtermTheme {
   const root = document.documentElement
   const getVar = (name: string, fallback: string): string => {
@@ -86,11 +98,11 @@ function buildXtermTheme(): XtermTheme {
 
   if (isDark) {
     return {
-      background: getVar('--bg-primary', '#0a0e14'),
-      foreground: getVar('--text-primary', '#c9d1d9'),
-      cursor: getVar('--accent-primary', '#2ec4b6'),
-      cursorAccent: getVar('--bg-primary', '#0a0e14'),
-      selectionBackground: 'rgba(46, 196, 182, 0.25)',
+      background: getVar('--bg-primary', '#15121a'),
+      foreground: getVar('--text-primary', '#eadef7'),
+      cursor: getVar('--accent-primary', '#d2bdf5'),
+      cursorAccent: getVar('--bg-primary', '#15121a'),
+      selectionBackground: withAlpha(getVar('--accent-primary', '#d2bdf5'), 0.25),
       black: '#484f58',
       red: getVar('--text-error', '#f85149'),
       green: '#3fb950',
@@ -112,9 +124,9 @@ function buildXtermTheme(): XtermTheme {
     return {
       background: getVar('--bg-primary', '#ffffff'),
       foreground: getVar('--text-primary', '#1f2328'),
-      cursor: getVar('--accent-primary', '#1f8f80'),
+      cursor: getVar('--accent-primary', '#675687'),
       cursorAccent: getVar('--bg-primary', '#ffffff'),
-      selectionBackground: 'rgba(31, 143, 128, 0.2)',
+      selectionBackground: withAlpha(getVar('--accent-primary', '#675687'), 0.2),
       black: '#1f2328',
       red: '#cf222e',
       green: '#1a7f37',

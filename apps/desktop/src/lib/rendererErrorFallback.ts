@@ -50,7 +50,7 @@ function buildFallback(message: string): void {
   const overlay = document.createElement('div')
   overlay.id = 'renderer-error-fallback'
   overlay.style.cssText =
-    'position:fixed;inset:0;z-index:2147483647;background:var(--bg-primary,#0a0e14);' +
+    'position:fixed;inset:0;z-index:2147483647;background:var(--bg-primary,#15121a);' +
     'display:flex;align-items:center;justify-content:center;'
 
   const card = document.createElement('div')
@@ -68,7 +68,7 @@ function buildFallback(message: string): void {
   pre.style.cssText =
     'margin:0;padding:12px;overflow:auto;max-height:180px;font-size:12px;line-height:1.5;' +
     'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text-secondary,#9aa0aa);' +
-    'background:var(--bg-primary,#0a0e14);border-radius:8px;white-space:pre-wrap;word-break:break-all;'
+    'background:var(--bg-primary,#15121a);border-radius:8px;white-space:pre-wrap;word-break:break-all;'
   pre.textContent = message.slice(0, 2000)
 
   const reloadBtn = document.createElement('button')
@@ -76,7 +76,7 @@ function buildFallback(message: string): void {
   reloadBtn.textContent = '重新加载 / Reload'
   reloadBtn.style.cssText =
     'align-self:flex-start;padding:8px 16px;font-size:13px;font-weight:500;color:#fff;' +
-    'background:var(--accent-brand,#2ec4b6);border:none;border-radius:8px;cursor:pointer;'
+    'background:var(--accent-brand,#d2bdf5);border:none;border-radius:8px;cursor:pointer;'
   reloadBtn.addEventListener('click', () => {
     const w = window as unknown as { tinadec?: { restartApp?: () => Promise<unknown> } }
     if (w.tinadec?.restartApp) {

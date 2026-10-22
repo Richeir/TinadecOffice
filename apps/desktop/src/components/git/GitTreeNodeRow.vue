@@ -306,7 +306,7 @@ function handleUnstageFolder() {
 
 .git-tree-folder-name {
   font-size: 12px;
-  color: var(--text-secondary, #c9d1d9);
+  color: var(--text-secondary, #eadef7);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

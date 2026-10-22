@@ -23,7 +23,9 @@
  *   accents, success and approval green, status backgrounds,
  *   --text-error/--text-reject/--text-link and scrollbar colors keep their
  *   styles.css values. A status color must mean the same thing regardless
- *   of which accent the user picked.
+ *   of which accent the user picked. `--text-link` is pinned to the default
+ *   brand lilac in styles.css — it is a brand slot, not an accent slot, so it
+ *   must not inherit whatever palette this pipeline replaced.
  */
 
 import {
@@ -376,6 +378,6 @@ export function previewSwatches(source: number): string[] {
 
 /** Every property buildDynamicVars may emit — used to strip injected values. */
 export const DYNAMIC_VAR_NAMES: readonly string[] = Object.keys({
-  ...buildDynamicVars(0xff2ec4b6, 'dark'),
-  ...buildDynamicVars(0xff2ec4b6, 'light'),
+  ...buildDynamicVars(0xffd2bdf5, 'dark'),
+  ...buildDynamicVars(0xffd2bdf5, 'light'),
 })

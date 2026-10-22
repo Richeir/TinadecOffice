@@ -110,7 +110,7 @@ function formatDuration(ms: number): string {
 .inspector-header {
   margin-bottom: 16px;
   padding: 12px 14px;
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 10px;
   box-shadow: var(--shadow-card-subtle);
@@ -142,7 +142,7 @@ function formatDuration(ms: number): string {
 /* ---- Sections ---- */
 .inspector-section {
   margin-bottom: 14px;
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 10px;
   padding: 12px;
@@ -166,19 +166,19 @@ function formatDuration(ms: number): string {
 .attrs-table td {
   padding: 5px 10px;
   font-size: 12px;
-  border-bottom: 1px solid var(--border-muted, #161b22);
+  border-bottom: 1px solid var(--border-muted, #231f29);
   vertical-align: top;
 }
 .attr-key { color: var(--text-muted, #6e7681); white-space: nowrap; width: 40%; }
-.attr-value { color: var(--text-primary, #c9d1d9); word-break: break-all; }
+.attr-value { color: var(--text-primary, #eadef7); word-break: break-all; }
 .attrs-table.compact td { padding: 3px 10px; }
 
 .event-item {
   padding: 8px 0;
-  border-bottom: 1px solid var(--border-muted, #161b22);
+  border-bottom: 1px solid var(--border-muted, #231f29);
 }
 .event-item:last-child { border-bottom: none; }
-.event-name { font-size: 12px; font-weight: 500; color: var(--accent-primary, #2ec4b6); margin-bottom: 4px; }
+.event-name { font-size: 12px; font-weight: 500; color: var(--accent-primary, #d2bdf5); margin-bottom: 4px; }
 
 .id-row {
   display: flex;

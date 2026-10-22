@@ -148,13 +148,13 @@ const flatSpans = computed(() => {
   display: flex;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-default, #1a1f29);
+  border-bottom: 1px solid var(--border-default, #28242c);
   background: transparent;
 }
 .filter-input, .filter-select :deep(.ui-select-trigger) {
-  background: var(--surface-input, var(--bg-input, #0a0e14));
-  border: 1px solid var(--border-input, #1a1f29);
-  color: var(--text-primary, #c9d1d9);
+  background: var(--surface-input, var(--bg-input, #15121a));
+  border: 1px solid var(--border-input, #28242c);
+  color: var(--text-primary, #eadef7);
   padding: 5px 10px;
   border-radius: 8px;
   font-size: 12px;
@@ -162,7 +162,7 @@ const flatSpans = computed(() => {
 }
 .filter-input:focus, .filter-select :deep(.ui-select-trigger:focus-visible) {
   outline: none;
-  border-color: var(--border-input-focus, #2ec4b6);
+  border-color: var(--border-input-focus, #d2bdf5);
   box-shadow: var(--shadow-focus, 0 0 0 2px rgba(46,196,182,.18));
 }
 .filter-input { flex: 1; }
@@ -175,14 +175,14 @@ const flatSpans = computed(() => {
   gap: 10px;
   padding: 10px 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-muted, #161b22);
+  border-bottom: 1px solid var(--border-muted, #231f29);
   border-radius: 8px;
   margin: 4px 8px;
   border: 1px solid transparent;
   transition: background 0.15s, box-shadow 0.2s, transform 0.2s, border-color 0.2s;
 }
 .trace-item:hover {
-  background: var(--surface-hover, #1a1f29);
+  background: var(--surface-hover, #28242c);
   border-color: var(--border-card, rgba(0,0,0,.08));
   box-shadow: var(--shadow-card-subtle);
   transform: translateY(-1px);
@@ -201,7 +201,7 @@ const flatSpans = computed(() => {
   align-items: center;
   gap: 4px;
 }
-.meta-divider { color: var(--border-default, #1a1f29); }
+.meta-divider { color: var(--border-default, #28242c); }
 .error-badge {
   color: #f85149;
   margin-left: 4px;
@@ -234,7 +234,7 @@ const flatSpans = computed(() => {
 .back-btn {
   background: none;
   border: none;
-  color: var(--accent-primary, #2ec4b6);
+  color: var(--accent-primary, #d2bdf5);
   cursor: pointer;
   padding: 10px 12px;
   font-size: 12px;
@@ -244,7 +244,7 @@ const flatSpans = computed(() => {
   gap: 4px;
   transition: color 0.12s;
 }
-.back-btn:hover { color: var(--text-brand, #2ec4b6); }
+.back-btn:hover { color: var(--text-brand, #d2bdf5); }
 
 .span-row {
   display: flex;
@@ -260,7 +260,7 @@ const flatSpans = computed(() => {
   transition: background 0.12s, box-shadow 0.18s, transform 0.18s, border-color 0.18s;
 }
 .span-row:hover {
-  background: var(--surface-hover, #1a1f29);
+  background: var(--surface-hover, #28242c);
   border-color: var(--border-card, rgba(0,0,0,.08));
   box-shadow: var(--shadow-card-subtle);
   transform: translateY(-1px);
@@ -268,15 +268,15 @@ const flatSpans = computed(() => {
 .span-row:active { cursor: grabbing; transform: translateY(-1px) scale(1.01); }
 .span-row.selected {
   background: var(--surface-selected, #0d2e2a);
-  border-color: var(--accent-primary, #2ec4b6);
-  box-shadow: 0 0 0 1px var(--accent-primary, #2ec4b6);
+  border-color: var(--accent-primary, #d2bdf5);
+  box-shadow: 0 0 0 1px var(--accent-primary, #d2bdf5);
 }
 .span-row.error .span-name { color: var(--accent-danger, #f85149); }
 
 .span-row-bar {
   flex: 2;
   height: 16px;
-  background: var(--bg-tertiary, #1a1f29);
+  background: var(--bg-tertiary, #28242c);
   border-radius: 4px;
   position: relative;
   overflow: hidden;

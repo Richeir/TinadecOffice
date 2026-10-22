@@ -396,10 +396,10 @@ onBeforeUnmount(() => {
   width: min(calc(100vw - 32px), 460px);
   margin: auto;
   padding: 20px;
-  border: 1px solid color-mix(in srgb, var(--dialog-level, var(--accent-primary, #2ec4b6)) 24%, var(--border-default, #1a1f29));
+  border: 1px solid color-mix(in srgb, var(--dialog-level, var(--accent-primary, #d2bdf5)) 24%, var(--border-default, #28242c));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-primary, #0a0e14) 92%, transparent);
-  color: var(--text-primary, #c9d1d9);
+  background: color-mix(in srgb, var(--bg-primary, #15121a) 92%, transparent);
+  color: var(--text-primary, #eadef7);
   box-shadow: 0 24px 80px rgb(0 0 0 / 52%);
   backdrop-filter: blur(22px) saturate(120%);
   -webkit-backdrop-filter: blur(22px) saturate(120%);
@@ -415,9 +415,9 @@ onBeforeUnmount(() => {
 /* ── level theming ── */
 .detail-dialog--destructive,
 .detail-dialog--error { --dialog-level: var(--accent-danger, #f85149); }
-.detail-dialog--success { --dialog-level: var(--accent-success, #2ec4b6); }
+.detail-dialog--success { --dialog-level: var(--accent-success, #3fb950); }
 .detail-dialog--warning { --dialog-level: var(--accent-warning, #d29922); }
-.detail-dialog--info { --dialog-level: var(--accent-primary, #2ec4b6); }
+.detail-dialog--info { --dialog-level: var(--accent-primary, #d2bdf5); }
 
 /* ── heading ── */
 .detail-dialog__heading {
@@ -441,8 +441,8 @@ onBeforeUnmount(() => {
   height: 36px;
   flex: none;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--dialog-level, var(--accent-primary, #2ec4b6)) 13%, transparent);
-  color: var(--dialog-level, var(--accent-primary, #2ec4b6));
+  background: color-mix(in srgb, var(--dialog-level, var(--accent-primary, #d2bdf5)) 13%, transparent);
+  color: var(--dialog-level, var(--accent-primary, #d2bdf5));
 }
 
 .detail-dialog h2 {
@@ -472,8 +472,8 @@ onBeforeUnmount(() => {
 }
 
 .detail-dialog .detail-dialog__close:hover {
-  background: var(--bg-hover, #161b22);
-  color: var(--text-primary, #c9d1d9);
+  background: var(--bg-hover, #231f29);
+  color: var(--text-primary, #eadef7);
 }
 
 /* ── metadata row ── */
@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
   align-items: center;
   padding: 2px 8px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--dialog-level, var(--accent-primary, #2ec4b6)) 10%, transparent);
+  background: color-mix(in srgb, var(--dialog-level, var(--accent-primary, #d2bdf5)) 10%, transparent);
   color: var(--text-secondary, #7d8590);
   font-size: 11px;
   line-height: 1.4;
@@ -522,14 +522,14 @@ onBeforeUnmount(() => {
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background: var(--bg-secondary, #11151c);
+  background: var(--bg-secondary, #1d1a22);
   overflow: hidden;
 }
 
 .detail-dialog__progress-fill {
   height: 100%;
   border-radius: 3px;
-  background: var(--dialog-level, var(--accent-primary, #2ec4b6));
+  background: var(--dialog-level, var(--accent-primary, #d2bdf5));
   transition: width 300ms ease;
 }
 
@@ -554,15 +554,15 @@ onBeforeUnmount(() => {
 .detail-dialog__details {
   margin: 0 0 16px;
   padding: 11px 12px;
-  border: 1px solid var(--border-default, #1a1f29);
+  border: 1px solid var(--border-default, #28242c);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--bg-secondary, #11151c) 76%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary, #1d1a22) 76%, transparent);
 }
 
 .detail-dialog__details > strong {
   display: block;
   margin-bottom: 6px;
-  color: var(--text-primary, #c9d1d9);
+  color: var(--text-primary, #eadef7);
   font-size: 11px;
 }
 
@@ -603,7 +603,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 6px;
   min-height: 30px;
-  border: 1px solid var(--border-default, #1a1f29);
+  border: 1px solid var(--border-default, #28242c);
   border-radius: 6px;
   padding: 5px 12px;
   font: inherit;
@@ -613,8 +613,8 @@ onBeforeUnmount(() => {
 }
 
 .detail-dialog__secondary {
-  background: var(--bg-secondary, #11151c);
-  color: var(--text-primary, #c9d1d9);
+  background: var(--bg-secondary, #1d1a22);
+  color: var(--text-primary, #eadef7);
 }
 
 .detail-dialog__dismiss {
@@ -635,9 +635,9 @@ onBeforeUnmount(() => {
 }
 
 .detail-dialog__primary {
-  border-color: var(--accent-primary, #2ec4b6) !important;
-  background: var(--accent-primary, #2ec4b6);
-  color: #0a0e14;
+  border-color: var(--accent-primary, #d2bdf5) !important;
+  background: var(--accent-primary, #d2bdf5);
+  color: #15121a;
   font-weight: 600;
 }
 
@@ -658,7 +658,7 @@ onBeforeUnmount(() => {
 
 /* ── focus / disabled ── */
 .detail-dialog button:focus-visible {
-  outline: 2px solid var(--accent-primary, #2ec4b6);
+  outline: 2px solid var(--accent-primary, #d2bdf5);
   outline-offset: 2px;
 }
 

@@ -88,15 +88,15 @@ function themeVariables(): Record<string, string> {
   return {
     darkMode: String(!light),
     background: 'transparent',
-    primaryColor: cssVar('--surface-raised', light ? '#eef2ef' : '#1a1f29'),
-    primaryTextColor: cssVar('--text-primary', light ? '#1f2328' : '#c9d1d9'),
-    primaryBorderColor: cssVar('--border-default', light ? '#d0d7de' : '#1a1f29'),
+    primaryColor: cssVar('--surface-raised', light ? '#eef1f5' : '#28242c'),
+    primaryTextColor: cssVar('--text-primary', light ? '#1f2328' : '#eadef7'),
+    primaryBorderColor: cssVar('--border-default', light ? '#d0d7de' : '#28242c'),
     secondaryColor: cssVar('--surface-section', 'transparent'),
     tertiaryColor: cssVar('--surface-chrome', 'transparent'),
     lineColor: cssVar('--text-muted', '#6e7681'),
-    textColor: cssVar('--text-primary', light ? '#1f2328' : '#c9d1d9'),
+    textColor: cssVar('--text-primary', light ? '#1f2328' : '#eadef7'),
     // The base theme paints edge labels on a saturated block; keep them on the card surface.
-    edgeLabelBackground: cssVar('--surface-section', light ? '#ffffff' : '#161b22'),
+    edgeLabelBackground: cssVar('--surface-section', light ? '#ffffff' : '#231f29'),
     fontSize: '12px',
   }
 }

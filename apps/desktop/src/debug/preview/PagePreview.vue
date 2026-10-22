@@ -227,7 +227,7 @@ async function onDecideApproval(approvalId: string, decision: 'approved' | 'reje
   text-align: center;
   color: var(--text-muted, #6e7681);
   font-size: 13px;
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px dashed var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
 }

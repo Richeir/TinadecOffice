@@ -84,7 +84,7 @@ function formatTime(iso: string): string {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   box-shadow: var(--shadow-card-subtle);
@@ -96,7 +96,7 @@ function formatTime(iso: string): string {
   display: flex;
   gap: 24px;
   padding: 12px 16px;
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   box-shadow: var(--shadow-card-subtle);
@@ -109,7 +109,7 @@ function formatTime(iso: string): string {
   gap: 8px;
 }
 .meta-label { font-size: 12px; color: var(--text-muted, #6e7681); }
-.meta-value { font-size: 12px; color: var(--text-primary, #c9d1d9); }
+.meta-value { font-size: 12px; color: var(--text-primary, #eadef7); }
 .meta-value.code {
   font-family: var(--font-mono);
   color: var(--text-muted, #6e7681);
@@ -117,7 +117,7 @@ function formatTime(iso: string): string {
 
 /* ---- Sections ---- */
 .report-section {
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   padding: 14px;
@@ -146,7 +146,7 @@ function formatTime(iso: string): string {
 /* ---- Failure Items ---- */
 .failure-item {
   padding: 12px 16px;
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 10px;
   margin-bottom: 8px;

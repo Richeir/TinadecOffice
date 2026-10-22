@@ -122,7 +122,7 @@ const pickerAnchor = ref<HTMLElement | null>(null)
 const draftHue = ref(0)
 const draftSat = ref(0)
 const draftLig = ref(0)
-const draftHex = ref('#58a6ff')
+const draftHex = ref('#d2bdf5')
 const canUseEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window
 
 /** Sliders moved → recompute the hex from their (rounded) positions. */
@@ -139,7 +139,7 @@ const draftSwatches = computed(() =>
 )
 /** Contrast of the drafted accent against the page surface it will sit on. */
 const draftContrast = computed(() => {
-  const surface = resolvedTheme.value === 'dark' ? '#0a0e14' : '#ffffff'
+  const surface = resolvedTheme.value === 'dark' ? '#15121a' : '#ffffff'
   return contrastRatio(draftHex.value, surface)
 })
 const contrastWarning = computed(() => draftContrast.value < 4.5)

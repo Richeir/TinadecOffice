@@ -120,73 +120,73 @@
 }
 
 /* Legacy CSS variables for backward compatibility */
-/* Codex-style simplified palette: single teal accent + grayscale, minimal multi-color */
+/* Codex-style simplified palette: single blue accent + grayscale, minimal multi-color */
 :root[data-theme="dark"] {
-  --bg-primary: #0a0e14;
-  --bg-secondary: #11151c;
-  --bg-tertiary: #1a1f29;
-  --bg-overlay: #161b22;
-  --bg-hover: #1a1f29;
-  --bg-selected: #0d2e2a;
-  --bg-selected-outline: #2ec4b6;
+  --bg-primary: #15121a;
+  --bg-secondary: #1d1a22;
+  --bg-tertiary: #28242c;
+  --bg-overlay: #231f29;
+  --bg-hover: #2e2933;
+  --bg-selected: #4f3e6e;
+  --bg-selected-outline: #d2bdf5;
   --bg-user-msg: color-mix(in srgb, var(--text-brand) 9%, var(--bg-secondary));
-  --bg-assistant-msg: #11151c;
-  --bg-assistant-msg-border: #1a1f29;
-  --bg-avatar: #1a1f29;
-  --bg-empty-action: #11151c;
-  --bg-diff: #0a0e14;
-  --bg-input: #0a0e14;
-  --bg-button: #1a1f29;
-  --bg-button-hover: #242a36;
-  --bg-primary-button: #1f8f80;
-  --bg-primary-button-hover: #2ec4b6;
-  --bg-secondary-button: #1a1f29;
-  --bg-secondary-button-hover: #242a36;
+  --bg-assistant-msg: #1d1a22;
+  --bg-assistant-msg-border: #28242c;
+  --bg-avatar: #28242c;
+  --bg-empty-action: #1d1a22;
+  --bg-diff: #15121a;
+  --bg-input: #15121a;
+  --bg-button: #28242c;
+  --bg-button-hover: #332e38;
+  --bg-primary-button: #746294;
+  --bg-primary-button-hover: #8e7baf;
+  --bg-secondary-button: #28242c;
+  --bg-secondary-button-hover: #332e38;
   --bg-error: #2d1518;
-  --bg-status-neutral: #1a1f29;
-  --bg-status-ok: #0d2e2a;
+  --bg-status-neutral: #2a2533;
+  --bg-status-ok: #0d2a1a;
   --bg-status-warn: #2a2410;
   --bg-status-danger: #2d1518;
   --bg-status-info: #10233d;
   --bg-status-info-soft: #16283f;
   --bg-status-recovery: #241a38;
   --bg-status-running: #14263c;
-  --bg-status-queued: #20242e;
+  --bg-status-queued: #282530;
 
-  --border-default: #1a1f29;
-  --border-muted: #161b22;
-  --border-input: #1a1f29;
-  --border-input-focus: #2ec4b6;
+  --border-default: #3d3548;
+  --border-muted: #332d3b;
+  --border-input: #3d3548;
+  --border-input-focus: #bca9e2;
   --border-error: #f85149;
-  --border-dashed: #1a1f29;
-  --border-empty-action: #1a1f29;
+  --border-dashed: #3d3548;
+  --border-empty-action: #584b6b;
 
-  --text-primary: #c9d1d9;
-  --text-secondary: #7d8590;
-  --text-muted: #6e7681;
-  --text-brand: #2ec4b6;
-  --text-link: #2ec4b6;
+  --text-primary: #eadef7;
+  --text-secondary: #a49ab1;
+  --text-muted: #9a8fa8;
+  --text-brand: #d2bdf5;
+  --text-link: #d2bdf5;
   --text-error: #f85149;
   --text-approve: #3fb950;
   --text-reject: #f85149;
   /* Chat muted layer derived like Codex's description color: text at reduced alpha */
   --text-chat-muted: color-mix(in srgb, var(--text-primary) 70%, transparent);
 
-  --accent-primary: #2ec4b6;
+  --accent-primary: #d2bdf5;
   /* Success/approval stay semantic green: a status color must read the same
      no matter which accent the user picked (see monetExtract.ts contract). */
   --accent-success: #3fb950;
   --accent-warning: #d29922;
   --accent-danger: #f85149;
-  --accent-brand: #2ec4b6;
+  --accent-brand: #d2bdf5;
   --accent-info: #1c6fd0;
   --accent-recovery: #7a4fd0;
-  --accent-soft: rgba(46, 196, 182, 0.12);
+  --accent-soft: rgba(210, 189, 245, 0.12);
 
   --shadow-subtle: 0 1px 4px rgba(0, 0, 0, 0.18);
   --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.32);
   --shadow-elevated: 0 8px 28px rgba(0, 0, 0, 0.42);
-  --shadow-focus: 0 0 0 2px rgba(46, 196, 182, 0.3);
+  --shadow-focus: 0 0 0 2px rgba(188, 169, 226, 0.3);
   --shadow-user-msg: 0 1px 2px rgba(0, 0, 0, 0.35),
                      0 2px 8px rgba(0, 0, 0, 0.22);
 
@@ -205,68 +205,68 @@
 
 :root[data-theme="light"] {
   --bg-primary: #ffffff;
-  --bg-secondary: #f6f8fa;
-  --bg-tertiary: #eef0f3;
+  --bg-secondary: #faf7fd;
+  --bg-tertiary: #f3eef8;
   --bg-overlay: #ffffff;
-  --bg-hover: #eef4f2;
-  --bg-selected: #dff1ec;
-  --bg-selected-outline: #1f8f80;
+  --bg-hover: #f5f0fa;
+  --bg-selected: #ebdffa;
+  --bg-selected-outline: #675687;
   --bg-user-msg: color-mix(in srgb, var(--text-brand) 10%, #f6f8fa);
   --bg-assistant-msg: #ffffff;
-  --bg-assistant-msg-border: #d8dfdd;
-  --bg-avatar: #edf4f1;
-  --bg-empty-action: #f6f8fa;
-  --bg-diff: #f6f8fa;
-  --bg-input: #fbfcfa;
-  --bg-button: #eef2ef;
-  --bg-button-hover: #dfe8e4;
-  --bg-primary-button: #1f6f68;
-  --bg-primary-button-hover: #2e8a80;
-  --bg-secondary-button: #edf4f1;
-  --bg-secondary-button-hover: #dfe8e4;
+  --bg-assistant-msg-border: #d6cce5;
+  --bg-avatar: #f4eff9;
+  --bg-empty-action: #faf7fd;
+  --bg-diff: #faf7fd;
+  --bg-input: #fdfcfe;
+  --bg-button: #f3eef8;
+  --bg-button-hover: #e8e0f2;
+  --bg-primary-button: #675687;
+  --bg-primary-button-hover: #7d6aa0;
+  --bg-secondary-button: #f4eff9;
+  --bg-secondary-button-hover: #e8e0f2;
   --bg-error: #ffe4df;
-  --bg-status-neutral: #e9ece8;
-  --bg-status-ok: #d9f0e7;
+  --bg-status-neutral: #f0edf5;
+  --bg-status-ok: #dafbe1;
   --bg-status-warn: #f9e7bc;
   --bg-status-danger: #ffdcd7;
   --bg-status-info: #d6e6fa;
   --bg-status-info-soft: #e2edfb;
   --bg-status-recovery: #e9defc;
   --bg-status-running: #dbe9fc;
-  --bg-status-queued: #eceef2;
+  --bg-status-queued: #f2eff7;
 
-  --border-default: #d0d7de;
-  --border-muted: #e8ecf0;
-  --border-input: #cfd7d4;
-  --border-input-focus: #1f8f80;
+  --border-default: #d9d1e6;
+  --border-muted: #ece7f3;
+  --border-input: #dcd5e9;
+  --border-input-focus: #675687;
   --border-error: #f2b8ad;
-  --border-dashed: #cbd3d0;
-  --border-empty-action: #9fcac0;
+  --border-dashed: #dcd5e9;
+  --border-empty-action: #b9aad3;
 
-  --text-primary: #1f2328;
-  --text-secondary: #656d76;
-  --text-muted: #7a8390;
-  --text-brand: #1f6f68;
-  --text-link: #0969da;
+  --text-primary: #241f2e;
+  --text-secondary: #6c6579;
+  --text-muted: #7b7389;
+  --text-brand: #675687;
+  --text-link: #675687;
   --text-error: #8f2525;
   --text-approve: #1a7f37;
   --text-reject: #8f2525;
   --text-chat-muted: color-mix(in srgb, var(--text-primary) 70%, transparent);
 
-  --accent-primary: #1f8f80;
+  --accent-primary: #675687;
   /* Semantic success green — deliberately NOT derived from the accent. */
   --accent-success: #1a7f37;
   --accent-warning: #9a6700;
   --accent-danger: #cf222e;
-  --accent-brand: #1f8f80;
+  --accent-brand: #675687;
   --accent-info: #4a9eff;
   --accent-recovery: #b18aff;
-  --accent-soft: rgba(31, 143, 128, 0.1);
+  --accent-soft: rgba(103, 86, 135, 0.1);
 
   --shadow-subtle: 0 1px 4px rgba(26, 37, 38, 0.04);
   --shadow-panel: 0 4px 16px rgba(26, 37, 38, 0.07);
   --shadow-elevated: 0 8px 28px rgba(26, 37, 38, 0.12);
-  --shadow-focus: 0 0 0 2px rgba(31, 143, 128, 0.18);
+  --shadow-focus: 0 0 0 2px rgba(103, 86, 135, 0.18);
   --shadow-user-msg: 0 1px 2px rgba(26, 37, 38, 0.06),
                      0 2px 6px rgba(26, 37, 38, 0.05);
 
@@ -2068,7 +2068,6 @@ button.agent-topology-node:hover,
 @keyframes activity-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .activity-state--active .activity-state-icon { animation: none; } }
 .sidebar-collapsed .activity-group { display: none; }
-.sidebar-collapsed .token-usage-area { display: none; }
 .workspace-section-heading + .sidebar-list--group-collapsed { margin-top: 0; }
 .workspace-color-default { color: var(--text-secondary); }
 .workspace-color-blue { color: var(--accent-info); }
@@ -2464,74 +2463,6 @@ button.agent-topology-node:hover,
 .mode-menu-item.active {
   color: var(--accent, var(--text-primary));
   font-weight: 500;
-}
-
-/* Token Usage Area */
-.token-usage-area {
-  padding: 10px 12px 8px;
-  border-top: 1px solid var(--border-muted);
-}
-
-.token-usage-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.token-usage-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.token-usage-total {
-  flex: 0 0 auto;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.token-usage-unreported {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.token-usage-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 3px;
-  height: 60px;
-}
-
-/* One hue, three intensities: the busiest day must not read as an error. */
-.token-usage-bar {
-  flex: 1;
-  min-width: 4px;
-  min-height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: color-mix(in srgb, var(--accent-primary) 50%, transparent);
-  transition: background 0.3s, height 0.28s cubic-bezier(0.2, 0, 0, 1);
-}
-
-.token-usage-bar.medium {
-  background: color-mix(in srgb, var(--accent-primary) 72%, transparent);
-}
-
-.token-usage-bar.high {
-  background: var(--accent-primary);
-}
-
-.token-usage-bar.empty {
-  background: var(--border-muted);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .token-usage-bar { transition: none; }
 }
 
 /* Welcome Screen — hero title block only. The composer itself is the persistent

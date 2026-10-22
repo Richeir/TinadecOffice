@@ -78,7 +78,9 @@ function resolveTheme(): ShareCardTheme {
     textPrimary: read('--text-primary', '#f2f4f1'),
     textSecondary: read('--text-secondary', '#c9cec6'),
     textMuted: read('--text-muted', '#8b9187'),
-    accent: read('--accent', '#2ec4b6'),
+    // `--accent` is a shadcn "H S% L%" triplet, which canvas cannot paint.
+    // The card needs a real color, so it reads the hex-valued accent token.
+    accent: read('--accent-primary', '#d2bdf5'),
     heatEmpty: read('--surface-hover', 'rgba(255, 255, 255, 0.07)'),
   }
 }

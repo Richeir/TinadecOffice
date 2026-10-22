@@ -86,7 +86,7 @@ function formatDuration(ms: number): string {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   box-shadow: var(--shadow-card-subtle);
@@ -107,7 +107,7 @@ function formatDuration(ms: number): string {
   gap: 12px;
 }
 .metric-card {
-  background: var(--surface-raised, #1a1f29);
+  background: var(--surface-raised, #28242c);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   padding: 18px 14px;
@@ -129,7 +129,7 @@ function formatDuration(ms: number): string {
 .metric-value {
   font-size: 26px;
   font-weight: 700;
-  color: var(--text-primary, #c9d1d9);
+  color: var(--text-primary, #eadef7);
   font-variant-numeric: tabular-nums;
 }
 .metric-card.error .metric-value { color: var(--accent-danger, #f85149); }
@@ -142,7 +142,7 @@ function formatDuration(ms: number): string {
 
 /* ---- Span Table ---- */
 .metric-section {
-  background: var(--surface-section, #11151c);
+  background: var(--surface-section, #1d1a22);
   border: 1px solid var(--border-card, rgba(0,0,0,.08));
   border-radius: 12px;
   padding: 14px;
@@ -166,7 +166,7 @@ function formatDuration(ms: number): string {
   gap: 8px;
   padding: 6px 10px;
   color: var(--text-muted, #6e7681);
-  border-bottom: 1px solid var(--border-default, #1a1f29);
+  border-bottom: 1px solid var(--border-default, #28242c);
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
@@ -183,12 +183,12 @@ function formatDuration(ms: number): string {
   transition: background 0.12s, box-shadow 0.18s, transform 0.18s, border-color 0.18s;
 }
 .span-table-row:hover {
-  background: var(--surface-hover, #1a1f29);
+  background: var(--surface-hover, #28242c);
   border-color: var(--border-card, rgba(0,0,0,.08));
   box-shadow: var(--shadow-card-subtle);
   transform: translateY(-1px);
 }
-.span-name { color: var(--accent-primary, #2ec4b6); font-weight: 500; }
+.span-name { color: var(--accent-primary, #d2bdf5); font-weight: 500; }
 .span-num { font-variant-numeric: tabular-nums; color: var(--text-secondary, #7d8590); }
 .text-error { color: var(--accent-danger, #f85149); font-weight: 600; }
 </style>

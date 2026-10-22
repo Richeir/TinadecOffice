@@ -1,5 +1,31 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-22 对话流档位（常规设置里的五种转写形状）
+
+平面模式的对话流过去只有一种详略：运行中的一轮展开，落定后折成一行 `Worked for 1m 20s · 6 files · 2 edits · 2 commands`，子智能体行永远是"句柄 · 任务行 · 当前步骤"，并且总是可以就地展开自己的步骤。那是一种合理的转写，不是唯一的一种，也不是这套对话流当初参照的那一种。
+
+现在 `lib/conversationFlowStyle.ts` 是唯一定义处，五个档位各是一包规则，名字取自被模仿的转写，密度词只说"留多少"：
+
+| 档位 | 密度 | 落定后的工作 | 安静步骤 | 子智能体行 | 子智能体展开 | 正在跑时 |
+|---|---|---|---|---|---|---|
+| `codex` | 简洁 | 全折起 | 成组 | 只有句柄 | 只能去右栏 | 关着 |
+| `claude` | 详细 | 全留 | **逐条一行** | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
+| `openchamber` | 详细 | **留最后 7 行** | 成组 | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
+| `trae` | 丰富 | 全留 | 成组 | 再加结果首行 | **就地展开** | 关着 |
+| `qoder` | 丰富 | 全留 | 成组 | 再加结果首行 | **就地展开** | **自动展开** |
+
+**消费者只读 `conversationFlowRules`，不认档位名**：`ConversationTurn` 把 `quiet`/`budget` 交给 `groupRun`，`TurnWork` 用 `settled` 决定落定后是否保持展开，`SubAgentCard` 用 `subAgent`/`subAgentDetail`/`subAgentOpen` 决定一行说多少、能不能就地开。所以加第六种形状只是表里多一条。
+
+三条不能让步的规则：① **运行中与等待中的一轮永不裁剪**（`groupRun` 的 `live` 同时覆盖"在跑"与"停在等人"——前者最新几行是读者正在看的，后者正是他要裁决的对象）；② 裁剪**不丢节点**，`GroupedRun.folded` 只说前几行藏在"N 步更早"后面，`TurnActivity` 自己决定画不画，展开不需要重新分组；③ 审批与运行失败仍在折叠之外，`Collapsible` 关起来时照旧**卸载**内容（`ConversationActivity.test.ts` 的 "keeps approvals outside the folded work" 没改一行）。
+
+子智能体行不能是"点了没反应的按钮"：`panel` 档下头部渲染成 `div`（无 `aria-expanded`、无折叠箭头），⤢ 仍在。就地展开的步骤区在行内**限高 20rem + `overscroll-behavior: contain`**（右栏面板本身是滚动容器，不加限高），否则一个啰嗦的子智能体能把答案推到三屏之外。耗时复用 `useElapsed` 的共享秒表。
+
+默认 `qoder`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里一个原生 `role="radiogroup"`（方向键同时移动选择与焦点），五语键在 `settings.conversationFlow*`，每个档位带密度词与一行说明。
+
+改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增四条覆盖 `quiet: 'listed'`、预算计数、运行时不裁剪与默认不变。
+
+验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping` 与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 156 例）；全量 vitest **1501 通过 / 13 失败 / 12 跳过**，失败的 13 例全部是既有的 `ComposerBar`（6）/ `HostAvailabilityBanner`（6）/ `OrchestrationTab`（1）文案断言，与本次改动无关（本轮开工时记录的既有基线是 14 例，少的那一例是 `message-scroller` 的时序抖动这次恰好绿）；`vue-tsc` 0 错；生产 `npm run build` 退出 0（1m50s）。**未做**：真 Electron / 真实渲染器的观感复看——本次在 Vite 预览里设置页导航被横向裁到视口外（`button[aria-label="常规"]` 的 x 为负），点不到常规页，因此五档选项卡的实际排版只有组件级断言（名称 + 密度词 + 说明行）与 CSS 复核，没有像素级结论。也没有跑打包链与 Electron `node --test`（本轮不碰主进程）。
+
 ## 2026-10-22 Mermaid 主渲染器改为 Pele（mermaid 延迟兜底）
 
 `components/MarkdownDiagram.vue` 现在 Pele 主渲染、mermaid 兜底。主引擎只走 `import('pele/lazy')` 的 `renderAsync`；**不要 import `pele` 根入口**（一次拉全部 37 种图，695KB raw / 259KB gzip）。`pele` 精确锁 `1.8.0`，并加入 `vite.config.ts` 的 `optimizeDeps.exclude`。生产构建里 lazy 入口 38KB raw / 16KB gzip，首张 flowchart 在已加载的 app index chunk 之上增量约 149KB raw / 61KB gzip，sequence 约 59KB / 26KB gzip；dist 里无整包 `pele.js`，33 个按图类型动态 chunk，mermaid chunk 仍在。
@@ -216,8 +242,8 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
 **Last Updated:** 2026-10-22
-**Last Updated By:** Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底；并收尾并行会话的依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
-**Last Verified Commit:** 1bcdbb29 + 本轮未提交工作树（Pele 渲染切换与依赖升级收尾）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
+**Last Updated By:** 对话流档位（常规设置里的五种转写形状，默认 qoder）；同日早前是 Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底，并收尾依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
+**Last Verified Commit:** 0b73b71b + 本轮未提交工作树（对话流档位）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

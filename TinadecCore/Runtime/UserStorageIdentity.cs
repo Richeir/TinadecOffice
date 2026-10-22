@@ -47,8 +47,10 @@ public static class UserStorageIdentity
         for (var attempt = 0; ; attempt++)
         {
             StorageScopePaths.RejectLinks(scope.Root, path);
+            // Windows reports a share violation on an existing lock file as access
+            // denied, not as IO failure, so both must feed the same retry.
             try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-            catch (IOException) when (attempt < 400) { Thread.Sleep(10); }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < 400) { Thread.Sleep(10); }
         }
     }
 

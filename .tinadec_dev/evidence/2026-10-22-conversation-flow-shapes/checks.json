@@ -1,7 +1,7 @@
 {
-  "presets": {
-    "codex": {
-      "stored": "codex",
+  "steps": {
+    "minimal": {
+      "stored": "minimal",
       "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
       "earlier": null,
       "nodes": [],
@@ -18,8 +18,38 @@
         "viewportHeight": 1156
       }
     },
-    "claude": {
-      "stored": "claude",
+    "concise": {
+      "stored": "concise",
+      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
+      "earlier": "更早 2 步",
+      "nodes": [
+        "earlier",
+        "agents",
+        "plan",
+        "group",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool"
+      ],
+      "groups": 1,
+      "tools": 7,
+      "failedTools": 1,
+      "agents": 2,
+      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults",
+      "agentResult": null,
+      "agentOpen": null,
+      "agentToggle": "DIV",
+      "frame": {
+        "turnHeight": 586,
+        "viewportHeight": 1156
+      }
+    },
+    "balanced": {
+      "stored": "balanced",
       "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
       "earlier": null,
       "nodes": [
@@ -51,38 +81,8 @@
         "viewportHeight": 1156
       }
     },
-    "openchamber": {
-      "stored": "openchamber",
-      "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
-      "earlier": "更早 2 步",
-      "nodes": [
-        "earlier",
-        "agents",
-        "plan",
-        "group",
-        "tool",
-        "tool",
-        "tool",
-        "tool",
-        "tool",
-        "tool",
-        "tool"
-      ],
-      "groups": 1,
-      "tools": 7,
-      "failedTools": 1,
-      "agents": 2,
-      "agentRow": "search #1 10 秒 完成 └ Research the callers of useResults",
-      "agentResult": null,
-      "agentOpen": null,
-      "agentToggle": "DIV",
-      "frame": {
-        "turnHeight": 586,
-        "viewportHeight": 1156
-      }
-    },
-    "trae": {
-      "stored": "trae",
+    "detailed": {
+      "stored": "detailed",
       "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
       "earlier": null,
       "nodes": [
@@ -117,8 +117,8 @@
         "overscroll": "contain"
       }
     },
-    "qoder": {
-      "stored": "qoder",
+    "rich": {
+      "stored": "rich",
       "summary": "已工作 46 秒 · 2 个文件 · 编辑 4 处 · 运行 4 条命令",
       "earlier": null,
       "nodes": [
@@ -156,42 +156,39 @@
   },
   "settings": {
     "label": "对话流",
-    "rows": [
+    "orientation": "horizontal",
+    "segments": [
       {
         "checked": "false",
-        "name": "Codex",
-        "density": "简洁",
-        "nameColor": "rgb(234, 222, 247)",
-        "densityColor": "rgb(145, 135, 158)"
+        "word": "极简",
+        "color": "rgb(164, 154, 177)",
+        "background": "rgba(0, 0, 0, 0)"
       },
       {
         "checked": "false",
-        "name": "Claude Code",
-        "density": "详细",
-        "nameColor": "rgb(234, 222, 247)",
-        "densityColor": "rgb(145, 135, 158)"
+        "word": "简洁",
+        "color": "rgb(164, 154, 177)",
+        "background": "rgba(0, 0, 0, 0)"
       },
       {
         "checked": "false",
-        "name": "OpenChamber",
-        "density": "详细",
-        "nameColor": "rgb(234, 222, 247)",
-        "densityColor": "rgb(145, 135, 158)"
+        "word": "适中",
+        "color": "rgb(164, 154, 177)",
+        "background": "rgba(0, 0, 0, 0)"
       },
       {
         "checked": "false",
-        "name": "Trae",
-        "density": "丰富",
-        "nameColor": "rgb(234, 222, 247)",
-        "densityColor": "rgb(145, 135, 158)"
+        "word": "详细",
+        "color": "rgb(164, 154, 177)",
+        "background": "rgba(0, 0, 0, 0)"
       },
       {
         "checked": "true",
-        "name": "Qoder",
-        "density": "丰富",
-        "nameColor": "rgb(210, 189, 245)",
-        "densityColor": "rgb(210, 189, 245)"
+        "word": "丰富",
+        "color": "rgb(210, 189, 245)",
+        "background": "rgb(79, 62, 110)"
       }
-    ]
+    ],
+    "description": "所有步骤都留在流里，正在跑的子智能体自动展开。"
   }
 }

@@ -1,9 +1,9 @@
 /**
- * Pixel check for the conversation-flow shapes: one settled team run rendered five ways.
+ * Pixel check for the conversation-flow steps: one settled team run rendered at five densities.
  *
  * Drives a headless Chrome over CDP against the Vite dev server (127.0.0.1:5173), opens the
- * Debug Studio preview gallery, switches the preset through Settings → General the way a reader
- * would, and records what each shape actually draws: which rows survive, whether the fold is
+ * Debug Studio preview gallery, moves the segmented switch in Settings → General the way a reader
+ * would, and records what each step actually draws: which rows survive, whether the fold is
  * there, what a sub-agent row says, and whether opening it in place works.
  *
  * Usage: node .tinadec_dev/evidence/2026-10-22-conversation-flow-shapes/qa.mjs
@@ -21,7 +21,7 @@ const app = 'http://127.0.0.1:5173';
 const port = 9333;
 const chromePath = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tinadec-flow-qa-'));
-const PRESETS = ['codex', 'claude', 'openchamber', 'trae', 'qoder'];
+const STEPS = ['minimal', 'concise', 'balanced', 'detailed', 'rich'];
 
 const browser = spawn(chromePath, [
   '--headless=new',
@@ -118,7 +118,7 @@ async function openGeneral() {
     const el = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === '常规');
     if (el) el.click();
   })()`);
-  await until(`!!document.querySelector('.flow-style-options')`, 'conversation flow group');
+  await until(`!!document.querySelector('.flow-style-switch')`, 'conversation flow switch');
 }
 
 async function openFlowPreview() {
@@ -144,44 +144,45 @@ async function openFlowPreview() {
   await delay(600);
 }
 
-const result = { presets: {} };
+const result = { steps: {} };
 try {
   await call('Page.enable');
   await until(`!!document.querySelector('.settings-nav button') && !!window.tinadec`, 'app shell');
-  await evaluate(`localStorage.setItem('tinadec.conversation-flow-preset', 'qoder')`);
+  await evaluate(`localStorage.setItem('tinadec.conversation-flow-preset', 'rich')`);
   await admitDebugStudio();
   console.log('step: settings control');
 
-  // 1. The settings control itself: five rows, one density tag each, one row carrying the accent.
+  // 1. The settings control itself: one segmented switch of five words, one description line.
   await openGeneral();
-  await evaluate(`document.querySelector('.flow-style-options').scrollIntoView({ block: 'center' })`);
+  await evaluate(`document.querySelector('.flow-style-switch').scrollIntoView({ block: 'center' })`);
   await delay(500);
   result.settings = await evaluate(`(() => {
-    const group = document.querySelector('.flow-style-options');
-    const rows = [...group.querySelectorAll('[role="radio"]')].map((row) => {
-      const name = row.querySelector('.flow-style-option-name');
-      const density = row.querySelector('.flow-style-option-density');
-      return {
-        checked: row.getAttribute('aria-checked'),
-        name: name.textContent.trim(),
-        density: density.textContent.trim(),
-        nameColor: getComputedStyle(name).color,
-        densityColor: getComputedStyle(density).color,
-      };
-    });
-    return { label: group.getAttribute('aria-label'), rows };
+    const group = document.querySelector('.flow-style-switch');
+    const segments = [...group.querySelectorAll('[role="radio"]')].map((segment) => ({
+      checked: segment.getAttribute('aria-checked'),
+      word: segment.textContent.trim(),
+      color: getComputedStyle(segment).color,
+      background: getComputedStyle(segment).backgroundColor,
+    }));
+    const description = document.querySelector('[data-testid="flow-style-description"]');
+    return {
+      label: group.getAttribute('aria-label'),
+      orientation: group.getAttribute('aria-orientation'),
+      segments,
+      description: description.textContent.trim(),
+    };
   })()`);
   await shot('settings-flow-options', '.general-settings-group[aria-labelledby="conversation-flow-title"]');
 
-  // 2. One settled team run, five shapes. Switching through the radio also checks that the
-  //    control is wired to the feed, not only to storage.
-  for (const preset of PRESETS) {
-    console.log(`step: ${preset}`);
+  // 2. One settled team run at five densities. Switching through the segmented control also
+  //    checks that the control is wired to the feed, not only to storage.
+  for (const step of STEPS) {
+    console.log(`step: ${step}`);
     await openGeneral();
-    await evaluate(`document.querySelector('[data-testid="flow-style-${preset}"]').click()`);
+    await evaluate(`document.querySelector('[data-testid="flow-style-${step}"]').click()`);
     await delay(300);
     await openFlowPreview();
-    result.presets[preset] = await evaluate(`(() => {
+    result.steps[step] = await evaluate(`(() => {
       const turn = document.querySelector('[data-testid="conversation-turn"]');
       const cards = [...turn.querySelectorAll('[data-testid="sub-agent-card"]')];
       const first = cards[0];
@@ -201,67 +202,73 @@ try {
       };
     })()`);
     // A screenshot that starts mid-run shows the rows but not the shape: begin at the user bubble.
-    result.presets[preset].frame = await evaluate(`(() => {
+    result.steps[step].frame = await evaluate(`(() => {
       const turn = document.querySelector('[data-testid="conversation-turn"]');
       const scroller = turn.parentElement.closest('[data-slot="message-scroller-viewport"]') ?? turn.parentElement;
       turn.scrollIntoView({ block: 'start' });
       return { turnHeight: Math.round(turn.getBoundingClientRect().height), viewportHeight: Math.round(scroller.getBoundingClientRect().height) };
     })()`);
     await delay(400);
-    await shot(`turn-${preset}`, '.conversation-preview-inner');
+    await shot(`turn-${step}`, '.conversation-preview-inner');
 
-    // A shape that opens in place says so by rendering a button, not by pretending with a div.
-    if (result.presets[preset].agentToggle === 'BUTTON') {
+    // A step that opens in place says so by rendering a button, not by pretending with a div.
+    if (result.steps[step].agentToggle === 'BUTTON') {
       await evaluate(`document.querySelector('[data-testid="sub-agent-toggle"]').click()`);
       await delay(500);
-      result.presets[preset].detailAfterClick = await evaluate(`(() => {
+      result.steps[step].detailAfterClick = await evaluate(`(() => {
         const detail = document.querySelector('[data-testid="sub-agent-detail"]');
         if (!detail) return null;
         const style = getComputedStyle(detail);
         return { capped: detail.classList.contains('is-capped'), maxHeight: style.maxHeight, overscroll: style.overscrollBehaviorY };
       })()`);
-      await shot(`turn-${preset}-detail`, '.conversation-preview-inner');
+      await shot(`turn-${step}-detail`, '.conversation-preview-inner');
     }
   }
 
-  // 3. The contract each shape promises, against the same twelve-row turn. The readings are
+  // 3. The contract each step promises, against the same twelve-row turn. The readings are
   //    written first: a failed assertion should still leave the evidence on disk.
   fs.writeFileSync(path.join(here, 'checks.json'), JSON.stringify(result, null, 2));
-  const { settings, presets } = result;
-  const chosen = settings.rows.filter((row) => row.checked === 'true');
-  assert.equal(settings.rows.length, 5);
-  assert.equal(chosen.length, 1);
-  const muted = settings.rows.filter((row) => row.checked !== 'true').map((row) => row.densityColor);
-  assert.equal(new Set(muted).size, 1, 'every unselected density word shares one muted colour');
-  assert.notEqual(chosen[0].densityColor, muted[0], 'the chosen density word carries the accent');
+  const { settings, steps } = result;
 
-  assert.equal(presets.codex.stored, 'codex');
-  assert.equal(presets.codex.nodes.length, 0, 'codex folds a settled turn away');
-  assert.ok(presets.codex.summary, 'codex still offers the summary line');
-  assert.equal(presets.codex.agents, 0);
+  // The switch shows density words only — no product names — and describes one step at a time.
+  assert.equal(settings.segments.length, 5);
+  assert.deepEqual(settings.segments.map((segment) => segment.word), ['极简', '简洁', '适中', '详细', '丰富']);
+  assert.equal(settings.orientation, 'horizontal');
+  assert.equal(settings.segments.filter((segment) => segment.checked === 'true').length, 1);
+  assert.equal(settings.segments.find((segment) => segment.checked === 'true').word, '丰富');
+  assert.match(settings.description, /所有步骤都留在流里/);
+  assert.doesNotMatch(settings.description, /只留一行总结/);
+  const unselected = settings.segments.filter((segment) => segment.checked !== 'true').map((segment) => segment.color);
+  assert.equal(new Set(unselected).size, 1, 'every unselected word shares one colour');
+  assert.notEqual(settings.segments.find((segment) => segment.checked === 'true').color, unselected[0], 'the chosen word carries the accent');
 
-  assert.equal(presets.claude.nodes.length, 14, 'claude lists every quiet step');
-  assert.equal(presets.claude.groups, 0, 'claude draws no exploration group');
-  assert.equal(presets.claude.tools, 10);
-  assert.equal(presets.claude.earlier, null);
-  assert.match(presets.claude.agentRow ?? '', /Research the callers of useResults/);
-  assert.equal(presets.claude.agentResult, null, 'claude stops at the task line');
+  assert.equal(steps.minimal.stored, 'minimal');
+  assert.equal(steps.minimal.nodes.length, 0, 'minimal folds a settled turn away');
+  assert.ok(steps.minimal.summary, 'minimal still offers the summary line');
+  assert.equal(steps.minimal.agents, 0);
 
-  assert.equal(presets.openchamber.nodes.filter((node) => node !== 'earlier').length, 10, 'openchamber hides two of twelve rows');
-  assert.match(presets.openchamber.earlier ?? '', /2/);
-  assert.equal(presets.openchamber.agents, 2, 'the budget never hides a sub-agent row');
-  assert.equal(presets.openchamber.failedTools, 1, 'the budget never hides a failure');
-  assert.equal(presets.openchamber.tools, 7);
+  assert.equal(steps.balanced.nodes.length, 14, 'balanced lists every quiet step');
+  assert.equal(steps.balanced.groups, 0, 'balanced draws no exploration group');
+  assert.equal(steps.balanced.tools, 10);
+  assert.equal(steps.balanced.earlier, null);
+  assert.match(steps.balanced.agentRow ?? '', /Research the callers of useResults/);
+  assert.equal(steps.balanced.agentResult, null, 'balanced stops at the task line');
 
-  for (const preset of ['trae', 'qoder']) {
-    assert.equal(presets[preset].nodes.length, 12, `${preset} keeps every row`);
-    assert.equal(presets[preset].earlier, null);
-    assert.equal(presets[preset].agents, 2);
-    assert.equal(presets[preset].agentResult, 'Found 4 callers');
-    assert.equal(presets[preset].agentToggle, 'BUTTON');
-    assert.equal(presets[preset].agentOpen, 'false', 'a finished agent starts closed');
-    assert.equal(presets[preset].detailAfterClick?.capped, true, 'in-place detail is capped');
-    assert.equal(presets[preset].detailAfterClick?.overscroll, 'contain');
+  assert.equal(steps.concise.nodes.filter((node) => node !== 'earlier').length, 10, 'concise hides two of twelve rows');
+  assert.match(steps.concise.earlier ?? '', /2/);
+  assert.equal(steps.concise.agents, 2, 'the budget never hides a sub-agent row');
+  assert.equal(steps.concise.failedTools, 1, 'the budget never hides a failure');
+  assert.equal(steps.concise.tools, 7);
+
+  for (const step of ['detailed', 'rich']) {
+    assert.equal(steps[step].nodes.length, 12, `${step} keeps every row`);
+    assert.equal(steps[step].earlier, null);
+    assert.equal(steps[step].agents, 2);
+    assert.equal(steps[step].agentResult, 'Found 4 callers');
+    assert.equal(steps[step].agentToggle, 'BUTTON');
+    assert.equal(steps[step].agentOpen, 'false', 'a finished agent starts closed');
+    assert.equal(steps[step].detailAfterClick?.capped, true, 'in-place detail is capped');
+    assert.equal(steps[step].detailAfterClick?.overscroll, 'contain');
   }
 
   fs.writeFileSync(path.join(here, 'checks.json'), JSON.stringify(result, null, 2));

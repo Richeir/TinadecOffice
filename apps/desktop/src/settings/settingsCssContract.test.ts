@@ -88,14 +88,20 @@ describe('settings.css contract', () => {
   })
 })
 
-describe('conversation flow options contract', () => {
+describe('conversation flow switch contract', () => {
   const css = normalizeLineEndings(settingsCss)
 
-  // Five accent-coloured density words read as five headings and leave the chosen row with no
-  // accent of its own. The word is a tag: muted everywhere, accent only on the chosen row.
-  it('mutes the density word until its row is the chosen one', () => {
-    expectSelectorDeclarations(css, '.flow-style-option-density', /color\s*:\s*var\(--text-muted\)\s*;/)
-    expectSelectorDeclarations(css, '.flow-style-option.active .flow-style-option-density', /color\s*:\s*var\(--accent-primary\)\s*;/)
+  // A ladder of densities reads as one setting only while the bar has a single accent: the
+  // chosen segment, with the other four secondary.
+  it('keeps unchosen segments secondary and accents only the chosen one', () => {
+    expectSelectorDeclarations(css, '.flow-style-segment', /color\s*:\s*var\(--text-secondary\)\s*;/)
+    expectSelectorDeclarations(css, '.flow-style-segment.active', /color\s*:\s*var\(--accent-primary\)\s*;/)
+  })
+
+  // One description line under the bar, not five stacked under each segment.
+  it('describes the chosen step below the switch', () => {
+    expectSelectorDeclarations(css, '.flow-style-description', /color\s*:\s*var\(--text-secondary\)\s*;/)
+    expect(css).not.toContain('.flow-style-option-summary')
   })
 })
 

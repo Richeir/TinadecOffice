@@ -72,9 +72,9 @@ afterEach(() => {
 
 describe('turn work fold', () => {
   it('is open with a live status while running, folds to a summary when settled, and keeps a reader\'s choice', async () => {
-    // The compact shape is the one that folds a finished turn away; the fuller shapes keep it
+    // The minimal step is the one that folds a finished turn away; the fuller steps keep it
     // open and are covered by the next case. Behaviour is chosen in Settings → General.
-    setConversationFlowPreset('codex')
+    setConversationFlowPreset('minimal')
     const fixture = exploreEditShell()
     const runs = ref([{ ...fixture.runs[0]!, status: 'executing' }])
     const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages.slice(0, 1), runs: runs.value, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
@@ -98,7 +98,7 @@ describe('turn work fold', () => {
   })
 
   it('keeps a settled turn open in the shapes that are meant to show the work', async () => {
-    setConversationFlowPreset('qoder')
+    setConversationFlowPreset('rich')
     const fixture = exploreEditShell()
     const runs = ref([{ ...fixture.runs[0]!, status: 'executing' }])
     const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages.slice(0, 1), runs: runs.value, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
@@ -112,7 +112,7 @@ describe('turn work fold', () => {
   })
 
   it('folds all but the last rows of a settled turn when the shape sets a budget', async () => {
-    setConversationFlowPreset('openchamber')
+    setConversationFlowPreset('concise')
     const s = new EventScript()
     for (let i = 1; i <= 9; i += 1) {
       s.toolCall('run-1', `e-${i}`, 'replace_lines', { resource_path: `/w/f${i}.ts` }).toolDone('run-1', `e-${i}`, 'replace_lines')
@@ -134,7 +134,7 @@ describe('turn work fold', () => {
   })
 
   it('never spends the budget on a sub-agent row, a plan or a failure', async () => {
-    setConversationFlowPreset('openchamber')
+    setConversationFlowPreset('concise')
     const fixture = finishedTeamRun()
     const wrapper = track(mount(ConversationView, { props: { messages: fixture.messages, runs: fixture.runs, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
     await flush()
@@ -152,7 +152,7 @@ describe('turn work fold', () => {
   })
 
   it('never hides rows of a run that is still going', async () => {
-    setConversationFlowPreset('openchamber')
+    setConversationFlowPreset('concise')
     const s = new EventScript()
     for (let i = 1; i <= 9; i += 1) {
       s.toolCall('run-1', `e-${i}`, 'replace_lines', { resource_path: `/w/f${i}.ts` }).toolDone('run-1', `e-${i}`, 'replace_lines')

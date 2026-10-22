@@ -1,17 +1,14 @@
 import { computed, ref, type ComputedRef } from 'vue'
 
 /**
- * How much of a run's work the flat conversation shows, as one choice of five.
+ * How much of a run's work the flat conversation shows, as one choice on a five-step ladder
+ * from minimal to rich.
  *
- * The presets are named after the transcript shapes they copy, because "detailed" alone
- * does not tell a reader whether reads are one line each or folded into one. Each preset is
- * a value of `ConversationFlowRules`; every consumer (grouping, the turn fold, the sub-agent
- * row) reads the rules and never the preset name, so adding a sixth shape is one entry here.
+ * The steps are density, not provenance: each one is a value of `ConversationFlowRules`, and
+ * every consumer (grouping, the turn fold, the sub-agent row) reads the rules and never the
+ * step's name, so adding a sixth step is one entry here.
  */
-export type ConversationFlowPreset = 'codex' | 'claude' | 'openchamber' | 'trae' | 'qoder'
-
-/** The word shown next to a preset's name. */
-export type ConversationFlowDensity = 'compact' | 'detailed' | 'rich'
+export type ConversationFlowPreset = 'minimal' | 'concise' | 'balanced' | 'detailed' | 'rich'
 
 export interface ConversationFlowRules {
   /** What is left of a settled turn's work: nothing, the last `budget` nodes, or all of it. */
@@ -30,47 +27,41 @@ export interface ConversationFlowRules {
 
 export interface ConversationFlowPresetDefinition {
   preset: ConversationFlowPreset
-  density: ConversationFlowDensity
   rules: ConversationFlowRules
 }
 
 /**
- * Ordered from quietest to fullest. `openchamber` is the only shape that keeps a row
- * budget: its transcript folds the earliest rows into one "earlier" line and keeps the
- * latest seven, which is the answer to "everything is too long" that Qoder does not have.
+ * Ordered from the emptiest feed to the fullest. `concise` is the only step that keeps a row
+ * budget: it folds the earliest rows into one "earlier" line and keeps the latest seven, which
+ * is the answer to "everything is too long" that `rich` does not have.
  */
 export const CONVERSATION_FLOW_PRESETS: readonly ConversationFlowPresetDefinition[] = [
   {
-    preset: 'codex',
-    density: 'compact',
+    preset: 'minimal',
     rules: { settled: 'hidden', budget: 0, quiet: 'grouped', subAgent: 'name', subAgentDetail: 'panel', subAgentOpen: 'manual' },
   },
   {
-    preset: 'claude',
-    density: 'detailed',
-    rules: { settled: 'all', budget: 0, quiet: 'listed', subAgent: 'task', subAgentDetail: 'panel', subAgentOpen: 'manual' },
-  },
-  {
-    preset: 'openchamber',
-    density: 'detailed',
+    preset: 'concise',
     rules: { settled: 'budget', budget: 7, quiet: 'grouped', subAgent: 'task', subAgentDetail: 'panel', subAgentOpen: 'manual' },
   },
   {
-    preset: 'trae',
-    density: 'rich',
+    preset: 'balanced',
+    rules: { settled: 'all', budget: 0, quiet: 'listed', subAgent: 'task', subAgentDetail: 'panel', subAgentOpen: 'manual' },
+  },
+  {
+    preset: 'detailed',
     rules: { settled: 'all', budget: 0, quiet: 'grouped', subAgent: 'result', subAgentDetail: 'inline', subAgentOpen: 'manual' },
   },
   {
-    preset: 'qoder',
-    density: 'rich',
+    preset: 'rich',
     rules: { settled: 'all', budget: 0, quiet: 'grouped', subAgent: 'result', subAgentDetail: 'inline', subAgentOpen: 'running' },
   },
 ]
 
 export const CONVERSATION_FLOW_KEY = 'tinadec.conversation-flow-preset'
 
-/** The shape borrowed from the reference the flat feed was modelled on. */
-export const DEFAULT_CONVERSATION_FLOW_PRESET: ConversationFlowPreset = 'qoder'
+/** The fullest step: everything stays, and a running sub-agent shows its work unasked. */
+export const DEFAULT_CONVERSATION_FLOW_PRESET: ConversationFlowPreset = 'rich'
 
 const PRESET_NAMES = new Set<string>(CONVERSATION_FLOW_PRESETS.map((entry) => entry.preset))
 
@@ -82,6 +73,11 @@ export function rulesForPreset(preset: ConversationFlowPreset): ConversationFlow
   return (CONVERSATION_FLOW_PRESETS.find((entry) => entry.preset === preset) ?? CONVERSATION_FLOW_PRESETS[0]!).rules
 }
 
+/**
+ * Values written before the steps were named by density are not mapped: an unknown value falls
+ * back to the default rather than to a guessed neighbour, so a reader lands on a step whose
+ * description is on screen instead of on one that silently behaves like another.
+ */
 function readStored(): ConversationFlowPreset {
   if (typeof localStorage === 'undefined') return DEFAULT_CONVERSATION_FLOW_PRESET
   const stored = localStorage.getItem(CONVERSATION_FLOW_KEY)
@@ -90,7 +86,7 @@ function readStored(): ConversationFlowPreset {
 
 const preset = ref<ConversationFlowPreset>(readStored())
 
-/** Another window picked a preset; the reader's own choice still wins in this one. */
+/** Another window picked a step; the reader's own choice still wins in this one. */
 function followStored(event: StorageEvent): void {
   if (event.key !== null && event.key !== CONVERSATION_FLOW_KEY) return
   preset.value = readStored()

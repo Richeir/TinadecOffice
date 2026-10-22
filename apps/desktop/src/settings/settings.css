@@ -1127,73 +1127,57 @@ box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--swatch-color);
   outline-offset: 2px;
 }
 
-/* Conversation flow: five transcript shapes, each a row with its density and what it shows. */
-.flow-style-options {
-  display: grid;
-  gap: 6px;
+/* Conversation flow: one segmented switch of five density words, connected with hairlines like
+   the view toggles, plus a single line describing the chosen step. */
+.flow-style-switch {
+  display: inline-flex;
+  background: var(--surface-section);
+  border-radius: 6px;
 }
 
-.flow-style-option {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 9px 11px;
+.flow-style-segment {
+  padding: 6px 16px;
   border: 0;
-  border-radius: 8px;
-  background: var(--surface-button);
+  background: transparent;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
   cursor: pointer;
-  text-align: start;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
-.flow-style-option:hover {
-  background: var(--surface-button-hover);
+.flow-style-segment + .flow-style-segment {
+  border-left: 1px solid var(--border-muted);
 }
 
-.flow-style-option.active {
+.flow-style-segment:first-child { border-radius: 6px 0 0 6px; }
+.flow-style-segment:last-child { border-radius: 0 6px 6px 0; }
+
+.flow-style-segment:hover {
+  color: var(--text-primary);
+}
+
+/* The chosen step is the only one that carries accent text; the other four stay muted so the
+   switch reads as one setting instead of five headings. */
+.flow-style-segment.active {
   background: var(--surface-selected);
+  color: var(--accent-primary);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 72%, transparent);
 }
 
-.flow-style-option:focus-visible {
+.flow-style-segment:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
-.flow-style-option-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.flow-style-option-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* The density word is a tag, not a second heading: muted until the row is the chosen one, so
-   only the selected shape carries accent text. */
-.flow-style-option-density {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.flow-style-option.active .flow-style-option-density {
-  color: var(--accent-primary);
-}
-
-.flow-style-option-summary {
+.flow-style-description {
+  margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
-}
-
-.flow-style-option.active .flow-style-option-name {
-  color: var(--accent-primary);
 }
 
 .api-docs-frame {

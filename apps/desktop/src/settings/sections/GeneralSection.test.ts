@@ -129,59 +129,67 @@ describe('window and tray settings', () => {
 })
 
 /**
- * The conversation-flow picker is a radio group of five transcript shapes. What a shape *does*
+ * The conversation-flow picker is one segmented switch of five density words. What a step *does*
  * is the consumers' business (lib/grouping, SubAgentCard, TurnWork); this file only has to prove
- * the page shows the stored choice, writes a new one, and behaves like a radio group on the keys.
+ * the page shows the stored step, describes only that step, writes a new one, and behaves like a
+ * radio group on the keys.
  */
 describe('conversation flow', () => {
-  function radios(wrapper: ReturnType<typeof create>) {
-    return wrapper.findAll('[data-testid^="flow-style-"]')
-  }
-
-  it('lists all five shapes and marks the stored one', async () => {
+  it('offers five density words and marks the stored step', async () => {
     const wrapper = create()
     await flushPromises()
-    const rows = radios(wrapper)
-    expect(rows.map((row) => row.attributes('data-testid'))).toEqual([
-      'flow-style-codex',
-      'flow-style-claude',
-      'flow-style-openchamber',
-      'flow-style-trae',
-      'flow-style-qoder',
+    const segments = wrapper.findAll('[data-testid^="flow-style-"][role="radio"]')
+    expect(segments.map((segment) => segment.attributes('data-testid'))).toEqual([
+      'flow-style-minimal',
+      'flow-style-concise',
+      'flow-style-balanced',
+      'flow-style-detailed',
+      'flow-style-rich',
     ])
-    // The default shape is the one the flat feed was modelled on, and it is the only checked row.
-    expect(rows.filter((row) => row.attributes('aria-checked') === 'true').map((row) => row.attributes('data-testid'))).toEqual(['flow-style-qoder'])
-    // Every row shows a density word next to its name, so "which one is quiet" is readable.
-    expect(wrapper.get('[data-testid="flow-style-codex"]').text()).toContain('简洁')
-    expect(wrapper.get('[data-testid="flow-style-qoder"]').text()).toContain('丰富')
+    // The word is the whole label: no shape names, no second line per step.
+    expect(segments.map((segment) => segment.text())).toEqual(['极简', '简洁', '适中', '详细', '丰富'])
+    expect(segments.filter((segment) => segment.attributes('aria-checked') === 'true').map((segment) => segment.attributes('data-testid'))).toEqual(['flow-style-rich'])
+    expect(wrapper.get('[data-testid="conversation-flow-options"]').attributes('aria-orientation')).toBe('horizontal')
   })
 
-  it('stores the picked shape instead of only restyling the page', async () => {
+  it('describes only the chosen step, one line at a time', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const description = wrapper.get('[data-testid="flow-style-description"]')
+    expect(description.text()).toContain('所有步骤都留在流里')
+    // Five parallel descriptions read as five recommendations; the other four must not be there.
+    expect(description.text()).not.toContain('只留一行总结')
+    expect(wrapper.findAll('[data-testid="flow-style-description"]')).toHaveLength(1)
+  })
+
+  it('stores the picked step instead of only restyling the page', async () => {
     const wrapper = create()
     await flushPromises()
 
-    await wrapper.get('[data-testid="flow-style-openchamber"]').trigger('click')
-    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('openchamber')
-    expect(conversationFlowPreset.value).toBe('openchamber')
-    expect(wrapper.get('[data-testid="flow-style-openchamber"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.get('[data-testid="flow-style-qoder"]').attributes('aria-checked')).toBe('false')
+    await wrapper.get('[data-testid="flow-style-concise"]').trigger('click')
+    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('concise')
+    expect(conversationFlowPreset.value).toBe('concise')
+    expect(wrapper.get('[data-testid="flow-style-concise"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="flow-style-rich"]').attributes('aria-checked')).toBe('false')
+    // The description follows the choice, so the reader learns what the new step does in place.
+    expect(wrapper.get('[data-testid="flow-style-description"]').text()).toContain('更早的折成一行')
   })
 
   it('moves the choice and the focus together on the arrow keys, as a radio group does', async () => {
     const wrapper = create()
     await flushPromises()
 
-    const first = wrapper.get('[data-testid="flow-style-codex"]')
-    await first.trigger('keydown', { key: 'ArrowDown' })
-    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('claude')
-    expect(wrapper.get('[data-testid="flow-style-claude"]').attributes('aria-checked')).toBe('true')
+    const first = wrapper.get('[data-testid="flow-style-minimal"]')
+    await first.trigger('keydown', { key: 'ArrowRight' })
+    expect(localStorage.getItem(CONVERSATION_FLOW_KEY)).toBe('concise')
+    expect(wrapper.get('[data-testid="flow-style-concise"]').attributes('aria-checked')).toBe('true')
 
-    // Wrapping: up from the second shape lands on the first, not on nothing.
-    await wrapper.get('[data-testid="flow-style-claude"]').trigger('keydown', { key: 'ArrowUp' })
-    expect(conversationFlowPreset.value).toBe('codex')
+    // Wrapping: left from the first step lands on the last, not on nothing.
+    await wrapper.get('[data-testid="flow-style-minimal"]').trigger('keydown', { key: 'ArrowLeft' })
+    expect(conversationFlowPreset.value).toBe('rich')
 
     // A key the group does not own must not steal the choice.
-    await wrapper.get('[data-testid="flow-style-codex"]').trigger('keydown', { key: 'a' })
-    expect(conversationFlowPreset.value).toBe('codex')
+    await wrapper.get('[data-testid="flow-style-rich"]').trigger('keydown', { key: 'a' })
+    expect(conversationFlowPreset.value).toBe('rich')
   })
 })

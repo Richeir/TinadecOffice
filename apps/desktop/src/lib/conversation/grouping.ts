@@ -240,8 +240,8 @@ function subAgent(context: Context, agent: SubAgent, dispatch: DispatchEntry): S
 
 export interface GroupOptions {
   /**
-   * `listed` gives every quiet step its own row (the Claude Code shape: one line per read,
-   * search or thought). `grouped` — the default — folds adjacent ones into "Explored 6 files".
+   * `listed` gives every quiet step its own row (one line per read, search or thought).
+   * `grouped` — the default — folds adjacent ones into "Explored 6 files".
    */
   quiet?: 'grouped' | 'listed'
   /**
@@ -293,7 +293,7 @@ export function groupRun(record: RunActivity, live: boolean, options: GroupOptio
   return { nodes, hidden, approvals: context.approvals, agents: context.agents, running, review: record.review }
 }
 
-/** Longest interim answer that still reads as a note between steps (Qoder's groupText). */
+/** Longest interim answer that still reads as a note between steps, not as the answer. */
 export const GROUP_TEXT_MAX_CHARS = 150
 
 /**

@@ -123,8 +123,8 @@ describe('sub-agent rows under each conversation-flow shape', () => {
   const mountFeed = (fixture: FeedFixture) =>
     track(mount(ConversationView, { props: { messages: fixture.messages, runs: fixture.runs, feed: feedOf(fixture.events), workspaceRoot: '/w' }, global, attachTo: document.body }))
 
-  it('codex says only which agent it is: no task line, no result, no in-place detail', async () => {
-    setConversationFlowPreset('codex')
+  it('the minimal step says only which agent it is: no task line, no result, no in-place detail', async () => {
+    setConversationFlowPreset('minimal')
     const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
     await flush()
     expect(card.text()).toContain('search#1 · Search')
@@ -137,8 +137,8 @@ describe('sub-agent rows under each conversation-flow shape', () => {
     expect(card.find('[data-testid="sub-agent-summary"]').exists()).toBe(false)
   })
 
-  it('openchamber names the task and the time, and leaves the detail to the panel', async () => {
-    setConversationFlowPreset('openchamber')
+  it('the concise step names the task and the time, and leaves the detail to the panel', async () => {
+    setConversationFlowPreset('concise')
     const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
     await flush()
     expect(card.text()).toContain('Research the callers of useResults')
@@ -148,8 +148,8 @@ describe('sub-agent rows under each conversation-flow shape', () => {
     expect(card.find('[data-testid="sub-agent-open-panel"]').exists()).toBe(true)
   })
 
-  it('trae adds the first line of the report and opens it in place on a click', async () => {
-    setConversationFlowPreset('trae')
+  it('the detailed step adds the first line of the report and opens it in place on a click', async () => {
+    setConversationFlowPreset('detailed')
     const card = mountFeed(withSummary()).findAll('[data-testid="sub-agent-card"]')[0]!
     await flush()
     expect(card.get('[data-testid="sub-agent-result"]').text()).toBe('Found 3 callers')
@@ -163,8 +163,8 @@ describe('sub-agent rows under each conversation-flow shape', () => {
     expect(card.get('[data-testid="sub-agent-detail"]').classes()).toContain('is-capped')
   })
 
-  it('qoder opens a running agent by itself, leaves a finished one closed, and the reader still wins', async () => {
-    setConversationFlowPreset('qoder')
+  it('the rich step opens a running agent by itself, leaves a finished one closed, and the reader still wins', async () => {
+    setConversationFlowPreset('rich')
     // task-a is still running: its steps are in view without a click.
     const running = mountFeed(parallelSubAgents()).findAll('[data-testid="sub-agent-card"]')[0]!
     await flush()

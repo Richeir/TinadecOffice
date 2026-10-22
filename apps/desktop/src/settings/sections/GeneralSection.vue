@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Radar, RefreshCw, Save, ShieldCheck } from '@lucide/vue'
 import { UiBadge, UiButton, UiInput, UiLabel, UiSelectField, UiSwitch } from '@/components/ui'
@@ -218,16 +218,18 @@ function onEnterPrefChange(value: string): void {
 }
 
 /**
- * How much of a run's work the conversation shows. Five shapes, each named after the
- * transcript it copies; the density word says how much it shows, not which one is "best".
+ * How much of a run's work the conversation shows, as one five-step ladder. The control is a
+ * segmented switch of density words, and the line underneath describes only the chosen step:
+ * five parallel descriptions read as five recommendations rather than one setting.
  */
-const flowStyleOptions = CONVERSATION_FLOW_PRESETS.map((entry) => ({ preset: entry.preset, density: entry.density }))
+const flowStyleOptions = CONVERSATION_FLOW_PRESETS.map((entry) => entry.preset)
+const flowStyleDescription = computed(() => t(`settings.conversationFlowPresets.${conversationFlowPreset.value}.summary`))
 
 function chooseFlowStyle(next: ConversationFlowPreset): void {
   setConversationFlowPreset(next)
 }
 
-/** Radio-group keys: the arrows move the choice and the focus together, as a radio group does. */
+/** Segmented keys: the arrows move the choice and the focus together, as a radio group does. */
 function onFlowStyleKeydown(event: KeyboardEvent, index: number): void {
   const step = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1
     : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1
@@ -235,7 +237,7 @@ function onFlowStyleKeydown(event: KeyboardEvent, index: number): void {
   if (!step) return
   event.preventDefault()
   const next = (index + step + flowStyleOptions.length) % flowStyleOptions.length
-  chooseFlowStyle(flowStyleOptions[next]!.preset)
+  chooseFlowStyle(flowStyleOptions[next]!)
   const radios = (event.currentTarget as HTMLElement | null)?.parentElement?.querySelectorAll<HTMLElement>('[role="radio"]')
   radios?.[next]?.focus()
 }
@@ -407,27 +409,31 @@ void dismissConfirm
         </div>
       </div>
 
-      <div class="flow-style-options gateway-config-field" role="radiogroup" :aria-label="t('settings.conversationFlow')" data-testid="conversation-flow-options">
+      <div
+        class="flow-style-switch gateway-config-field"
+        role="radiogroup"
+        aria-orientation="horizontal"
+        :aria-label="t('settings.conversationFlow')"
+        aria-describedby="flow-style-description"
+        data-testid="conversation-flow-options"
+      >
         <button
-          v-for="(option, index) in flowStyleOptions"
-          :key="option.preset"
+          v-for="(preset, index) in flowStyleOptions"
+          :key="preset"
           type="button"
           role="radio"
-          class="flow-style-option"
-          :class="{ active: conversationFlowPreset === option.preset }"
-          :aria-checked="conversationFlowPreset === option.preset"
-          :tabindex="conversationFlowPreset === option.preset ? 0 : -1"
-          :data-testid="`flow-style-${option.preset}`"
-          @click="chooseFlowStyle(option.preset)"
+          class="flow-style-segment"
+          :class="{ active: conversationFlowPreset === preset }"
+          :aria-checked="conversationFlowPreset === preset"
+          :tabindex="conversationFlowPreset === preset ? 0 : -1"
+          :data-testid="`flow-style-${preset}`"
+          @click="chooseFlowStyle(preset)"
           @keydown="onFlowStyleKeydown($event, index)"
-        >
-          <span class="flow-style-option-head">
-            <span class="flow-style-option-name">{{ t(`settings.conversationFlowPresets.${option.preset}.name`) }}</span>
-            <span class="flow-style-option-density">{{ t(`settings.conversationFlowDensity.${option.density}`) }}</span>
-          </span>
-          <span class="flow-style-option-summary">{{ t(`settings.conversationFlowPresets.${option.preset}.summary`) }}</span>
-        </button>
+        >{{ t(`settings.conversationFlowPresets.${preset}.label`) }}</button>
       </div>
+      <p id="flow-style-description" class="flow-style-description" data-testid="flow-style-description">
+        {{ flowStyleDescription }}
+      </p>
     </section>
 
     <section class="general-settings-group" aria-labelledby="window-settings-title">

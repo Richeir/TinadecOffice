@@ -1,30 +1,32 @@
 # DESKTOP APP KNOWLEDGE
 
-## 2026-10-22 对话流档位（常规设置里的五种转写形状）
+## 2026-10-22 对话流密度（常规设置里的五档阶梯）
 
 平面模式的对话流过去只有一种详略：运行中的一轮展开，落定后折成一行 `Worked for 1m 20s · 6 files · 2 edits · 2 commands`，子智能体行永远是"句柄 · 任务行 · 当前步骤"，并且总是可以就地展开自己的步骤。那是一种合理的转写，不是唯一的一种，也不是这套对话流当初参照的那一种。
 
-现在 `lib/conversationFlowStyle.ts` 是唯一定义处，五个档位各是一包规则，名字取自被模仿的转写，密度词只说"留多少"：
+现在 `lib/conversationFlowStyle.ts` 是唯一定义处，五个档位各是一包规则，**档位名就是密度词**：从极简到丰富一条阶梯，界面上不出现任何参照产品的名字。
 
-| 档位 | 密度 | 落定后的工作 | 安静步骤 | 子智能体行 | 子智能体展开 | 正在跑时 |
+| 档位 | 界面用词 | 落定后的工作 | 安静步骤 | 子智能体行 | 子智能体展开 | 正在跑时 |
 |---|---|---|---|---|---|---|
-| `codex` | 简洁 | 全折起 | 成组 | 只有句柄 | 只能去右栏 | 关着 |
-| `claude` | 详细 | 全留 | **逐条一行** | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
-| `openchamber` | 详细 | **留最后 7 行** | 成组 | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
-| `trae` | 丰富 | 全留 | 成组 | 再加结果首行 | **就地展开** | 关着 |
-| `qoder` | 丰富 | 全留 | 成组 | 再加结果首行 | **就地展开** | **自动展开** |
+| `minimal` | 极简 | 全折起 | 成组 | 只有句柄 | 只能去右栏 | 关着 |
+| `concise` | 简洁 | **留最后 7 行** | 成组 | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
+| `balanced` | 适中 | 全留 | **逐条一行** | 句柄 + 任务 + 耗时 | 只能去右栏 | 关着 |
+| `detailed` | 详细 | 全留 | 成组 | 再加结果首行 | **就地展开** | 关着 |
+| `rich` | 丰富 | 全留 | 成组 | 再加结果首行 | **就地展开** | **自动展开** |
 
-**消费者只读 `conversationFlowRules`，不认档位名**：`ConversationTurn` 把 `quiet`/`budget` 交给 `groupRun`，`TurnWork` 用 `settled` 决定落定后是否保持展开，`SubAgentCard` 用 `subAgent`/`subAgentDetail`/`subAgentOpen` 决定一行说多少、能不能就地开。所以加第六种形状只是表里多一条。
+**消费者只读 `conversationFlowRules`，不认档位名**：`ConversationTurn` 把 `quiet`/`budget` 交给 `groupRun`，`TurnWork` 用 `settled` 决定落定后是否保持展开，`SubAgentCard` 用 `subAgent`/`subAgentDetail`/`subAgentOpen` 决定一行说多少、能不能就地开。所以加第六档只是表里多一条。
 
 三条不能让步的规则：① **运行中与等待中的一轮永不裁剪**（`groupRun` 的 `live` 同时覆盖"在跑"与"停在等人"——前者最新几行是读者正在看的，后者正是他要裁决的对象）；② 裁剪**不丢节点**，`GroupedRun.hidden` 只列出被藏起来的那些行 id（`TurnActivity` 自己决定画不画，展开不需要重新分组），而且**只有安静行与干净收尾的调用可折**——子智能体行、计划、失败（含 `toolSuccess === false` 的调用）、纠正与裁决在任何档位都留在流里（`isBudgetRow`，`grouping.test.ts` 钉住）；③ 审批与运行失败仍在折叠之外，`Collapsible` 关起来时照旧**卸载**内容（`ConversationActivity.test.ts` 的 "keeps approvals outside the folded work" 没改一行）。
 
 子智能体行不能是"点了没反应的按钮"：`panel` 档下头部渲染成 `div`（无 `aria-expanded`、无折叠箭头），⤢ 仍在。就地展开的步骤区在行内**限高 20rem + `overscroll-behavior: contain`**（右栏面板本身是滚动容器，不加限高），否则一个啰嗦的子智能体能把答案推到三屏之外。耗时复用 `useElapsed` 的共享秒表。
 
-默认 `qoder`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里一个原生 `role="radiogroup"`（方向键同时移动选择与焦点），五语键在 `settings.conversationFlow*`，每个档位带密度词与一行说明。密度词是标签不是第二个标题：默认 `--text-muted`，只有被选中的那一行取 `--accent-primary`（`settingsCssContract` 钉住这两条），否则五个强调词读起来像五个标题，选中的那行反而没有自己的强调。
+默认 `rich`，写在 `tinadec.conversation-flow-preset`，跟着 `storage` 事件跟随其他窗口。设置项是 `GeneralSection` 里**一个分段控件**（原生 `role="radiogroup"` + `aria-orientation="horizontal"`，方向键同时移动选择与焦点）：五段只写密度词，段内不再放第二个名字，改档的理由写在控件**下方那一行**里、只描述当前选中的档（`flow-style-description`，`aria-describedby` 挂在组上）——五行并列的说明读起来像五条推荐，而不是一个设置项。取色上未选中的四段同为 `--text-secondary`，只有选中段取 `--accent-primary` + `--surface-selected`（`settingsCssContract` 钉住这两条）。五语键在 `settings.conversationFlowPresets.<preset>.label/.summary`。
 
-改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`codex`），另加一例钉住相反行为（`qoder` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增五条覆盖 `quiet: 'listed'`、预算计数、预算从不折子智能体行/计划/失败、运行时不裁剪与默认不变；`ConversationActivity.test.ts` 用 `finishedTeamRun` 钉住同一件事的观感（两个子智能体行、计划与失败的构建调用在 `openchamber` 下仍可见，折叠只吃掉思考与等待两行）。
+存储值不迁移：改名之前写下的旧值不是这一版认识的档位，`readStored()` 直接落到默认 `rich`，而不是猜一个相邻档位——读者落在屏幕上写了说明的那一档，比落到一个行为像另一档的位置更不容易被误导。
 
-验证：`conversationFlowStyle` 10 例、`GeneralSection` 7 例（含方向键与持久化）、`grouping`（15 例，含预算只折安静行）与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 160 例）；`vue-tsc` 0 错；生产 `npm run build` 退出 0。全量 vitest 分四批跑（一次跑整包在本机会卡在某个用例上，`--silent` 也停在同一处）：`src/lib`+`src/locales` 447、`src/components` 448（13 失败 / 12 跳过，失败全是既有的 `ComposerBar` 6 / `HostAvailabilityBanner` 6 / `OrchestrationTab` 1 文案断言）、`src/pages`+`src/settings`+`src/composables`+`src/debug`+根入口 413、其余根测试与 `agentPacks`/`controllers`/`generated`/`pets`/`stores`/`vapor` 229 —— 合计 **1512 通过 / 13 失败 / 12 跳过**，与开工前的既有基线一致（新增 3 例来自本轮的 `settingsCssContract`、`grouping`、`ConversationActivity`）。**像素证据**在 `.tinadec_dev/evidence/2026-10-22-conversation-flow-shapes/`：`qa.mjs` 用无头 Chrome（CDP）打开 Debug Studio → 预览 → 对话消息流，按常规设置里的五个单选逐个切换，对同一个已落定的团队回合（`finished-team-run`：两个交回摘要的子智能体、一张计划、一次失败构建、12 个 flow row）记录读数并截图。结论：`codex` 只剩摘要一行；`claude` 14 行、安静步骤逐条；`openchamber` 折掉思考与等待两行（“更早 2 步”）而子智能体行、计划、失败构建仍在；`trae`/`qoder` 12 行 + 结果首行 `Found 4 callers`，就地展开 `max-height: 320px`、`overscroll-behavior-y: contain`，行是 `button`，`claude`/`openchamber` 是 `div`。设置页在 1440 宽窗口里导航可达（此前记录的“导航被裁到视口外”是预览窗口宽度所致，不是布局缺陷）。**仍未做**：`qoder` 的“正在跑的子智能体自动展开”只能由 `SubAgents.test.ts`（`parallel-sub-agents`）证明，fixture 里的两个子智能体都已结束；就地展开时结果首行与摘要首行重复一次，按 Qoder 的读法保留。
+改口令要注意：`ConversationActivity.test.ts` 与 `ConversationView.test.ts` 里原本钉住"落定即折起"的两例现在各自写明档位（`minimal`），另加一例钉住相反行为（`rich` 下工作区保持展开、摘要行只是折叠标题）。`grouping.test.ts` 新增五条覆盖 `quiet: 'listed'`、预算计数、预算从不折子智能体行/计划/失败、运行时不裁剪与默认不变；`ConversationActivity.test.ts` 用 `finishedTeamRun` 钉住同一件事的观感（两个子智能体行、计划与失败的构建调用在 `concise` 下仍可见，折叠只吃掉思考与等待两行）；`GeneralSection.test.ts` 钉住分段控件只描述选中档（`flow-style-description` 里不出现别档的说明）。
+
+验证：`conversationFlowStyle` 10 例、`GeneralSection` 8 例（分段控件只描述选中档、方向键与持久化）、`grouping`（15 例，含预算只折安静行）与 conversation 组件套件全绿（`src/components/conversation` + `src/lib/conversation` 160 例）；`vue-tsc` 0 错；生产 `npm run build` 退出 0。全量 vitest 分三批跑（无重叠；一次跑整包在本机会卡在某个用例上）：`src/lib`+`src/locales`+`src/settings`+`src/i18n.test.ts` 571、`src/components` 448（14 失败 / 12 跳过）、`src/pages`+`src/composables`+`src/debug`+其余根测试与 `agentPacks`/`controllers`/`generated`/`pets`/`stores`/`vapor` 512 —— 合计 **1505 通过 / 14 失败 / 12 跳过**，14 失败全是既有基线（`ComposerBar` 6 / `HostAvailabilityBanner` 6 / `OrchestrationTab` 1 文案断言 + `message-scroller` 的时序抖动 1）。**像素证据**在 `.tinadec_dev/evidence/2026-10-22-conversation-flow-shapes/`：`qa.mjs` 用无头 Chrome（CDP）打开 Debug Studio → 预览 → 对话消息流，**点分段控件**逐个切档，对同一个已落定的团队回合（`finished-team-run`：两个交回摘要的子智能体、一张计划、一次失败构建、12 个 flow row）记录读数并截图。结论：`minimal` 只剩摘要一行；`balanced` 14 行、安静步骤逐条；`concise` 折掉思考与等待两行（“更早 2 步”）而子智能体行、计划、失败构建仍在；`detailed`/`rich` 12 行 + 结果首行 `Found 4 callers`，就地展开 `max-height: 320px`、`overscroll-behavior-y: contain`，行是 `button`，`balanced`/`concise` 是 `div`；`detailed` 与 `rich` 在落定回合上逐像素相同（差别只在“正在跑的子智能体自动展开”）。设置项读数：五段文字为 极简/简洁/适中/详细/丰富，未选中四段同为 `rgb(164, 154, 177)`，选中段为 `rgb(210, 189, 245)` + 选中底色，下方只有一行描述。设置页在 1440 宽窗口里导航可达（此前记录的“导航被裁到视口外”是预览窗口宽度所致，不是布局缺陷）。**仍未做**：`rich` 的“正在跑的子智能体自动展开”只能由 `SubAgents.test.ts`（`parallel-sub-agents`）证明，fixture 里的两个子智能体都已结束；就地展开时结果首行与摘要首行重复一次，按该档位的读法保留。
 
 ## 2026-10-22 Mermaid 主渲染器改为 Pele（mermaid 延迟兜底）
 
@@ -242,8 +244,8 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
 **Last Updated:** 2026-10-22
-**Last Updated By:** 对话流档位（常规设置里的五种转写形状，默认 qoder）；同日早前是 Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底，并收尾依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
-**Last Verified Commit:** 8a9698ad + 本轮工作树（对话流档位的密度词与五档像素复核）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
+**Last Updated By:** 对话流密度（常规设置里一个分段控件，极简/简洁/适中/详细/丰富，默认丰富，档位名不再借用参照产品）；同日早前是 Mermaid 主渲染器改为 Pele（pele/lazy 按图类型拆包），mermaid 改为源码稳定 1 秒后的兜底，并收尾依赖升级（dompurify 3.4.8 / monaco 0.56 / esbuild 0.28.2）。
+**Last Verified Commit:** ad6617f3 + 本轮工作树（对话流改名与分段控件）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

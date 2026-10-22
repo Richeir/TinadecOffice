@@ -16,8 +16,9 @@ import ReasoningBlock from './ReasoningBlock.vue'
 /**
  * Consecutive quiet steps — reads, searches, listings, thoughts, waits — as one line:
  * "Explored 6 files · 2 searches". Open while it is the live end of the turn, folded once
- * the turn moves on, and left as the reader set it after they touch it. Inside, Codex-style:
- * consecutive reads share one "Read a.ts, b.ts" line, each search and listing is one line.
+ * the turn moves on, and left as the reader set it after they touch it. Inside, the quietest
+ * reading of the flow: consecutive reads share one "Read a.ts, b.ts" line, each search and
+ * listing is one line.
  */
 const props = defineProps<{ node: ActivityGroupNode; workspaceRoot?: string | null }>()
 const { t } = useI18n()

@@ -99,7 +99,7 @@ describe('ConversationView turns', () => {
   it('puts activity on the turn that ran it, not on every assistant answer', async () => {
     // A settled turn's outline is a user choice; this case pins the compact one, where finished
     // work collapses behind its summary.
-    setConversationFlowPreset('codex')
+    setConversationFlowPreset('minimal')
     const first = simpleAnswer()
     const second = exploreEditShell()
     const fixture: FeedFixture = {

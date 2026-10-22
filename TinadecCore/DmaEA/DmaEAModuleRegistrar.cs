@@ -59,6 +59,7 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<IApprovalGateJudge, ApprovalGateJudge>();
         builder.Services.AddSingleton<AgentInstanceService>();
         builder.Services.AddSingleton<IAgentInstanceService>(sp => sp.GetRequiredService<AgentInstanceService>());
+        builder.Services.AddSingleton<AgentEvaluationService>();
         builder.Services.AddSingleton<IAgentToolAuthorization>(sp => sp.GetRequiredService<AgentInstanceService>());
         builder.Services.AddSingleton<IOperationalTriggerEvaluator, OperationalTriggerEvaluator>();
         builder.Services.AddSingleton<TinadecCore.Abstractions.Ports.IOrchestrationDirectiveValidator, Orchestration.OrchestrationDirectiveValidator>();

@@ -780,11 +780,15 @@ stateDiagram-v2
 
 ### 13.4 评测与发布门槛
 
-- 与来源任务分离的代表性 eval 集；
-- 成功率、证据正确性、成本、延迟和工具失败率；
-- 权限越界、提示注入、秘密泄漏和循环测试；
-- 相对当前正式版本的回归比较；
-- canary 范围、自动撤销阈值和人工回滚入口。
+当前已实现候选晋升前的确定性评测门禁：
+
+- 不可变、内容寻址的评测套件（`POST /api/v1/agent-evolution/suites`）；写错就换 slug 新建，不提供更新/删除，历史运行始终能按哈希复现；
+- 成对评测运行（`POST .../proposals/{candidateId}/eval-runs`）：control 为源实例当前已发布 AgentVersion 的 system prompt，treatment 为晋升时实际发布的消毒后提示词；逐用例先 control 后 treatment，确定性断言（`contains`/`not_contains`/`regex`/`min_chars`/`max_chars`），不使用 LLM judge；
+- 报告写入 ContentStore（`agent-eval-report`），行内只存哈希、引用与汇总；晋升时重新读取套件与报告并重算门禁，任一证据哈希不符返回 `EVAL_STALE`；
+- 门禁规则：required 用例全部通过、零 blocked pair、加权通过率达到 `min_pass_rate`、相对 control 的回退不超过 `max_regression`；失败返回 `EVAL_GATE_FAILED` 并带逐项原因；默认 `min_pass_rate=1.0`、`max_regression=0.0`；
+- 候选决策使用 `status=proposed` 谓词原子更新，并发晋升只有一个成功。
+
+尚未实现：与来源任务分离的更大 eval 集、成本/延迟与工具失败率、提示注入与秘密泄漏专项、canary 范围与自动回滚。当前评测只隔离 system prompt，不执行工具，也不覆盖 `inherit` 路由解析。
 
 ## 14. API 与扩展契约
 
@@ -792,7 +796,7 @@ stateDiagram-v2
 
 - 管理面：agents、modes、prompts、agent packs、policies、models、tools、candidates 和 workspace defaults。
 - 运行面：sessions、interactions、runs、controls、events、approvals、permission requests、user tool actions、context versions 和 snapshots。
-- 观测面：readiness 已实现（`GET /api/v1/readiness`、`tool-layer-readiness`）；`traces`/`metrics` 目前是返回空数组的桩（`StubEndpoints.cs:378-381`），`evaluations` 与 `audit export` 尚无任何路由或实现。
+- 观测面：readiness 已实现（`GET /api/v1/readiness`、`tool-layer-readiness`）；候选评测证据已有专用路由（`agent-evolution/suites`、`.../eval-runs`、`GET /api/v1/agent-evolution/eval-runs/{runId}`）；`traces`/`metrics` 目前是返回空数组的桩（`StubEndpoints.cs:378-381`），通用 `evaluations` 观测面与 `audit export` 尚无实现。
 - 所有公开 JSON 使用 `snake_case`、RFC 9457 Problem Details、幂等键和并发 revision。
 - Agent Pack 使用 `GET /api/v1/agent-packs`、`GET /api/v1/agent-packs/{pack_id}`、`POST /api/v1/agent-packs/install-preview` 和 `PUT /api/v1/agent-packs/{pack_id}`；Gateway 只能原样代理，App 不能直接写 Core 数据库。
 - 普通 v1 会话以 `POST /sessions/{id}/interactions` 提交 `queued/insert/parallel` 交互，运行输出经 `GET /api/v1/runs/{runId}/stream` 读取。TinaChat 通过 §14.4 的已采纳意图入口调用同一 Core 准入器，其隔离执行会话拒绝普通 interaction/insert。旧 `invoke-stream` 路由**已退役并返回 404**，不再是 `/api/v1` 契约的一部分。
@@ -880,7 +884,7 @@ stateDiagram-v2
 | 工具治理 | 已实现主要部分 | manifest v2 冻结、agent/mode/manifest 交集、PDP/租约/委托、单次审批、恢复和拒绝 fail-closed | 通用远程 provider transport、ACP 权限桥 |
 | 上下文 | 部分实现 | context revision、snapshot、patch 冲突和 stale evidence；`context_compressor` 已由运营层触发链调度（`OperationalTriggers.cs`，发 `context.compacted`） | 向量检索（embedding 路由未配置）、补丁文本未回流进 prompt |
 | 监督 | 部分实现 | `pass/revise/escalate` 质量门；`revise` 已走真实重规划 | 不是委托审批代理；监督修订预算耗尽时静默通过 |
-| 演化 | 部分实现 | 候选生成/晋升/拒绝 API 与临时 agent lineage；run 收口时 `experience_curator` 按 `[memory]` 白名单生成候选 | 缺 eval/canary/revoke 闭环 |
+| 演化 | 部分实现 | 候选生成/拒绝 API 与临时 agent lineage；run 收口时 `experience_curator` 按 `[memory]` 白名单生成候选；晋升必须携带通过门禁的成对评测运行（`agent_eval_suites`/`agent_eval_runs`，报告内容寻址） | 缺 canary/激活/回滚；评测只覆盖 system prompt 对照 |
 | Git 智能体 | 已实现基线 | `OfficeAgentPack` 发布 `git_steward` 与 `worker.git`；当前 `worker.git` 可按冻结能力/工具被选择，Desktop 写操作入口和真实 Git commit 治理 E2E 已收口；`git_steward` 自 2026-08-29 起由触发链调度（仅对触碰 `git_*` 工具的 run 发 `git.steward.reviewed`） | 快照智能体调度与远程 provider |
 | 工作区快照 | 已实现主要部分 | 文件系统/Git provider、HEAD/index/worktree 捕获、ContentStore、创建/恢复幂等、冲突检查和高风险写前 guard | 完整 restore plan 展示、外部副作用补偿和快照智能体调度 |
 | 用户工具动作 | 已实现基线 | `UserToolAction`、权限请求、租约、ActionApproval、快照 override、结果/审计引用和 `/api/v1/user/tool-actions` | 更完整的用户动作历史、恢复决定 UI 和远程 provider |
@@ -888,7 +892,7 @@ stateDiagram-v2
 | 独立交付 | 工作树升级中 | Contracts、Abstractions、Runtime 可从源码打包，Api 可 `dotnet publish` | 尚未发布包源、稳定 SDK、CLI 和容器 |
 | 四产品解耦 | 部分实现 | 代码目录已分离 | Core 直接托管 TinadecTools；独立 Tool HTTP/WS 服务尚不存在 |
 
-当前热路径使用 `meeting`、`task_planner`、动态 worker 与 `supervisor`，并在四个引擎锚点旁路调度四个运营角色（`context_compressor`、`skill_recommender`、`evolution`、`git_steward`）——它们不进入任务图、不产生用户可见输出。它们已不是“仅配置声明”，但演化评测/canary/revoke 闭环仍未完成，不应对外描述为完整自治闭环。
+当前热路径使用 `meeting`、`task_planner`、动态 worker 与 `supervisor`，并在四个引擎锚点旁路调度四个运营角色（`context_compressor`、`skill_recommender`、`evolution`、`git_steward`）——它们不进入任务图、不产生用户可见输出。它们已不是“仅配置声明”，候选晋升也已由确定性评测门禁强制；但 canary/激活/回滚与撤销闭环仍未完成，不应对外描述为完整自治闭环。
 
 ## 17. 实施路线图
 

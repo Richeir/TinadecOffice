@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TinadecCore.Abstractions;
+using TinadecCore.Abstractions.Ports;
 using TinadecCore.Persistence;
 
 namespace TinadecCore.AgentConfiguration;
@@ -17,6 +18,7 @@ public sealed class AgentConfigurationModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<IAgentConfigurationService>(sp => sp.GetRequiredService<AgentConfigurationService>());
         builder.Services.AddSingleton<AgentPackService>();
         builder.Services.AddSingleton<IAgentPackService>(sp => sp.GetRequiredService<AgentPackService>());
+        builder.Services.AddSingleton<IAgentVersionSnapshotReader, AgentVersionSnapshotReader>();
         builder.RegisterModule(new ModuleDescriptor
         {
             ModuleId = ModuleId,

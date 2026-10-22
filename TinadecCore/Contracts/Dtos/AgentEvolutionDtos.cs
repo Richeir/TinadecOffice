@@ -12,3 +12,10 @@ public sealed record GenerateProposalRequest(
     double Confidence,
     JsonElement Proposal,
     Guid? ProjectId = null);
+
+/// <summary>Body for both promotion routes (evolution and legacy candidate alias).</summary>
+public sealed class PromoteAgentCandidateRequest
+{
+    public string? Reason { get; init; }
+    public Guid? EvalRunId { get; init; }
+}

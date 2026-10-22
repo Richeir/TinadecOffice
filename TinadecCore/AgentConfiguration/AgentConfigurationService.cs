@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using TinadecCore.Abstractions;
 using TinadecCore.Abstractions.Ports;
 using TinadecCore.Persistence;
 
@@ -128,7 +129,7 @@ public sealed class AgentConfigurationService : IAgentConfigurationService
     public static void ValidateLayer(string? layer)
     {
         var normalized = layer?.Trim().ToLowerInvariant();
-        if (normalized is not "operation" and not "execution") throw new ArgumentException("Agent layer must be 'operation' or 'execution'; 'planning' is not allowed.", nameof(layer));
+        if (!AgentLayerNames.IsValid(normalized)) throw new ArgumentException("Agent layer must be 'operation' or 'execution'; 'planning' is not allowed.", nameof(layer));
     }
 
     private static void CheckDraft(string status, long actual, long expected)

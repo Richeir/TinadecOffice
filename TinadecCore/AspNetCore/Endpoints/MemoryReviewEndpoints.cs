@@ -105,8 +105,8 @@ public static class MemoryReviewEndpoints
             catch (ArgumentException ex) { return Results.BadRequest(new { code = "INVALID_STATUS", message = ex.Message }); }
         });
 
-        app.MapPost("/api/v1/agent-candidates/{candidateId}/promote", async (Guid candidateId, ReviewDecisionRequest? request, IAgentInstanceService instances, IAgentConfigurationService configurations, CancellationToken ct) =>
-            await AgentCandidatePromotion.PromoteAsync(instances, configurations, candidateId, request?.Reason, ct));
+        app.MapPost("/api/v1/agent-candidates/{candidateId}/promote", async (Guid candidateId, PromoteAgentCandidateRequest? request, IAgentInstanceService instances, IAgentConfigurationService configurations, AgentEvaluationService evaluations, CancellationToken ct) =>
+            await AgentCandidatePromotion.PromoteAsync(instances, configurations, evaluations, candidateId, request?.Reason, request?.EvalRunId, ct));
 
         app.MapPost("/api/v1/agent-candidates/{candidateId}/reject", async (Guid candidateId, ReviewDecisionRequest? request, IAgentInstanceService instances, CancellationToken ct) =>
             await DecideAgentAsync(instances, candidateId, "rejected", request, ct));

@@ -1873,6 +1873,57 @@
         },
         "type": "object"
       },
+      "CreateEvalSuiteRequest": {
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvalCaseRequest"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "gate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvalGateRequest"
+              }
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "schema_version": {
+            "format": "int32",
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ]
+          },
+          "slug": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "CreateMarketSourceRequestDto": {
         "properties": {
           "enabled": {
@@ -2192,6 +2243,84 @@
           "status": {
             "type": [
               "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EvalAssertionRequest": {
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "value": {
+            "$ref": "#/components/schemas/JsonElement"
+          }
+        },
+        "type": "object"
+      },
+      "EvalCaseRequest": {
+        "properties": {
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/EvalAssertionRequest"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "input": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "required": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "weight": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EvalGateRequest": {
+        "properties": {
+          "max_regression": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ]
+          },
+          "min_pass_rate": {
+            "format": "double",
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d\u002B)?$",
+            "type": [
+              "null",
+              "number",
               "string"
             ]
           }
@@ -4404,6 +4533,24 @@
         ],
         "type": "object"
       },
+      "PromoteAgentCandidateRequest": {
+        "properties": {
+          "eval_run_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "PublishPolicyVersionRequestDto": {
         "properties": {
           "rules": {
@@ -4864,6 +5011,18 @@
           "worktree": {
             "default": false,
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "StartEvalRunRequest": {
+        "properties": {
+          "suite_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "type": "object"
@@ -7564,7 +7723,7 @@
                     "type": "null"
                   },
                   {
-                    "$ref": "#/components/schemas/ReviewDecisionRequest"
+                    "$ref": "#/components/schemas/PromoteAgentCandidateRequest"
                   }
                 ]
               }
@@ -7620,6 +7779,29 @@
         ]
       }
     },
+    "/api/v1/agent-evolution/eval-runs/{runId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
     "/api/v1/agent-evolution/generate": {
       "post": {
         "responses": {
@@ -7643,6 +7825,66 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/agent-evolution/proposals/{candidateId}/eval-runs": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidateId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StartEvalRunRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -7698,7 +7940,7 @@
                     "type": "null"
                   },
                   {
-                    "$ref": "#/components/schemas/ReviewDecisionRequest"
+                    "$ref": "#/components/schemas/PromoteAgentCandidateRequest"
                   }
                 ]
               }
@@ -7744,6 +7986,67 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/agent-evolution/suites": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CreateEvalSuiteRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/agent-evolution/suites/{suiteId}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suiteId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

@@ -55,20 +55,23 @@ public static class EvolutionEndpoints
             catch (UnauthorizedAccessException ex) { return Results.Json(new { code = "FORBIDDEN_PROPOSAL", message = ex.Message }, statusCode: 403); }
         });
 
-        // Promotion is a human review decision: sanitize the immutable proposal,
-        // publish an immutable agent version, and record the decision. Canary and
-        // activation remain future pipeline stages.
-        app.MapPost("/api/v1/agent-evolution/proposals/{candidateId}/promote", async (Guid candidateId, ReviewDecisionRequest? request, IAgentInstanceService instances, TinadecCore.AgentConfiguration.IAgentConfigurationService configurations, CancellationToken ct) =>
-            await AgentCandidatePromotion.PromoteAsync(instances, configurations, candidateId, request?.Reason, ct));
+        // Promotion is a human review decision: the supplied evaluation run is
+        // re-checked against the current suite, proposal and control version,
+        // then the sanitized proposal is published as an immutable agent version.
+        // Canary and activation remain future pipeline stages.
+        app.MapPost("/api/v1/agent-evolution/proposals/{candidateId}/promote", async (Guid candidateId, PromoteAgentCandidateRequest? request, IAgentInstanceService instances, TinadecCore.AgentConfiguration.IAgentConfigurationService configurations, AgentEvaluationService evaluations, CancellationToken ct) =>
+            await AgentCandidatePromotion.PromoteAsync(instances, configurations, evaluations, candidateId, request?.Reason, request?.EvalRunId, ct));
 
-        // Evaluation evidence for human review: the proposal plus the replayed
-        // source run (task outcomes, supervision rounds, milestones).
-        app.MapGet("/api/v1/agent-evolution/proposals/{candidateId}/evaluation", async (Guid candidateId, IAgentInstanceService instances, IRunReplayService replay, CancellationToken ct) =>
+        // Evaluation evidence for human review: the proposal, the replayed
+        // source run (task outcomes, supervision rounds, milestones), and the
+        // paired evaluation runs recorded against this candidate.
+        app.MapGet("/api/v1/agent-evolution/proposals/{candidateId}/evaluation", async (Guid candidateId, IAgentInstanceService instances, IRunReplayService replay, AgentEvaluationService evaluations, CancellationToken ct) =>
         {
             try
             {
                 var (candidate, proposal) = await instances.GetCandidateWithProposalAsync(candidateId, ct);
                 var sourceReplay = await replay.BuildReplayAsync(candidate.SourceRunId.ToString(), ct);
+                var evalRuns = await evaluations.ListRunsAsync(candidateId, ct);
                 return Results.Ok(new
                 {
                     candidate_id = candidate.Id,
@@ -78,6 +81,8 @@ public static class EvolutionEndpoints
                     status = candidate.Status,
                     confidence = candidate.ConfidenceScore,
                     proposal,
+                    eval_run_id = candidate.EvalRunId,
+                    eval_runs = evalRuns,
                     source_run_replay = sourceReplay is null ? null : new
                     {
                         run_id = sourceReplay.RunId,
@@ -153,6 +158,7 @@ public static class EvolutionEndpoints
         status = candidate.Status,
         confidence = candidate.ConfidenceScore,
         promoted_agent_id = candidate.PromotedAgentId,
+        eval_run_id = candidate.EvalRunId,
         decision_reason = candidate.DecisionReason,
         created_at = candidate.CreatedAt,
         updated_at = candidate.UpdatedAt

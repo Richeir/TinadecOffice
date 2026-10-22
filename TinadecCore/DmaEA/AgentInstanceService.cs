@@ -20,7 +20,7 @@ public interface IAgentInstanceService
     Task ReleaseRunInstancesAsync(Guid runId, CancellationToken cancellationToken = default);
     Task<AgentCandidateRecord> CreateCandidateAsync(AgentCandidateProposal proposal, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AgentCandidateRecord>> ListCandidatesAsync(string? status = null, CancellationToken cancellationToken = default);
-    Task<AgentCandidateRecord> DecideCandidateAsync(Guid candidateId, string decision, string? reason, CancellationToken cancellationToken = default, Guid? promotedAgentId = null);
+    Task<AgentCandidateRecord> DecideCandidateAsync(Guid candidateId, string decision, string? reason, CancellationToken cancellationToken = default, Guid? promotedAgentId = null, Guid? evalRunId = null);
 
     /// <summary>Loads a candidate together with its immutable proposal body for promotion review.</summary>
     Task<(AgentCandidateRecord Candidate, System.Text.Json.JsonElement Proposal)> GetCandidateWithProposalAsync(Guid candidateId, CancellationToken cancellationToken = default);
@@ -443,25 +443,44 @@ internal sealed class AgentInstanceService : IAgentInstanceService, IAgentToolAu
         return rows;
     }
 
-    public async Task<AgentCandidateRecord> DecideCandidateAsync(Guid candidateId, string decision, string? reason, CancellationToken cancellationToken = default, Guid? promotedAgentId = null)
+    public async Task<AgentCandidateRecord> DecideCandidateAsync(Guid candidateId, string decision, string? reason, CancellationToken cancellationToken = default, Guid? promotedAgentId = null, Guid? evalRunId = null)
     {
         var normalized = decision?.Trim().ToLowerInvariant();
         if (normalized is not ("promoted" or "rejected"))
             throw new ArgumentException("Candidate decision must be promoted or rejected.", nameof(decision));
         if (normalized == "promoted" && promotedAgentId is null)
             throw new ArgumentException("Promoting a candidate requires the published agent definition id.", nameof(promotedAgentId));
+        if (normalized == "promoted" && evalRunId is null)
+            throw new ArgumentException("Promoting a candidate requires the evaluation run that authorized it.", nameof(evalRunId));
         var scope = _tenant.Current;
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var candidate = await db.Candidates.SingleOrDefaultAsync(x => x.Id == candidateId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId, cancellationToken).ConfigureAwait(false)
-            ?? throw new KeyNotFoundException("Agent candidate was not found.");
-        if (candidate.Status != "proposed") throw new InvalidOperationException("Candidate has already been decided.");
-        candidate.Status = normalized;
-        candidate.DecisionReason = reason;
-        candidate.DecidedByPrincipalId = scope.PrincipalId;
-        if (normalized == "promoted") candidate.PromotedAgentId = promotedAgentId;
-        candidate.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return candidate;
+        var now = DateTimeOffset.UtcNow;
+        // The status predicate makes the decision atomic: two concurrent reviewers
+        // cannot both move the same proposed candidate, and the second one learns it
+        // lost instead of overwriting the first decision.
+        var updated = await db.Candidates
+            .Where(x => x.Id == candidateId
+                && x.TenantId == scope.TenantId
+                && x.WorkspaceId == scope.WorkspaceId
+                && x.Status == "proposed")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, normalized)
+                .SetProperty(x => x.DecisionReason, reason)
+                .SetProperty(x => x.DecidedByPrincipalId, scope.PrincipalId)
+                .SetProperty(x => x.PromotedAgentId, promotedAgentId)
+                .SetProperty(x => x.EvalRunId, evalRunId)
+                .SetProperty(x => x.UpdatedAt, now), cancellationToken).ConfigureAwait(false);
+        if (updated == 0)
+        {
+            var exists = await db.Candidates.AsNoTracking().AnyAsync(
+                x => x.Id == candidateId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId,
+                cancellationToken).ConfigureAwait(false);
+            if (!exists) throw new KeyNotFoundException("Agent candidate was not found.");
+            throw new InvalidOperationException("Candidate has already been decided.");
+        }
+        return await db.Candidates.AsNoTracking()
+            .SingleAsync(x => x.Id == candidateId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<(AgentCandidateRecord Candidate, JsonElement Proposal)> GetCandidateWithProposalAsync(Guid candidateId, CancellationToken cancellationToken = default)

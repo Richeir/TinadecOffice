@@ -1298,6 +1298,37 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         return candidates;
     }
 
+    private static async Task<Guid> CreateEvalSuiteAsync(HttpClient client, string slug, object[] assertions)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/agent-evolution/suites", new
+        {
+            slug,
+            name = "日志归纳回归",
+            description = "候选提示词变更后的确定性回归",
+            cases = new[]
+            {
+                new
+                {
+                    id = "summarize-errors",
+                    input = "错误：连接超时；堆栈：...",
+                    assertions
+                }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var suite = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return suite.GetProperty("id").GetGuid();
+    }
+
+    private static async Task<JsonElement> StartEvalRunAsync(HttpClient client, Guid candidateId, Guid suiteId)
+    {
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/eval-runs",
+            new { suite_id = suiteId });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
     [Fact]
     public async Task OperationalEvolution_CuratesMemoryAndAgentCandidatesOnRunClose()
     {
@@ -1341,11 +1372,23 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         var candidates = await PollAgentCandidatesAsync(client, TimeSpan.FromSeconds(15));
         var candidateId = Assert.Single(candidates).GetProperty("id").GetGuid();
 
-        var promoteResponse = await client.PostAsJsonAsync($"/api/v1/agent-evolution/proposals/{candidateId}/promote", new { reason = "评测说明：模式稳定，人工批准" });
+        var suiteId = await CreateEvalSuiteAsync(client, "log-summary-v1", new object[] { new { type = "contains", value = "完成" } });
+        var evaluation = await StartEvalRunAsync(client, candidateId, suiteId);
+        var run = evaluation.GetProperty("run");
+        var evalRunId = run.GetProperty("id").GetGuid();
+        Assert.Equal("completed", run.GetProperty("status").GetString());
+        Assert.Equal("passed", run.GetProperty("gate_status").GetString());
+        Assert.Equal(1, run.GetProperty("eligible_pairs").GetInt32());
+        Assert.Equal(1.0, run.GetProperty("treatment_pass_rate").GetDouble());
+
+        var promoteResponse = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/promote",
+            new { reason = "评测说明：模式稳定，人工批准", eval_run_id = evalRunId });
         Assert.Equal(HttpStatusCode.OK, promoteResponse.StatusCode);
         var promoted = await promoteResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("promoted", promoted.GetProperty("status").GetString());
         Assert.Equal("评测说明：模式稳定，人工批准", promoted.GetProperty("decision_reason").GetString());
+        Assert.Equal(evalRunId, promoted.GetProperty("eval_run_id").GetGuid());
         var published = promoted.GetProperty("published_agent");
         Assert.Equal(1, published.GetProperty("version").GetInt32());
         Assert.False(string.IsNullOrWhiteSpace(published.GetProperty("content_hash").GetString()));
@@ -1354,9 +1397,113 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         var directory = await client.GetFromJsonAsync<JsonElement[]>("/api/v1/agents");
         Assert.Contains(directory!, agent => agent.GetProperty("display_name").GetString() == "日志巡检执行体");
 
-        var repeat = await client.PostAsJsonAsync($"/api/v1/agent-evolution/proposals/{candidateId}/promote", new { reason = "duplicate" });
+        var reportResponse = await client.GetAsync($"/api/v1/agent-evolution/eval-runs/{evalRunId}");
+        Assert.Equal(HttpStatusCode.OK, reportResponse.StatusCode);
+        var detail = await reportResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var report = detail.GetProperty("report");
+        Assert.Equal("passed", report.GetProperty("gate").GetProperty("status").GetString());
+        Assert.Equal(suiteId, report.GetProperty("suite").GetProperty("id").GetGuid());
+        Assert.Equal(64, report.GetProperty("control").GetProperty("system_prompt_hash").GetString()!.Length);
+        Assert.Equal(64, report.GetProperty("treatment").GetProperty("system_prompt_hash").GetString()!.Length);
+        Assert.Equal("summarize-errors", report.GetProperty("cases")[0].GetProperty("id").GetString());
+
+        var evidence = await client.GetFromJsonAsync<JsonElement>($"/api/v1/agent-evolution/proposals/{candidateId}/evaluation");
+        Assert.Equal(evalRunId, Assert.Single(evidence.GetProperty("eval_runs").EnumerateArray()).GetProperty("id").GetGuid());
+
+        var repeat = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/promote",
+            new { reason = "duplicate", eval_run_id = evalRunId });
         Assert.Equal(HttpStatusCode.Conflict, repeat.StatusCode);
         Assert.Equal("ALREADY_DECIDED", (await repeat.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task AgentEvolution_PromotionWithoutEvaluation_ReturnsEvalRequired()
+    {
+        var script = CuratedRunScript(CuratorCandidatesJson);
+        var factory = CreateFactory(script);
+        var client = factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        await StreamInvokeAsync(client, sessionId, new { content = "执行目标", client_message_id = "evolution-no-eval" });
+        var candidateId = Assert.Single(await PollAgentCandidatesAsync(client, TimeSpan.FromSeconds(15))).GetProperty("id").GetGuid();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/promote",
+            new { reason = "looks fine" });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal("EVAL_REQUIRED", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task AgentEvaluation_GateFailureBlocksPromotion()
+    {
+        var script = CuratedRunScript(CuratorCandidatesJson)
+            .WhenInstructions("你负责读取并归纳日志输出。", "没有按要求归纳。");
+        var factory = CreateFactory(script);
+        var client = factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        await StreamInvokeAsync(client, sessionId, new { content = "执行目标", client_message_id = "evolution-gate-fail" });
+        var candidateId = Assert.Single(await PollAgentCandidatesAsync(client, TimeSpan.FromSeconds(15))).GetProperty("id").GetGuid();
+
+        var suiteId = await CreateEvalSuiteAsync(client, "log-summary-v1", new object[] { new { type = "contains", value = "完成" } });
+        var evaluation = await StartEvalRunAsync(client, candidateId, suiteId);
+        var run = evaluation.GetProperty("run");
+        var evalRunId = run.GetProperty("id").GetGuid();
+        // The run itself completes: the gate, not the transport, is what failed.
+        Assert.Equal("completed", run.GetProperty("status").GetString());
+        Assert.Equal("failed", run.GetProperty("gate_status").GetString());
+        Assert.Equal(1.0, run.GetProperty("control_pass_rate").GetDouble());
+        Assert.Equal(0.0, run.GetProperty("treatment_pass_rate").GetDouble());
+        var failures = evaluation.GetProperty("report").GetProperty("gate").GetProperty("failures").EnumerateArray()
+            .Select(item => item.GetProperty("code").GetString()).ToArray();
+        Assert.Contains("required_case_failed:summarize-errors", failures);
+
+        var promoteResponse = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/promote",
+            new { reason = "ship it", eval_run_id = evalRunId });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, promoteResponse.StatusCode);
+        var rejected = await promoteResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("EVAL_GATE_FAILED", rejected.GetProperty("code").GetString());
+        Assert.Contains(rejected.GetProperty("failures").EnumerateArray(),
+            item => item.GetProperty("code").GetString() == "required_case_failed:summarize-errors");
+
+        var stillProposed = await client.GetFromJsonAsync<JsonElement>($"/api/v1/agent-evolution/proposals?status=proposed");
+        Assert.Contains(stillProposed.EnumerateArray(), item => item.GetProperty("id").GetGuid() == candidateId);
+    }
+
+    [Fact]
+    public async Task AgentEvolution_PromoteWithStaleProposalEvidence_ReturnsConflict()
+    {
+        var script = CuratedRunScript(CuratorCandidatesJson);
+        var factory = CreateFactory(script);
+        var client = factory.CreateClient();
+        var sessionId = await CreateSessionAsync(client);
+
+        await StreamInvokeAsync(client, sessionId, new { content = "执行目标", client_message_id = "evolution-stale" });
+        var candidateId = Assert.Single(await PollAgentCandidatesAsync(client, TimeSpan.FromSeconds(15))).GetProperty("id").GetGuid();
+        var suiteId = await CreateEvalSuiteAsync(client, "log-summary-v1", new object[] { new { type = "contains", value = "完成" } });
+        var evaluation = await StartEvalRunAsync(client, candidateId, suiteId);
+        var evalRunId = evaluation.GetProperty("run").GetProperty("id").GetGuid();
+
+        // Simulate a proposal rewritten after the run: the stored hash no longer
+        // matches the evidence the gate was computed over.
+        var dbFactory = factory.Services.GetRequiredService<IDbContextFactory<AgentControlDbContext>>();
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            var candidate = await db.Candidates.SingleAsync(item => item.Id == candidateId);
+            candidate.ProposalHash = new string('0', 64);
+            await db.SaveChangesAsync();
+        }
+
+        var promoteResponse = await client.PostAsJsonAsync(
+            $"/api/v1/agent-evolution/proposals/{candidateId}/promote",
+            new { reason = "stale evidence", eval_run_id = evalRunId });
+
+        Assert.Equal(HttpStatusCode.Conflict, promoteResponse.StatusCode);
+        Assert.Equal("EVAL_STALE", (await promoteResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
 
     [Fact]
@@ -2582,6 +2729,7 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         private readonly object _instructionsGate = new();
         private readonly List<string> _instructions = [];
         private readonly List<string> _prompts = [];
+        private readonly Dictionary<string, string> _instructionResponses = new(StringComparer.Ordinal);
 
         public IReadOnlyList<string> Instructions
         {
@@ -2635,6 +2783,8 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         public ScriptedChatClient WhenRecommender(string script) { _recommender = script; return this; }
         public ScriptedChatClient WhenCurator(string script) { _curator = script; return this; }
         public ScriptedChatClient WhenSteward(string script) { _steward = script; return this; }
+        /// <summary>Exact instructions win over shape-based routing, so an evaluation arm can be scripted without touching planner/gate/worker routes.</summary>
+        public ScriptedChatClient WhenInstructions(string instructions, string response) { _instructionResponses[instructions] = response; return this; }
         public ScriptedChatClient WithUsage(long inputTokens, long outputTokens)
         {
             _usage = new UsageDetails
@@ -2722,6 +2872,8 @@ public sealed partial class FullDuplexEndpointTests : IAsyncLifetime
         /// <summary>Routes by prompt shape: the runtime's fixed Chinese scaffolding identifies the caller.</summary>
         private string RouteByPrompt(string prompt, string? instructions)
         {
+            if (instructions is not null && _instructionResponses.TryGetValue(instructions, out var exact))
+                return exact;
             if (instructions?.Contains("You are the context compression agent", StringComparison.Ordinal) == true)
                 return RecordOperational(ref CompressorCalls, _compressor ?? "当前目标：完成用户任务。\n关键约束：无。\n已完成事项：无。");
             if (instructions?.Contains("You are the capability advisor", StringComparison.Ordinal) == true)

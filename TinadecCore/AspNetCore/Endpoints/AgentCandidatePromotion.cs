@@ -7,19 +7,22 @@ namespace TinadecCore.AspNetCore.Endpoints;
 
 /// <summary>
 /// Review-driven promotion of generated agent candidates. The pipeline stages
-/// owned here are sanitization (minimal, clamped draft), review (the human
-/// decision that calls this endpoint), and publish (immutable AgentVersion
-/// through the AgentConfiguration boundary). Canary and activation remain
-/// future stages; a promoted agent only becomes routable after an explicit
-/// mode binding by an operator.
+/// owned here are sanitization (minimal, clamped draft), evaluation evidence
+/// re-check with a deterministic gate, review (the human decision that calls
+/// this endpoint), and publish (immutable AgentVersion through the
+/// AgentConfiguration boundary). Canary and activation remain future stages; a
+/// promoted agent only becomes routable after an explicit mode binding by an
+/// operator.
 /// </summary>
 internal static class AgentCandidatePromotion
 {
     public static async Task<IResult> PromoteAsync(
         IAgentInstanceService instances,
         IAgentConfigurationService configurations,
+        AgentEvaluationService evaluations,
         Guid candidateId,
         string? reason,
+        Guid? evalRunId,
         CancellationToken cancellationToken)
     {
         try
@@ -29,13 +32,21 @@ internal static class AgentCandidatePromotion
             {
                 return Results.Conflict(new { code = "ALREADY_DECIDED", candidate_id = candidateId, message = "Candidate has already been decided." });
             }
+            if (evalRunId is not { } runId || runId == Guid.Empty)
+            {
+                return Unprocessable("EVAL_REQUIRED", candidateId, "Promotion requires the evaluation run that passed the gate.");
+            }
 
-            var payload = SanitizeProposal(candidate, proposal);
-            var draft = JsonSerializer.SerializeToElement(await configurations.CreateDraftAsync("agent", payload, cancellationToken).ConfigureAwait(false));
+            var sanitized = CandidateProposalSanitizer.Sanitize(candidate, proposal);
+            // Re-read and re-hash the evidence: the promotion decision never trusts
+            // the client's claim that a run passed, nor a stale in-row gate status.
+            await evaluations.AssertPromotableAsync(candidate, sanitized, runId, cancellationToken).ConfigureAwait(false);
+
+            var draft = JsonSerializer.SerializeToElement(await configurations.CreateDraftAsync("agent", sanitized.Payload, cancellationToken).ConfigureAwait(false));
             var agentId = draft.GetProperty("id").GetGuid();
             var revision = draft.GetProperty("revision").GetInt64();
             var published = JsonSerializer.SerializeToElement(await configurations.PublishAsync(agentId, revision, cancellationToken).ConfigureAwait(false));
-            var decided = await instances.DecideCandidateAsync(candidateId, "promoted", reason, cancellationToken, agentId).ConfigureAwait(false);
+            var decided = await instances.DecideCandidateAsync(candidateId, "promoted", reason, cancellationToken, agentId, runId).ConfigureAwait(false);
             return Results.Ok(new
             {
                 id = decided.Id,
@@ -46,6 +57,7 @@ internal static class AgentCandidatePromotion
                 status = decided.Status,
                 decision_reason = decided.DecisionReason,
                 promoted_agent_id = decided.PromotedAgentId,
+                eval_run_id = decided.EvalRunId,
                 published_agent = new
                 {
                     id = agentId,
@@ -57,6 +69,33 @@ internal static class AgentCandidatePromotion
         catch (KeyNotFoundException)
         {
             return Results.NotFound(new { code = "NOT_FOUND", candidate_id = candidateId, message = "Agent candidate was not found." });
+        }
+        catch (EvalRunInvalidException ex)
+        {
+            return Unprocessable("EVAL_RUN_INVALID", candidateId, ex.Message);
+        }
+        catch (EvalRunIncompleteException ex)
+        {
+            return Results.Conflict(new { code = "EVAL_RUN_INCOMPLETE", candidate_id = candidateId, message = ex.Message });
+        }
+        catch (EvalStaleException ex)
+        {
+            return Results.Conflict(new { code = "EVAL_STALE", candidate_id = candidateId, message = ex.Message });
+        }
+        catch (EvalGateFailedException ex)
+        {
+            return Results.Json(new
+            {
+                code = "EVAL_GATE_FAILED",
+                candidate_id = candidateId,
+                message = ex.Message,
+                failures = ex.Failures.Select(failure => new
+                {
+                    code = failure.Code,
+                    case_id = failure.CaseId,
+                    detail = failure.Detail
+                })
+            }, statusCode: StatusCodes.Status422UnprocessableEntity);
         }
         catch (ArgumentException ex)
         {
@@ -72,49 +111,6 @@ internal static class AgentCandidatePromotion
         }
     }
 
-    /// <summary>
-    /// Builds a minimal, clamped agent draft from the immutable proposal body.
-    /// Promoted agents inherit the default model route and start without
-    /// autonomous tools; expanding either requires an explicit operator edit.
-    /// </summary>
-    private static Dictionary<string, object?> SanitizeProposal(AgentCandidateRecord candidate, JsonElement proposal)
-    {
-        if (proposal.ValueKind != JsonValueKind.Object)
-            throw new InvalidDataException("Candidate proposal must be a JSON object.");
-        var name = String(proposal, "display_name") ?? String(proposal, "name") ?? candidate.Name;
-        if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidDataException("Candidate proposal needs a display name.");
-        var layer = (String(proposal, "layer") ?? candidate.Layer).Trim().ToLowerInvariant();
-        AgentConfigurationService.ValidateLayer(layer);
-        var systemPrompt = String(proposal, "system_prompt");
-        if (string.IsNullOrWhiteSpace(systemPrompt))
-            throw new InvalidDataException("Candidate proposal needs a system_prompt before promotion.");
-
-        var capabilities = new List<string>();
-        if (proposal.TryGetProperty("capabilities", out var capabilitiesNode) && capabilitiesNode.ValueKind == JsonValueKind.Array)
-        {
-            capabilities.AddRange(capabilitiesNode.EnumerateArray()
-                .Where(item => item.ValueKind == JsonValueKind.String)
-                .Select(item => item.GetString()!.Trim())
-                .Where(item => item.Length > 0));
-        }
-
-        return new Dictionary<string, object?>
-        {
-            ["display_name"] = name.Trim(),
-            ["slug"] = String(proposal, "slug") ?? name,
-            ["layer"] = layer,
-            ["role"] = String(proposal, "role") ?? candidate.AgentType,
-            ["description"] = String(proposal, "description") ?? $"Promoted from candidate {candidate.Id}.",
-            ["capabilities"] = capabilities,
-            ["model_strategy"] = new Dictionary<string, object?> { ["kind"] = "inherit" },
-            ["tool_scope"] = Array.Empty<string>(),
-            ["system_prompt"] = systemPrompt.Trim()
-        };
-    }
-
-    private static string? String(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
-            ? property.GetString()
-            : null;
+    private static IResult Unprocessable(string code, Guid candidateId, string message) =>
+        Results.Json(new { code, candidate_id = candidateId, message }, statusCode: StatusCodes.Status422UnprocessableEntity);
 }

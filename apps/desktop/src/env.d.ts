@@ -142,6 +142,33 @@ declare global {
     scale: number;
     window?: WindowBounds;
     imageDataUrl?: string;
+    /** Bundled fallback pet: always installed, never removable. */
+    builtin?: boolean;
+    source?: 'builtin' | 'petdex' | string;
+  }
+
+  /** One entry of the pool agent avatars are drawn from; `url` is served by `tinadec-pet://`. */
+  interface AvatarPetRecord {
+    slug: string;
+    displayName: string;
+    kind: string;
+    builtin: boolean;
+    url: string;
+  }
+
+  type AgentAvatarPreference = { mode: 'random' } | { mode: 'fixed'; petSlug: string };
+
+  interface AgentAvatarInstanceRecord {
+    petSlug: string;
+    agentId: string;
+    assignedAt: number;
+    source: 'random' | 'fixed';
+  }
+
+  interface AgentAvatarState {
+    version: number;
+    preferences: Record<string, AgentAvatarPreference>;
+    instances: Record<string, AgentAvatarInstanceRecord>;
   }
 
   interface PetWindowInfo {
@@ -167,6 +194,12 @@ declare global {
     setEnabled: (slug: string, enabled: boolean) => Promise<DownloadedPet>;
     openFolder: (slug: string) => Promise<boolean>;
     remove: (slug: string) => Promise<boolean>;
+    listAvatars: () => Promise<AvatarPetRecord[]>;
+    loadAvatarState: () => Promise<AgentAvatarState>;
+    setAgentAvatar: (agentId: string, preference: AgentAvatarPreference) => Promise<AgentAvatarPreference>;
+    saveInstanceAvatar: (input: { instanceKey: string; petSlug: string; agentId?: string; source?: 'random' | 'fixed' }) => Promise<AgentAvatarInstanceRecord>;
+    releaseInstanceAvatars: (instanceKeys: string[]) => Promise<number>;
+    onAvatarsChanged: (callback: () => void) => () => void;
   }
 
   interface DiscoveredService {

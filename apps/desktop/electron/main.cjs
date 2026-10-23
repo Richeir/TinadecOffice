@@ -98,11 +98,14 @@ const {
   ensureBuiltinPets,
   fetchCatalog,
   fetchPetPreview,
+  getPetAsset,
+  listAvatarPets,
   listDownloaded,
   openPetFolder,
   removePet,
   setEnabled,
 } = require('./petStore.cjs');
+const agentAvatars = require('./agentAvatars.cjs');
 const {
   APP_SCHEME_PRIVILEGES,
   appBundleUrl,
@@ -121,6 +124,13 @@ const DIST_DIR = path.join(__dirname, '..', 'dist');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'tinadec-pet-preview',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+  {
+    // Serves a downloaded pet's spritesheet by slug. Avatars across a conversation and a spatial
+    // board all point at the same URL, so Chromium decodes each sheet once instead of shipping
+    // megabytes of base64 through IPC per agent.
+    scheme: 'tinadec-pet',
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
   },
   { scheme: 'app', privileges: APP_SCHEME_PRIVILEGES },
@@ -422,6 +432,13 @@ ipcMain.handle('tinadec:layout-save', async (_event, payload) => {
   }
 });
 
+/** The avatar pool changed: every window that shows a pet face must re-read it. */
+function broadcastAvatarPetsChanged() {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('tinadec:pet-avatars-changed');
+  }
+}
+
 // --- Local pet window IPC ---
 ipcMain.handle('tinadec:pet-create', async (_event, petId) => createPetWindow(petId));
 ipcMain.handle('tinadec:pet-close', async (_event, instanceId) => closePetWindow(instanceId));
@@ -451,7 +468,11 @@ ipcMain.handle('tinadec:pet-catalog', async (_event, force) => {
     previewUrl: `tinadec-pet-preview://pet/${encodeURIComponent(pet.slug)}`,
   }));
 });
-ipcMain.handle('tinadec:pet-download', async (_event, slug) => downloadPet(slug));
+ipcMain.handle('tinadec:pet-download', async (_event, slug) => {
+  const pet = await downloadPet(slug);
+  broadcastAvatarPetsChanged();
+  return pet;
+});
 ipcMain.handle('tinadec:pet-downloaded', async () => listDownloaded());
 ipcMain.handle('tinadec:pet-enabled', async (_event, slug, enabled) => {
   const pet = await setEnabled(slug, enabled);
@@ -465,9 +486,24 @@ ipcMain.handle('tinadec:pet-open-folder', async (_event, slug) => {
   return true;
 });
 ipcMain.handle('tinadec:pet-remove', async (_event, slug) => {
-  closePetWindowForPet(slug);
-  return removePet(slug);
+  const removed = await removePet(slug);
+  if (removed) {
+    closePetWindowForPet(slug);
+    // Drop every reference first, so no agent keeps pointing at a file that is gone.
+    await agentAvatars.clearPet(slug);
+    broadcastAvatarPetsChanged();
+  }
+  return removed;
 });
+
+// --- Agent avatars (pet per spawned agent) ---
+ipcMain.handle('tinadec:pet-avatars', async () => listAvatarPets());
+ipcMain.handle('tinadec:pet-avatar-state', async () => agentAvatars.loadState());
+ipcMain.handle('tinadec:pet-avatar-preference', async (_event, agentId, preference) =>
+  agentAvatars.setPreference(agentId, preference));
+ipcMain.handle('tinadec:pet-avatar-instance', async (_event, input) => agentAvatars.saveInstance(input));
+ipcMain.handle('tinadec:pet-avatar-release', async (_event, instanceKeys) =>
+  agentAvatars.releaseInstances(instanceKeys));
 
 // --- Background File Selection IPC ---
 // The dialog's wording comes from the renderer, where the locale bundles live; without it the OS
@@ -730,6 +766,23 @@ app.whenReady().then(async () => {
       });
     }
   });
+  protocol.handle('tinadec-pet', async (request) => {
+    try {
+      const url = new URL(request.url);
+      const slug = decodeURIComponent(`${url.hostname}${url.pathname}`.replace(/\/+$/, ''));
+      const asset = slug ? await getPetAsset(slug) : null;
+      if (!asset) return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      return new Response(asset.buffer, {
+        headers: {
+          'Content-Type': asset.mime,
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    } catch {
+      return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+    }
+  });
+
   await createWindow();
 
   // The tray exists only while the preference asks for it: a user who turned it off gets no stray

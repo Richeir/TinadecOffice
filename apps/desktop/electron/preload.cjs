@@ -71,6 +71,17 @@ contextBridge.exposeInMainWorld('tinadec', {
     setEnabled: (slug, enabled) => ipcRenderer.invoke('tinadec:pet-enabled', slug, enabled),
     openFolder: (slug) => ipcRenderer.invoke('tinadec:pet-open-folder', slug),
     remove: (slug) => ipcRenderer.invoke('tinadec:pet-remove', slug),
+    // Agent avatars: the pool, the per-agent preference and the per-instance decision.
+    listAvatars: () => ipcRenderer.invoke('tinadec:pet-avatars'),
+    loadAvatarState: () => ipcRenderer.invoke('tinadec:pet-avatar-state'),
+    setAgentAvatar: (agentId, preference) => ipcRenderer.invoke('tinadec:pet-avatar-preference', agentId, preference),
+    saveInstanceAvatar: (input) => ipcRenderer.invoke('tinadec:pet-avatar-instance', input),
+    releaseInstanceAvatars: (instanceKeys) => ipcRenderer.invoke('tinadec:pet-avatar-release', instanceKeys),
+    onAvatarsChanged: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on('tinadec:pet-avatars-changed', handler);
+      return () => ipcRenderer.removeListener('tinadec:pet-avatars-changed', handler);
+    },
   },
   
   // --- Background File Selection API ---

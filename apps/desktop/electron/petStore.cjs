@@ -460,14 +460,40 @@ async function savePetPreferences(slugInput, input) {
   return publicRecord(record);
 }
 
+/** The spritesheet bytes of one downloaded pet, for the custom protocol. */
+async function getPetAsset(slugInput) {
+  const slug = safeSlug(slugInput);
+  const registry = await readRegistry();
+  const record = registry.pets.find((pet) => pet.slug === slug);
+  if (!record) return null;
+  const buffer = await fs.readFile(path.join(petDirectory(slug), record.spriteFile));
+  return {
+    buffer,
+    mime: record.spriteFile.toLowerCase().endsWith('.png') ? 'image/png' : 'image/webp',
+  };
+}
+
+/**
+ * The pool avatars are picked from: records only, plus the URL that serves the spritesheet.
+ * Deliberately no base64 — an avatar list must stay small, and the protocol lets Chromium cache
+ * one image for every row that wears it.
+ */
+async function listAvatarPets() {
+  const registry = await readRegistry();
+  return registry.pets.map((record) => ({
+    ...publicRecord(record),
+    url: `tinadec-pet://${record.slug}`,
+  }));
+}
+
 async function getPetForWindow(slugInput) {
   const slug = safeSlug(slugInput);
   const registry = await readRegistry();
   const record = registry.pets.find((pet) => pet.slug === slug);
   if (!record) return null;
-  const image = await fs.readFile(path.join(petDirectory(slug), record.spriteFile));
-  const mime = record.spriteFile.endsWith('.png') ? 'image/png' : 'image/webp';
-  return { ...publicRecord(record), imageDataUrl: `data:${mime};base64,${image.toString('base64')}` };
+  const asset = await getPetAsset(slug);
+  if (!asset) return publicRecord(record);
+  return { ...publicRecord(record), imageDataUrl: `data:${asset.mime};base64,${asset.buffer.toString('base64')}` };
 }
 
 module.exports = {
@@ -483,5 +509,7 @@ module.exports = {
   getPetPreferences,
   savePetPreferences,
   getPetForWindow,
+  getPetAsset,
+  listAvatarPets,
   __setPetsDir,
 };

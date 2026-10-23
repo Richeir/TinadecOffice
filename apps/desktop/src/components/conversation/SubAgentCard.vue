@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Bot, ChevronRight, Maximize2 } from '@lucide/vue'
+import { ChevronRight, Maximize2 } from '@lucide/vue'
 import { computed, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUie } from '@tinadec/ui'
 import MarkdownRender from '@/components/MarkdownRender.vue'
-import { Spinner } from '@/components/ui/spinner'
+import AgentPetAvatar from '@/components/pets/AgentPetAvatar.vue'
+import { instanceKeyOf } from '@/lib/avatarAssignment'
 import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import { useAutoDisclosure } from '@/composables/useAutoDisclosure'
 import { useDelayedLoading } from '@/composables/useDelayedLoading'
@@ -112,8 +113,14 @@ function openInPanel() {
         data-testid="sub-agent-toggle"
         @click="toggle"
       >
-        <Spinner decorative v-if="showSpinner" class="conversation-glyph" />
-        <Bot v-else class="conversation-glyph" aria-hidden="true" />
+        <span class="conversation-sub-agent-face" :class="{ spinning: showSpinner }">
+          <AgentPetAvatar
+            :instance-key="instanceKeyOf(runId, agent.taskId)"
+            :agent-id="agent.agentSlug"
+            :size="18"
+            :alt="name"
+          />
+        </span>
         <span class="conversation-sub-agent-name" :class="{ shimmer: working }">{{ name }}</span>
         <span v-if="duration" class="conversation-sub-agent-time">{{ duration }}</span>
         <span class="conversation-sub-agent-badge" :data-status="node.status">{{ t(`conversation.agents.status.${node.status}`) }}</span>
@@ -140,6 +147,11 @@ function openInPanel() {
 .conversation-sub-agent[data-status='completed'] { opacity: 0.85; }
 .conversation-sub-agent[data-status='cancelled'] { opacity: 0.6; }
 .conversation-sub-agent-head { display: flex; align-items: center; gap: 4px; }
+/* The face replaces the generic bot glyph; while the agent works it breathes instead of spinning. */
+.conversation-sub-agent-face { display: inline-flex; flex: none; align-items: center; }
+.conversation-sub-agent-face.spinning { animation: sub-agent-face-pulse 1.4s ease-in-out infinite; }
+@keyframes sub-agent-face-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .conversation-sub-agent-face.spinning { animation: none; } }
 .conversation-sub-agent-toggle { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; padding: 2px 0; border: 0; color: inherit; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 div.conversation-sub-agent-toggle { cursor: default; }
 .conversation-sub-agent-toggle:focus-visible { outline: 1px solid hsl(var(--ring)); border-radius: 4px; }

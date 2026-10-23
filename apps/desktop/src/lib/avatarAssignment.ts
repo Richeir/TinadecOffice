@@ -19,6 +19,15 @@ export type AvatarPreference = { mode: 'random' } | { mode: 'fixed'; petSlug: st
 
 export const RANDOM_AVATAR: AvatarPreference = { mode: 'random' }
 
+/**
+ * The identity an avatar belongs to. One run can spawn several agents with the same slug, so the
+ * key has to name the task, not the agent: `runId:taskId` is what `SubAgentsPanel` already uses
+ * as its list key. Keep this the only place that formats it.
+ */
+export function instanceKeyOf(runId: string, taskId: string): string {
+  return `${runId}:${taskId}`
+}
+
 export function isRandomPreference(preference: AvatarPreference | null | undefined): boolean {
   return !preference || preference.mode !== 'fixed'
 }

@@ -2,6 +2,8 @@
 import { Bot } from '@lucide/vue'
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AgentPetAvatar from '@/components/pets/AgentPetAvatar.vue'
+import { instanceKeyOf } from '@/lib/avatarAssignment'
 import { useAgentDirectory } from '@/composables/useAgentDirectory'
 import type { ConversationFeed } from '@/composables/useConversationFeed'
 import { groupRun, type SubAgentNode } from '@/lib/conversation/grouping'
@@ -69,7 +71,14 @@ function choose(item: RosterItem) {
           @keydown.enter.prevent="choose(item)"
           @keydown.space.prevent="choose(item)"
         >
-          <span class="conversation-sub-agents-name">{{ nameFor(item.node.agent.handle ?? item.node.agent.agentSlug) }}</span>
+          <span class="conversation-sub-agents-identity">
+            <AgentPetAvatar
+              :instance-key="instanceKeyOf(item.runId, item.node.agent.taskId)"
+              :agent-id="item.node.agent.agentSlug"
+              :size="16"
+            />
+            <span class="conversation-sub-agents-name">{{ nameFor(item.node.agent.handle ?? item.node.agent.agentSlug) }}</span>
+          </span>
           <span class="conversation-sub-agent-badge" :data-status="item.node.status">{{ t(`conversation.agents.status.${item.node.status}`) }}</span>
         </li>
       </ul>
@@ -95,6 +104,7 @@ function choose(item: RosterItem) {
 .conversation-sub-agents-item:hover { background: var(--surface-hover); }
 .conversation-sub-agents-item[aria-selected='true'] { background: var(--surface-selected); }
 .conversation-sub-agents-item:focus-visible { outline: 1px solid hsl(var(--ring)); }
+.conversation-sub-agents-identity { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .conversation-sub-agents-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .conversation-sub-agent-badge { font-size: 11px; color: var(--text-muted); }
 .conversation-sub-agent-badge[data-status='running'] { color: var(--accent-primary); }

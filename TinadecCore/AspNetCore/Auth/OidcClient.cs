@@ -34,13 +34,15 @@ public sealed class OidcClient
             "response_type=code",
             $"client_id={Uri.EscapeDataString(_options.ClientId)}",
             $"redirect_uri={Uri.EscapeDataString(_options.RedirectUri)}",
-            "scope=openid%20profile%20email",
+            // offline_access is what makes Logto return a refresh token; without it a 30-day
+            // identity session could never be renewed and the user was sent back to the browser.
+            "scope=openid%20profile%20email%20offline_access",
             $"state={Uri.EscapeDataString(state)}",
             $"nonce={Uri.EscapeDataString(nonce)}");
         return $"{d.AuthorizationEndpoint}?{query}";
     }
 
-    public async Task<(OidcIdentity Identity, string AccessToken)?> ExchangeAsync(string code, string expectedNonce, CancellationToken ct)
+    public async Task<(OidcIdentity Identity, OidcTokenSet Tokens)?> ExchangeAsync(string code, string expectedNonce, CancellationToken ct)
     {
         var d = await GetDiscoveryAsync(ct).ConfigureAwait(false);
 
@@ -68,8 +70,8 @@ public sealed class OidcClient
         using var tokenJson = await ParseAsync(response, ct).ConfigureAwait(false);
 
         var idToken = Str(tokenJson.RootElement, "id_token");
-        var accessToken = Str(tokenJson.RootElement, "access_token");
-        if (string.IsNullOrWhiteSpace(idToken)) return null;
+        var tokens = ReadTokenSet(tokenJson.RootElement, fallbackRefreshToken: null);
+        if (string.IsNullOrWhiteSpace(idToken) || tokens is null) return null;
 
         var claims = await ValidateIdTokenAsync(idToken, expectedNonce, d, ct).ConfigureAwait(false);
         if (claims is null) return null;
@@ -78,13 +80,73 @@ public sealed class OidcClient
 
         // Profile claims are more reliably present on the userinfo endpoint than in
         // the id_token; fall back to id_token claims for anything userinfo omitted.
-        var profile = await FetchUserinfoAsync(accessToken, d, ct).ConfigureAwait(false);
+        var profile = await FetchUserinfoAsync(tokens.AccessToken, d, ct).ConfigureAwait(false);
         var name = profile.Name ?? Claim(claims, "name") ?? Claim(claims, "preferred_username") ?? Claim(claims, "username");
         var picture = profile.AvatarUrl ?? Claim(claims, "picture");
         var email = profile.Email ?? Claim(claims, "email");
 
         var nickname = string.IsNullOrWhiteSpace(name) ? subject : name;
-        return (new OidcIdentity(subject, nickname, picture, email), accessToken ?? "");
+        return (new OidcIdentity(subject, nickname, picture, email), tokens);
+    }
+
+    /// <summary>
+    /// Exchanges a refresh token for a new access token. Returns null only when Logto rejects the
+    /// grant itself (400/401) — that is the signal to drop the session and ask for a browser
+    /// login again. Every other failure throws, so a transient outage cannot log the user out.
+    /// </summary>
+    public async Task<OidcTokenSet?> RefreshAsync(string refreshToken, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(refreshToken)) return null;
+        var d = await GetDiscoveryAsync(ct).ConfigureAwait(false);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, d.TokenEndpoint);
+        request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "refresh_token",
+            ["refresh_token"] = refreshToken,
+            ["client_id"] = _options.ClientId,
+        });
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Basic",
+            Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_options.ClientId}:{_options.ClientSecret}")));
+
+        using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+        if (response.StatusCode is System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.Unauthorized)
+            return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            throw new InvalidOperationException($"Logto token endpoint returned {(int)response.StatusCode}: {errorBody}");
+        }
+        using var tokenJson = await ParseAsync(response, ct).ConfigureAwait(false);
+        // Rotation is on: Logto sends a new refresh token. Keeping the presented one when the
+        // response omits it still works for issuers that only rotate occasionally.
+        return ReadTokenSet(tokenJson.RootElement, fallbackRefreshToken: refreshToken);
+    }
+
+    /// <summary>
+    /// Reads <c>access_token</c> / <c>refresh_token</c> / <c>expires_in</c> from a token response.
+    /// A missing <c>expires_in</c> is treated as one hour, the OAuth default, rather than as
+    /// "never expires" — refreshing too eagerly is harmless, never refreshing is the bug.
+    /// </summary>
+    private static OidcTokenSet? ReadTokenSet(JsonElement root, string? fallbackRefreshToken)
+    {
+        var accessToken = Str(root, "access_token");
+        if (string.IsNullOrWhiteSpace(accessToken)) return null;
+        var refreshToken = Str(root, "refresh_token");
+        if (string.IsNullOrWhiteSpace(refreshToken)) refreshToken = fallbackRefreshToken;
+        var expiresIn = 3600;
+        if (root.TryGetProperty("expires_in", out var expiresElement))
+        {
+            expiresIn = expiresElement.ValueKind switch
+            {
+                JsonValueKind.Number when expiresElement.TryGetInt32(out var seconds) => seconds,
+                JsonValueKind.String when int.TryParse(expiresElement.GetString(), out var parsed) => parsed,
+                _ => expiresIn,
+            };
+        }
+        if (expiresIn <= 0) expiresIn = 3600;
+        return new OidcTokenSet(accessToken, refreshToken, DateTimeOffset.UtcNow.AddSeconds(expiresIn));
     }
 
     /// <summary>

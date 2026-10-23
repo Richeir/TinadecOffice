@@ -6,7 +6,9 @@
 
 启动策略：`getAuthState()` 首次调用同步读盘并返回缓存身份，随后后台用 `/auth/me` 复核；只有明确的 401 才清空并删文件，连接被拒（Gateway 还没起来）保留缓存，下次启动再试。渲染进程在 `app.mount` 后调用 `auth.refreshAuthState()`，否则侧边栏要等用户打开「设置 → 个人」才显示已登录。
 
-验证：`electron/auth.test.cjs` 7/7（新配置未登录、跨启动恢复、401 清理、复核刷新资料、网关不可达保留、登录落盘 + 登出删除、无密钥环不落盘）、`vue-tsc` 0。**未做**：Logto refresh token（需应用配置 `offline_access` + refresh grant），因此 30 天后仍需重新登录；`/auth/profile` 在 OP token 过期后失败时，UI 只显示错误。
+验证：`electron/auth.test.cjs` 7/7（新配置未登录、跨启动恢复、401 清理、复核刷新资料、网关不可达保留、登录落盘 + 登出删除、无密钥环不落盘）、`vue-tsc` 0。
+
+续期在 Core 侧完成（`/auth/me` 会用 `offline_access` 换来的 refresh token 静默续期并滑动 30 天窗口），桌面端因此**不需要改动**：它只认 401，而 Core 只在 Logto 明确拒绝时才返回 401。
 
 ## 2026-10-23 发送按钮的“正在发送”只活到 Core 收下消息
 

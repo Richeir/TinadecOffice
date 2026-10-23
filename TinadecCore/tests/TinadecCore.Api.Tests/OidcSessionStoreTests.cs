@@ -35,20 +35,67 @@ public sealed class OidcSessionStoreTests
 
     private static readonly OidcIdentity Identity = new("sub-1", "Ada", "https://avatar", "ada@example.com");
 
+    private static OidcTokenSet Tokens(string accessToken = "op-token", string? refreshToken = "refresh-token") =>
+        new(accessToken, refreshToken, DateTimeOffset.UtcNow.AddHours(1));
+
     [Fact]
     public async Task A_session_survives_a_new_store_instance()
     {
         var secrets = new MemorySecretStore();
-        var token = await new OidcSessionStore(secrets).CreateSessionAsync(Identity, "op-token");
+        var token = await new OidcSessionStore(secrets).CreateSessionAsync(Identity, Tokens());
 
         var afterRestart = new OidcSessionStore(secrets);
         await afterRestart.EnsureLoadedAsync();
 
         var session = afterRestart.GetSession(token);
         Assert.NotNull(session);
-        Assert.Equal("Ada", session!.Value.Identity.Nickname);
-        Assert.Equal("ada@example.com", session.Value.Identity.Email);
-        Assert.Equal("op-token", session.Value.AccessToken);
+        Assert.Equal("Ada", session!.Identity.Nickname);
+        Assert.Equal("ada@example.com", session.Identity.Email);
+        Assert.Equal("op-token", session.AccessToken);
+    }
+
+    [Fact]
+    public async Task Refresh_tokens_survive_a_restart()
+    {
+        var secrets = new MemorySecretStore();
+        var token = await new OidcSessionStore(secrets).CreateSessionAsync(Identity, Tokens(refreshToken: "refresh-1"));
+
+        var afterRestart = new OidcSessionStore(secrets);
+        await afterRestart.EnsureLoadedAsync();
+
+        var session = afterRestart.GetSession(token);
+        Assert.NotNull(session);
+        Assert.Equal("refresh-1", session!.RefreshToken);
+        Assert.True(session.AccessTokenExpiresAt > DateTimeOffset.UtcNow.AddMinutes(30));
+    }
+
+    [Fact]
+    public async Task A_session_written_before_refresh_tokens_existed_still_loads()
+    {
+        var secrets = new MemorySecretStore();
+        // The 0.x shape: no RefreshToken, no AccessTokenExpiresAt. A stored login must keep working
+        // (it simply cannot renew itself until the user signs in once more).
+        secrets.Values["oauth.sessions"] = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                Token = "legacy",
+                Subject = "sub-1",
+                Nickname = "Ada",
+                AvatarUrl = (string?)null,
+                Email = (string?)null,
+                AccessToken = "op-token",
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
+            },
+        });
+
+        var store = new OidcSessionStore(secrets);
+        await store.EnsureLoadedAsync();
+
+        var session = store.GetSession("legacy");
+        Assert.NotNull(session);
+        Assert.Equal("op-token", session!.AccessToken);
+        Assert.Null(session.RefreshToken);
     }
 
     [Fact]
@@ -56,7 +103,7 @@ public sealed class OidcSessionStoreTests
     {
         var secrets = new MemorySecretStore();
         var store = new OidcSessionStore(secrets);
-        var token = await store.CreateSessionAsync(Identity, "op-token");
+        var token = await store.CreateSessionAsync(Identity, Tokens());
 
         Assert.True(await store.RevokeAsync(token));
 
@@ -70,7 +117,7 @@ public sealed class OidcSessionStoreTests
     {
         var secrets = new MemorySecretStore();
         var store = new OidcSessionStore(secrets);
-        var token = await store.CreateSessionAsync(Identity, "op-token");
+        var token = await store.CreateSessionAsync(Identity, Tokens());
 
         await store.UpdateIdentityAsync(token, Identity with { Nickname = "Ada Lovelace" });
 
@@ -112,7 +159,7 @@ public sealed class OidcSessionStoreTests
         var store = new OidcSessionStore(secrets);
         await store.EnsureLoadedAsync();
 
-        var token = await store.CreateSessionAsync(Identity, "op-token");
+        var token = await store.CreateSessionAsync(Identity, Tokens());
         Assert.Equal("Ada", store.GetIdentity(token)?.Nickname);
     }
 
@@ -121,7 +168,7 @@ public sealed class OidcSessionStoreTests
     {
         var store = new OidcSessionStore();
 
-        var token = await store.CreateSessionAsync(Identity, "op-token");
+        var token = await store.CreateSessionAsync(Identity, Tokens());
 
         Assert.Equal("Ada", store.GetIdentity(token)?.Nickname);
         await store.EnsureLoadedAsync();

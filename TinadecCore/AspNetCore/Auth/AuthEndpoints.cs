@@ -60,7 +60,7 @@ public static class AuthEndpoints
         if (nonce is null)
             return Results.Json(new { code = "invalid_state", message = "The login attempt has expired or was never started." }, statusCode: 400);
 
-        (OidcIdentity Identity, string AccessToken)? result = null;
+        (OidcIdentity Identity, OidcTokenSet Tokens)? result = null;
         try { result = await client.ExchangeAsync(code, nonce, ct).ConfigureAwait(false); }
         catch (Exception ex) { logger.LogError(ex, "OIDC authorization-code exchange failed: {Message}", ex.Message); result = null; }
 
@@ -71,7 +71,7 @@ public static class AuthEndpoints
         }
 
         await store.EnsureLoadedAsync().ConfigureAwait(false);
-        var session = await store.CreateSessionAsync(result.Value.Identity, result.Value.AccessToken).ConfigureAwait(false);
+        var session = await store.CreateSessionAsync(result.Value.Identity, result.Value.Tokens).ConfigureAwait(false);
         store.CompleteLogin(state, session);
         return Results.Content(SuccessPage, "text/html; charset=utf-8");
     }
@@ -84,20 +84,23 @@ public static class AuthEndpoints
             : Results.Json(new { status = "complete", session });
     }
 
-    private static async Task<IResult> MeAsync(HttpContext context, OidcSessionStore store)
+    private static async Task<IResult> MeAsync(
+        HttpContext context, OidcSessionStore store, OidcClient client, CancellationToken ct)
     {
         // A Desktop launch spawns a fresh Core: the session this request carries may only exist
-        // on disk right now, so the read has to wait for the one-time restore.
-        await store.EnsureLoadedAsync().ConfigureAwait(false);
-        var identity = store.GetIdentity(context.Request.Headers[SessionHeader].ToString());
-        if (identity is null)
+        // on disk right now. Restoring also renews an expired OP token, which is what keeps the
+        // refresh chain alive (Logto rotates it on every token request).
+        var session = await OidcSessionRefresh
+            .EnsureFreshAsync(store, client, context.Request.Headers[SessionHeader].ToString(), ct)
+            .ConfigureAwait(false);
+        if (session is null)
             return Results.Json(new { code = "unauthorized", message = "No active login session." }, statusCode: 401);
         return Results.Ok(new
         {
-            identity.Subject,
-            identity.Nickname,
-            AvatarUrl = identity.AvatarUrl,
-            identity.Email,
+            session.Identity.Subject,
+            session.Identity.Nickname,
+            AvatarUrl = session.Identity.AvatarUrl,
+            session.Identity.Email,
         });
     }
 
@@ -114,8 +117,11 @@ public static class AuthEndpoints
     private static async Task<IResult> UpdateProfileAsync(
         HttpContext context, OidcClient client, OidcSessionStore store, ILoggerFactory loggerFactory, CancellationToken ct)
     {
-        await store.EnsureLoadedAsync().ConfigureAwait(false);
-        var session = store.GetSession(context.Request.Headers[SessionHeader].ToString());
+        // A profile write is the one thing that must reach Logto, so it renews the OP token first:
+        // an hour after login the stored one is already dead.
+        var session = await OidcSessionRefresh
+            .EnsureFreshAsync(store, client, context.Request.Headers[SessionHeader].ToString(), ct)
+            .ConfigureAwait(false);
         if (session is null)
             return Results.Json(new { code = "unauthorized", message = "No active login session." }, statusCode: 401);
 
@@ -125,7 +131,7 @@ public static class AuthEndpoints
         if (update is null)
             return Results.Json(new { code = "invalid_body", message = "Expected { nickname?, avatar_url? }." }, statusCode: 400);
 
-        var current = session.Value.Identity;
+        var current = session.Identity;
         var nickname = string.IsNullOrWhiteSpace(update.Nickname) ? current.Nickname : update.Nickname.Trim();
         // Absent means "leave the avatar alone"; empty string means "clear it".
         var avatar = update.AvatarUrl is null ? null : (update.AvatarUrl.Trim() is { Length: > 0 } value ? value : "");
@@ -133,7 +139,7 @@ public static class AuthEndpoints
         OidcIdentity updated;
         try
         {
-            updated = await client.UpdateProfileAsync(session.Value.AccessToken, current.Subject, nickname, avatar, ct).ConfigureAwait(false);
+            updated = await client.UpdateProfileAsync(session.AccessToken, current.Subject, nickname, avatar, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

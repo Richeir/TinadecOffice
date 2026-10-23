@@ -7,6 +7,16 @@ namespace TinadecCore.AspNetCore.Auth;
 /// <summary>The identity Core hands back to the Desktop after a Logto login.</summary>
 public sealed record OidcIdentity(string Subject, string Nickname, string? AvatarUrl, string? Email);
 
+/// <summary>One token response: what Logto handed back, and when the access token stops working.</summary>
+public sealed record OidcTokenSet(string AccessToken, string? RefreshToken, DateTimeOffset ExpiresAt);
+
+/// <summary>A live session as the auth endpoints see it: who it is, and what can still be done with it.</summary>
+public sealed record OidcActiveSession(
+    OidcIdentity Identity,
+    string AccessToken,
+    string? RefreshToken,
+    DateTimeOffset AccessTokenExpiresAt);
+
 /// <summary>On-disk shape. Token, identity and OP token travel together inside one encrypted blob.</summary>
 internal sealed record OidcStoredSession(
     string Token,
@@ -15,7 +25,9 @@ internal sealed record OidcStoredSession(
     string? AvatarUrl,
     string? Email,
     string AccessToken,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string? RefreshToken = null,
+    DateTimeOffset AccessTokenExpiresAt = default);
 
 /// <summary>
 /// Housekeeping for the OIDC login flow: pending logins (state → nonce) and active
@@ -46,8 +58,14 @@ public sealed class OidcSessionStore
     /// <paramref name="AccessToken"/> is Logto's opaque OP token, kept so the host can
     /// write the user's own profile through the Account API (<c>PATCH /api/my-account</c>).
     /// It never leaves the main process, and it is persisted only inside the encrypted store.
+    /// <paramref name="RefreshToken"/> is what lets the identity session outlive the OP token.
     /// </summary>
-    private sealed record ActiveSession(OidcIdentity Identity, string AccessToken, DateTimeOffset ExpiresAt);
+    private sealed record ActiveSession(
+        OidcIdentity Identity,
+        string AccessToken,
+        string? RefreshToken,
+        DateTimeOffset AccessTokenExpiresAt,
+        DateTimeOffset ExpiresAt);
 
     private readonly ISecretStore? _secrets;
     private readonly object _sync = new();
@@ -111,6 +129,8 @@ public sealed class OidcSessionStore
                         row.AvatarUrl,
                         row.Email),
                     row.AccessToken ?? string.Empty,
+                    string.IsNullOrWhiteSpace(row.RefreshToken) ? null : row.RefreshToken,
+                    row.AccessTokenExpiresAt,
                     row.ExpiresAt);
             }
         }
@@ -134,10 +154,18 @@ public sealed class OidcSessionStore
         }
     }
 
-    public async Task<string> CreateSessionAsync(OidcIdentity identity, string accessToken)
+    public async Task<string> CreateSessionAsync(OidcIdentity identity, OidcTokenSet tokens)
     {
         var token = RandomToken();
-        lock (_sync) _sessions[token] = new ActiveSession(identity, accessToken ?? string.Empty, DateTimeOffset.UtcNow + SessionLifetime);
+        lock (_sync)
+        {
+            _sessions[token] = new ActiveSession(
+                identity,
+                tokens.AccessToken,
+                tokens.RefreshToken,
+                tokens.ExpiresAt,
+                DateTimeOffset.UtcNow + SessionLifetime);
+        }
         await PersistAsync().ConfigureAwait(false);
         return token;
     }
@@ -167,8 +195,8 @@ public sealed class OidcSessionStore
 
     public OidcIdentity? GetIdentity(string token) => GetSession(token)?.Identity;
 
-    /// <summary>The session's identity plus the Logto token needed to write it back.</summary>
-    public (OidcIdentity Identity, string AccessToken)? GetSession(string token)
+    /// <summary>The session's identity plus the Logto tokens needed to write it back.</summary>
+    public OidcActiveSession? GetSession(string token)
     {
         if (string.IsNullOrWhiteSpace(token)) return null;
         lock (_sync)
@@ -179,8 +207,33 @@ public sealed class OidcSessionStore
                 _sessions.Remove(token);
                 return null;
             }
-            return (session.Identity, session.AccessToken);
+            return new OidcActiveSession(session.Identity, session.AccessToken, session.RefreshToken, session.AccessTokenExpiresAt);
         }
+    }
+
+    /// <summary>
+    /// Replaces the tokens after a successful refresh and slides the identity session forward:
+    /// the 30-day window is "30 days without opening the app", not "30 days since the first
+    /// login", otherwise a usable refresh token would still expire the user out.
+    /// </summary>
+    public async Task UpdateTokensAsync(string token, OidcTokenSet tokens)
+    {
+        var changed = false;
+        lock (_sync)
+        {
+            if (_sessions.TryGetValue(token, out var session))
+            {
+                _sessions[token] = session with
+                {
+                    AccessToken = tokens.AccessToken,
+                    RefreshToken = tokens.RefreshToken ?? session.RefreshToken,
+                    AccessTokenExpiresAt = tokens.ExpiresAt,
+                    ExpiresAt = DateTimeOffset.UtcNow + SessionLifetime,
+                };
+                changed = true;
+            }
+        }
+        if (changed) await PersistAsync().ConfigureAwait(false);
     }
 
     /// <summary>Replaces the stored identity after a profile write, keeping the session alive.</summary>
@@ -230,7 +283,9 @@ public sealed class OidcSessionStore
                         pair.Value.Identity.AvatarUrl,
                         pair.Value.Identity.Email,
                         pair.Value.AccessToken,
-                        pair.Value.ExpiresAt))
+                        pair.Value.ExpiresAt,
+                        pair.Value.RefreshToken,
+                        pair.Value.AccessTokenExpiresAt))
                     .ToArray();
             }
             await _secrets.PutAsync(SecretReference, JsonSerializer.Serialize(snapshot)).ConfigureAwait(false);

@@ -9,6 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -269,7 +270,14 @@ export async function runPackagedPosixSmoke(options = {}) {
 	const smokeRoot = resolve(
 		options.smokeRoot ??
 			process.env.TINADEC_SMOKE_ROOT ??
-			join(desktopDir, ".runtime-cache", `packaged smoke ${process.pid}`),
+			// Chromium's process-singleton socket (the requestSingleInstanceLock Electron
+			// takes on startup) must fit the 108-byte Unix socket limit. Under the repo the
+			// TMPDIR fallback path `…/apps/desktop/.runtime-cache/packaged smoke <pid>/temp/
+			// scoped_dirXXXXXX/SingletonSocket` crossed that line on GitHub's deep runner
+			// checkout and the app died with "Socket path too long" before Core could start
+			// — the depth sits right at the boundary, so it flipped on PID/random-suffix
+			// length. The system temp dir keeps every socket path well under it.
+			join(tmpdir(), `tinadec-packaged-smoke-${process.pid}`),
 	);
 	const label = options.label ?? cli.label ?? `${target.key} packaged`;
 	const timeoutMs = Number(options.timeoutMs ?? process.env.TINADEC_SMOKE_TIMEOUT_MS ?? 180_000);

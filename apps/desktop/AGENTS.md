@@ -1,5 +1,19 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-23 发送按钮的“正在发送”只活到 Core 收下消息
+
+用户报告“点发送后按钮一直转到有回答为止，感觉整个都很慢”。后端不是瓶颈（Core/Gateway 健康探针 2–3 ms），三个前端原因叠在一起：
+
+1. **`busy` 被当成了“有 run 在跑”**。`ChatCard` 传的是 `c.busy.value || c.working.value`，而 `working` 在整个 run 期间为真，于是发送按钮的 spinner 与 `chat.sending` 读屏播报持续数分钟。`busy` 的契约现在只有一件事：**这次发送还没被 Core 收下**。run 的进展由对话流表达，不是输入框。
+2. **`busy` 活着的时候还在做与发送无关的事**。`run()` 现在把 `accept` 交给动作：`handleSend` 在 `createInteraction` 返回并结算附件后立刻 `accepted()`，之后的标题补丁与转录重读都不再占着这把闩。`finally` 里仍会 `accept()`，所以失败路径照旧释放；`accept` 幂等。
+3. **新会话的发送路径重复读了六次接口**。`handleSend` 尾部原来的 `await loadMessagesAndApprovals()` 会先 `abort` 掉 `[selectedSessionId]` watcher 刚发起的那一轮，再原样重发一次。现在只在**会话已存在**时补这一读：新会话的 watcher 已经在读同一批端点。
+
+**停止按钮不能继续挂在 `busy` 上**：`ComposerBar` 的停止按钮改为只看 `canStop`（平面模式下与发送按钮互斥），否则发送一结束按钮就消失，而 run 还在跑。
+
+**不要把 `scheduleSessionRefresh()` 接到 `handleSend` 上**（试过并回退了）：它是事件/replay 的合并器，接到发送路径后每次发送都会留一个 250 ms 的真实定时器。测试里若某个发送用例提前结束，句柄会活到下一个用 `vi.useFakeTimers()` 的用例——假时钟一装，真定时器永不触发，`refreshTimer` 从此非空，该文件后续所有事件刷新都被 `if (refreshTimer) return` 吞掉（实测 `HomeController.test.ts` 的 replay 用例因此报 `toHaveBeenCalledTimes(1)` 得 0）。发送要读就直读，别借用事件合并器。
+
+验证：`HomeController` 47/47、`ComposerBar`+`ChatPanel` 合跑 128/128、TinadecUI 176/176、`vue-tsc` 0；新增用例“ends the send latch when Core accepts, without waiting for the transcript read”在把 `busy.value = false` 从 `accept()` 摘掉后变红（`expected true to be false`）。**未做**：转轮身份（`pending-<uuid>` → 服务端 id 会重挂最新一轮）与 250 ms 整表替换导致的整篇重渲染（RC4/RC5），以及真实 Electron 的观感复验。报告 `.tinadec_dev/reports/2026-10-23-send-latch-latency.zh-CN.md`。
+
 ## 2026-10-23 模式目录只能读会话自己的存储作用域
 
 输入框的模式列表曾经读两份：`user` 作用域（`scopedApi(baseApi, () => 'user')`）和当前作用域，且**user 优先**；`#60`（`8c875aaa`）引入。两个作用域各自 bootstrap 一套模式，同一个模式在两边的 id 不同，于是“优先 user”等于把项目作用域解析不了的 `mode_version_id` 写进会话——发送时 Core 按会话所在作用域冻结 roster，找不到就 409 `mode_unavailable`，而用户看到的提示是“重新选择模式”，可菜单里全是同一批坏 id，重新选择永远修不好。
@@ -250,8 +264,8 @@ The deb keeps Electron's existing dependency list and explicitly requires `libca
 scope-enabled Core 全部业务 API 要求私有宿主头，health/challenge 两个公开探针除外。main 先验证 Core/Gateway nonce/角色绑定 HMAC，不能按公开指纹复用伪服务；验证后仅为登记主/panel/debug 主frame在精确入口访问固定local API签发，导航/iframe/未知窗口/远程均不继承，重验失败撤权。敏感IPC同样复核主frame。dev共享启动key，仅Electron保留、Vite剥除，main收到后移除env；默认不开放CDP。Electron43.3.0隔离夹具已验证HTTP/SSE、HMAC、主/辅助路由、iframe拒绝、导航/端点撤权及redirect剥离，不替代完整产品UI或安装验收。
 
 **Last Updated:** 2026-10-23
-**Last Updated By:** 模式目录只读会话所在存储作用域（修 `mode_unavailable` 死循环）；前一日是对话流密度（常规设置里一个分段控件，极简/简洁/适中/详细/丰富，默认丰富）与 Mermaid 主渲染器改为 Pele。
-**Last Verified Commit:** 0ca6e0fb + 本轮工作树（模式目录作用域修复）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
+**Last Updated By:** 发送按钮的“正在发送”只活到 Core 收下消息（`busy` = 发送在途，不再并入 `working`；`run()` 交出 `accept`；新会话不再重复读转录）；同日还有模式目录只读会话所在存储作用域（修 `mode_unavailable` 死循环）。
+**Last Verified Commit:** 0ca6e0fb + 本轮工作树（发送闩语义 + 模式目录作用域修复）；历史证据见 .tinadec_dev/reports/2026-10-11-settings-recovery.zh-CN.md 与 2026-10-11-home-git-widget.zh-CN.md。
 **Branch:** main
 
 ### 2026-10-08 工具设置

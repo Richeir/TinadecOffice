@@ -266,14 +266,23 @@ function newId(): string {
   return (globalThis.crypto as Crypto | undefined)?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-async function run(label: string, action: () => Promise<void>) {
+/**
+ * Runs one user action under the shared busy latch. `accept` closes the latch before the
+ * action ends: a send is finished — as far as the composer is concerned — the moment Core
+ * takes the message, and the bookkeeping after that point (title, transcript re-read) must
+ * not keep the send button spinning. A run can stay open for minutes, so tying the latch to
+ * the whole action made "still sending" and "working on the answer" look identical.
+ */
+async function run(label: string, action: (accept: () => void) => Promise<void>) {
   busy.value = true
+  let accepted = false
+  const accept = () => { if (accepted) return; accepted = true; busy.value = false }
   try {
-    await action()
+    await action(accept)
   } catch (err) {
     notify.error(err, { title: t('home.actionFailed', { action: label }) })
   } finally {
-    busy.value = false
+    accept()
   }
 }
 
@@ -860,7 +869,7 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
   const requestedModel = selected.meeting_model_override
   const requestedSpace = requestedView === 'space' ? selected.space_options : null
   let requestedSettingsRevision = requestedRecord?.settings_revision
-  await run(t('home.action.sendMessage'), async () => {
+  await run(t('home.action.sendMessage'), async (accepted) => {
     let sessionId = requestedSession
     if (!sessionId) {
       // Created in the mode being sent: ChatPanel resets the picker to the new session's own
@@ -915,6 +924,10 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
         ...(outgoing.attachmentIds.length > 0 ? { attachment_ids: outgoing.attachmentIds } : {}),
       })
       settleSentAttachments(outgoing)
+      // Core holds the message now: the send is over. Everything past this point is local
+      // bookkeeping (run stream attach, title, transcript re-read) whose duration belongs to
+      // the run, not to the composer's "sending" state.
+      accepted()
       // An admitted interaction names its own turn; a queued one names the run it waits behind
       // and no turn — that run's status is not "queued", so it is left alone.
       const waitingBehind = resp.status === 'queued' && !resp.turn_id && Boolean(resp.interaction_id)
@@ -966,7 +979,12 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
       }
       pendingSessionId.value = null
     }
-    await loadMessagesAndApprovals()
+    // A brand new session is already being read by the selection watcher: the id assignment
+    // above fires that watcher, which reads these same six endpoints. Re-issuing the read here
+    // would abort it and start a second identical round trip. An existing transcript has no
+    // such read in flight, so it needs this one — and it must not hold the send latch, which
+    // `accepted()` has already released.
+    if (requestedSession) await loadMessagesAndApprovals()
   })
 }
 

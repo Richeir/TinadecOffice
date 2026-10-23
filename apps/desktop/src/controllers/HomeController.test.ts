@@ -484,6 +484,53 @@ describe('HomeController.sendMessage attachment hand-off', () => {
 })
 
 /**
+ * The composer's "sending" state has to end the moment Core takes the message. It used to
+ * cover the title patch and a full transcript re-read inside the same latch, so the send
+ * button kept spinning for as long as the run took — the user could not tell "delivered" from
+ * "still waiting", and the only feedback arrived minutes later as the answer.
+ */
+describe('HomeController send acknowledgement', () => {
+  it('ends the send latch when Core accepts, without waiting for the transcript read', async () => {
+    homeController.projects.value = []
+    homeController.setSelectedProject(null)
+    await flushPromises()
+    // Every transcript read is held open: the selection switch issues one, and the send issues
+    // another. Neither may keep the composer's "sending" state alive.
+    const passthrough = h.listMessages.getMockImplementation() ?? (async () => [])
+    const held: Array<() => void> = []
+    h.listMessages.mockImplementation(() => new Promise<never[]>((done) => { held.push(() => done([])) }))
+    const releaseAll = () => { while (held.length > 0) held.shift()?.() }
+    homeController.selectedSessionId.value = 'session-accepted'
+    await flushPromises()
+    expect(held).toHaveLength(1)
+    homeController.updateDraft('跑一下测试')
+    await flushPromises()
+    h.createInteraction.mockClear()
+
+    try {
+      const sending = homeController.sendMessage({ dispatch_mode: 'parallel' })
+      await flushPromises()
+
+      // Core has the message; both transcript reads are still in flight.
+      expect(h.createInteraction).toHaveBeenCalledTimes(1)
+      expect(held.length).toBeGreaterThanOrEqual(2)
+      expect(homeController.busy.value).toBe(false)
+
+      releaseAll()
+      await sending
+      await flushPromises()
+      // The transcript does get read after the send — just not as part of the send's latch.
+      expect(h.listMessages.mock.calls.length).toBeGreaterThanOrEqual(2)
+    } finally {
+      h.listMessages.mockImplementation(passthrough)
+      releaseAll()
+      homeController.selectedSessionId.value = null
+      await flushPromises()
+    }
+  })
+})
+
+/**
  * Queued delivery waits behind the unfinished run (Core todo D1). Core answers with the run the
  * message waits behind and no turn of its own; the card is Core's queue entry, so acting on it
  * takes it out of that queue first — sending it again without that would post the words twice.

@@ -47,6 +47,7 @@ const props = defineProps<{
   /** Hero (start page) variant: centered box, welcome-send dispatch, no queued cards. */
   hero?: boolean
   spatial?: boolean
+  /** The send itself is still in flight (Core has not answered yet). Never "a run is working". */
   busy: boolean
   modelValue: string
   permission: PermissionLevel
@@ -846,7 +847,7 @@ function confirmSteer(id: string, interrupt = false) {
 
         <div ref="sendTriggerRef" class="composer-send-wrapper">
           <UiButton
-            v-if="busy && canStop && (!spatial || !canSend)"
+            v-if="canStop && (!spatial || !canSend)"
             variant="ghost"
             size="icon"
             class="composer-stop-button"
@@ -858,7 +859,7 @@ function confirmSteer(id: string, interrupt = false) {
             <Square :size="14" />
           </UiButton>
           <UiButton
-            v-if="!spatial || !(busy && canStop && !canSend)"
+            v-if="!spatial || !(canStop && !canSend)"
             variant="ghost"
             size="icon"
             class="welcome-dialog-send"

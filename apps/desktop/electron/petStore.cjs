@@ -10,13 +10,27 @@ const MAX_PET_JSON_BYTES = 512 * 1024;
 const MAX_SPRITESHEET_BYTES = 10 * 1024 * 1024;
 const MAX_PREVIEW_CACHE_BYTES = 48 * 1024 * 1024;
 const DEFAULT_PET_SCALE = 220 / 192;
+/**
+ * The pet every user gets without downloading anything. It is bundled in `public/pets/<slug>/`
+ * (copied to `dist/pets/` by the build) and seeded into userData on first run, so the whole
+ * downstream pipeline — list, window, avatar — keeps working with a single directory assumption.
+ */
+const BUILTIN_PET_SLUG = 'tinadec';
+const BUILTIN_METADATA_FILE = 'pet.json';
+const SPRITE_FILE_PATTERN = /^spritesheet\.(png|webp)$/i;
 let manifestCache = null;
 let previewCacheBytes = 0;
 const previewCache = new Map();
 const previewRequests = new Map();
+let petsDirOverride = null;
 
 function petsRoot() {
-  return path.join(app.getPath('userData'), 'pets');
+  return petsDirOverride || path.join(app.getPath('userData'), 'pets');
+}
+
+/** Test seam: point the store at a temporary directory instead of Electron's userData. */
+function __setPetsDir(dir) {
+  petsDirOverride = dir || null;
 }
 
 function registryPath() {
@@ -200,6 +214,8 @@ function publicRecord(record) {
     installedAt: record.installedAt,
     scale: typeof record.scale === 'number' ? record.scale : DEFAULT_PET_SCALE,
     window: record.window,
+    builtin: Boolean(record.builtin),
+    source: record.source || (record.builtin ? 'builtin' : 'petdex'),
   };
 }
 
@@ -291,10 +307,118 @@ async function removePet(slugInput) {
   const registry = await readRegistry();
   const index = registry.pets.findIndex((pet) => pet.slug === slug);
   if (index < 0) return false;
+  // The built-in pet is the fallback avatar and the offline baseline; deleting it would leave
+  // every agent without a face. Settings offers "restore" instead of "delete" for it.
+  if (registry.pets[index].builtin) throw new Error('The built-in pet cannot be removed');
   await fs.rm(petDirectory(slug), { recursive: true, force: true });
   registry.pets.splice(index, 1);
   await writeRegistry(registry);
   return true;
+}
+
+/**
+ * Where the bundled pets live. An explicit override is exclusive (tests and packaging rely on
+ * that); otherwise the built output wins over the source tree.
+ */
+function builtinSourceCandidates() {
+  if (process.env.TINADEC_BUILTIN_PETS_DIR) return [process.env.TINADEC_BUILTIN_PETS_DIR];
+  return [
+    path.join(__dirname, '..', 'dist', 'pets'),
+    path.join(__dirname, '..', 'public', 'pets'),
+  ];
+}
+
+async function findBuiltinSource() {
+  for (const candidate of builtinSourceCandidates()) {
+    try {
+      const stats = await fs.stat(candidate);
+      if (stats.isDirectory()) return candidate;
+    } catch {
+      // Candidate absent: try the next one.
+    }
+  }
+  return null;
+}
+
+async function spriteFileFor(petJson, directory) {
+  const declared = typeof petJson?.spritesheetPath === 'string' ? path.basename(petJson.spritesheetPath) : '';
+  if (declared && SPRITE_FILE_PATTERN.test(declared)) return declared;
+  const entries = await fs.readdir(directory);
+  return entries.find((name) => SPRITE_FILE_PATTERN.test(name)) || '';
+}
+
+/**
+ * Copies bundled pets into userData once. Idempotent: a slug that is already registered — as
+ * built-in or as a user download — is left untouched, so re-running after an upgrade only adds
+ * pets that are genuinely new and never overwrites a user's own copy.
+ */
+async function ensureBuiltinPets() {
+  const source = await findBuiltinSource();
+  if (!source) return [];
+  const registry = await readRegistry();
+  const registered = new Set(registry.pets.map((pet) => pet.slug));
+  const entries = await fs.readdir(source, { withFileTypes: true });
+  const seeded = [];
+  let changed = false;
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const directory = path.join(source, entry.name);
+    let petJson;
+    try {
+      petJson = JSON.parse(await fs.readFile(path.join(directory, BUILTIN_METADATA_FILE), 'utf8'));
+    } catch {
+      continue;
+    }
+    let slug;
+    try {
+      slug = safeSlug(petJson?.id || entry.name);
+    } catch {
+      continue;
+    }
+    if (registered.has(slug)) continue;
+
+    const spriteFile = await spriteFileFor(petJson, directory).catch(() => '');
+    if (!spriteFile) continue;
+
+    const destination = petDirectory(slug);
+    const temporary = `${destination}.seeding`;
+    await fs.rm(temporary, { recursive: true, force: true });
+    try {
+      await fs.mkdir(temporary, { recursive: true });
+      await fs.copyFile(path.join(directory, spriteFile), path.join(temporary, spriteFile));
+      await fs.writeFile(
+        path.join(temporary, BUILTIN_METADATA_FILE),
+        `${JSON.stringify({ ...petJson, id: slug, spritesheetPath: spriteFile }, null, 2)}\n`,
+        'utf8',
+      );
+      const record = {
+        slug,
+        displayName: asString(petJson.displayName) || asString(petJson.name) || slug,
+        kind: asString(petJson.kind) || 'pet',
+        submittedBy: asString(petJson.submittedBy) || 'Tinadec',
+        enabled: false,
+        builtin: true,
+        source: 'builtin',
+        spriteFile,
+        installedAt: Date.now(),
+        scale: DEFAULT_PET_SCALE,
+      };
+      await fs.writeFile(path.join(temporary, 'metadata.json'), `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+      await fs.rm(destination, { recursive: true, force: true });
+      await fs.rename(temporary, destination);
+      registry.pets.push(record);
+      registered.add(slug);
+      changed = true;
+      seeded.push(publicRecord(record));
+    } catch (error) {
+      await fs.rm(temporary, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  if (changed) await writeRegistry(registry);
+  return seeded;
 }
 
 async function openPetFolder(slugInput) {
@@ -347,6 +471,8 @@ async function getPetForWindow(slugInput) {
 }
 
 module.exports = {
+  BUILTIN_PET_SLUG,
+  ensureBuiltinPets,
   fetchCatalog,
   fetchPetPreview,
   listDownloaded,
@@ -357,4 +483,5 @@ module.exports = {
   getPetPreferences,
   savePetPreferences,
   getPetForWindow,
+  __setPetsDir,
 };

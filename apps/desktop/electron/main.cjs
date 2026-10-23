@@ -95,6 +95,7 @@ const {
 } = require('./petWindow.cjs');
 const {
   downloadPet,
+  ensureBuiltinPets,
   fetchCatalog,
   fetchPetPreview,
   listDownloaded,
@@ -699,6 +700,14 @@ app.whenReady().then(async () => {
   // already models "not verified yet" as connecting (useConnection + HostAvailabilityBanner)
   // and refuses business work until trustedHostReady, so painting the shell first is safe.
   const hostStartup = hostConnection.start();
+
+  // Seed bundled pets before the first window so the first paint already has a fallback face.
+  // A broken or missing bundle must not block startup: the UI degrades to a glyph.
+  try {
+    await ensureBuiltinPets();
+  } catch (error) {
+    console.error('[tinadec] built-in pet seeding failed:', error?.message ?? error);
+  }
 
   registerAppBundleProtocol({ protocol, distDir: DIST_DIR });
   registerLocalMediaProtocol({ protocol });

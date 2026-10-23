@@ -13,9 +13,10 @@
  * `t` returns the key (same mock as AppearanceSection.test.ts), so assertions
  * read as `settings.personalRole_pm` rather than a translated string.
  */
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PersonalSection from './PersonalSection.vue'
+import { auth } from '@/lib/auth'
 import { WORK_ROLES, setBio, setCustomRole, setNickname, setRoles, userProfile } from '@/lib/userProfile'
 
 // `locale` is not decoration: the share card formats numbers and the date with
@@ -29,6 +30,8 @@ vi.mock('@/composables/useNotifications', () => ({
     notify: { success: vi.fn(), error: vi.fn() },
     status: { error: vi.fn() },
     dismissByKey: vi.fn(),
+    // The account-write confirmation the save path raises once the nickname changes.
+    confirm: vi.fn(async () => true),
   }),
 }))
 
@@ -176,10 +179,35 @@ describe('PersonalSection custom role', () => {
 })
 
 describe('PersonalSection bio', () => {
-  it('renders the bio under the nickname', () => {
+  /**
+   * Since Logto owns the identity (1eb448b4), the hero nickname and the profile
+   * dialog only exist for a signed-in account: signed out, the hero reads
+   * "not logged in" and the edit entry goes to login instead. These cases
+   * therefore sign in through the desktop bridge the way the main process would.
+   */
+  function signIn(nickname = 'wwiinnddy'): void {
+    Object.defineProperty(window, 'tinadec', {
+      configurable: true,
+      value: {
+        getAuthState: vi.fn(async () => ({ loggedIn: true, nickname, avatar_url: '' })),
+        // Logto echoes what was written; the local profile adopts the reply.
+        updateProfile: vi.fn(async (patch: { nickname?: string }) => ({ nickname: patch.nickname ?? nickname, avatar_url: '' })),
+        openLogin: vi.fn(async () => null),
+      },
+    })
+  }
+
+  afterEach(() => {
+    delete (window as unknown as { tinadec?: unknown }).tinadec
+    auth.loggedIn.value = false
+  })
+
+  it('renders the bio under the nickname', async () => {
     setNickname('wwiinnddy')
     setBio('try anything')
+    signIn()
     const wrapper = mountSection()
+    await flushPromises()
 
     const bio = wrapper.find('.personal-hero-bio')
     expect(bio.text()).toBe('try anything')
@@ -196,8 +224,11 @@ describe('PersonalSection bio', () => {
   })
 
   it('writes nickname and bio from the profile dialog', async () => {
+    signIn()
     const wrapper = mountSection()
-    await wrapper.findAll('.personal-hero-actions button')[0]!.trigger('click')
+    await flushPromises()
+    // The edit entry, not the login/logout toggle beside it.
+    await wrapper.findAll('.personal-hero-actions button')[1]!.trigger('click')
 
     const nickname = wrapper.find('#personal-nickname')
     const bio = wrapper.find('#personal-bio')
@@ -210,6 +241,7 @@ describe('PersonalSection bio', () => {
     await bio.setValue('try anything')
     const actions = wrapper.findAll('.gateway-config-actions button')
     await actions[actions.length - 1]!.trigger('click')
+    await flushPromises()
 
     expect(userProfile.nickname).toBe('wwiinnddy')
     expect(userProfile.bio).toBe('try anything')

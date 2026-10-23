@@ -7,6 +7,7 @@ import sidebarSource from './AppSidebar.vue?raw'
 import type { ProjectDto, SessionDto } from '../api'
 import { useDebugStudio } from '@/composables/useDebugStudio'
 import { freeWorkspaceKey, workspaceListStorageKey } from '@/composables/useWorkspaceList'
+import { auth } from '@/lib/auth'
 import { setNickname } from '@/lib/userProfile'
 
 vi.mock('vue-i18n', async (importOriginal) => ({ ...(await importOriginal<typeof import('vue-i18n')>()),
@@ -585,8 +586,11 @@ describe('AppSidebar lifecycle management', () => {
 })
 
 describe('AppSidebar footer identity', () => {
-  beforeEach(() => { setNickname('') })
-  afterEach(() => { setNickname('') })
+  // Since Logto owns the identity, the footer names a person only for a signed-in
+  // account; signed out it reads "not logged in" and the portrait opens login.
+  // The auth module keeps a module-level ref, so every case resets it.
+  beforeEach(() => { setNickname(''); auth.loggedIn.value = true })
+  afterEach(() => { setNickname(''); auth.loggedIn.value = false })
 
   it('keeps the profile portrait left of the shell actions and opens the personal module', async () => {
     const wrapper = factory()
@@ -669,6 +673,17 @@ describe('AppSidebar footer identity', () => {
     const wrapper = factory()
     await settle(wrapper)
     expect(wrapper.find('.sidebar-profile-name').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('names the signed-out state instead of a person and opens login from the portrait', async () => {
+    auth.loggedIn.value = false
+    const wrapper = factory()
+    await settle(wrapper)
+    expect(wrapper.get('.sidebar-profile-name').text()).toBe('settings.personalNotLoggedIn')
+    // Signed out the portrait is the login entry, not the personal module.
+    await wrapper.get('.sidebar-profile').trigger('click')
+    expect(wrapper.emitted('go-personal')).toBeUndefined()
     wrapper.unmount()
   })
 

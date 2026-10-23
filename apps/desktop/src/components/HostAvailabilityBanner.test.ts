@@ -66,8 +66,8 @@ describe('HostAvailabilityBanner', () => {
     expect(w.get('button').attributes('disabled')).toBeUndefined()
   })
   it.each([
-    ['zh-CN', '自动重启未完成，请关闭后重新打开。', '重启桌面应用'],
-    ['en', 'Automatic restart did not finish; close the app and open it again.', 'Restart desktop app'],
+    ['zh-CN', '自动重启未完成。请关闭桌面应用，再重新打开。', '重启桌面应用'],
+    ['en', 'Automatic restart did not complete. Close the desktop app and open it again.', 'Restart desktop app'],
   ])('shows local restart failure guidance in %s and keeps the action available', async (locale, guidance, action) => {
     shared.status.value = { state: 'restart_required', managed: true }
     const restartApp = vi.fn().mockRejectedValueOnce(new Error('No handler registered')).mockResolvedValueOnce(undefined)
@@ -83,8 +83,8 @@ describe('HostAvailabilityBanner', () => {
     expect(retryConnection).not.toHaveBeenCalled()
   })
   it.each([
-    ['zh-CN', '不支持自动重启，请关闭后重新打开。'],
-    ['en', 'This host cannot restart automatically; close the app and open it again.'],
+    ['zh-CN', '当前桌面宿主不支持自动重启。请关闭桌面应用，再重新打开。'],
+    ['en', 'This desktop host cannot restart automatically. Close the desktop app and open it again.'],
   ])('provides only manual restart guidance in %s when the host has no restart method', (locale, guidance) => {
     shared.status.value = { state: 'restart_required', managed: true }
     Object.defineProperty(window, 'tinadec', { configurable: true, value: {} })
@@ -94,8 +94,8 @@ describe('HostAvailabilityBanner', () => {
     expect(retryConnection).not.toHaveBeenCalled()
   })
   it.each([
-    ['zh-CN', '请结束开发进程，再从仓库根目录运行 npm run dev'],
-    ['en', 'Stop the development processes, then run npm run dev from the repository root'],
+    ['zh-CN', '请关闭当前开发进程，然后从仓库根目录重新运行 npm run dev'],
+    ['en', 'Close the current development processes, then run npm run dev again from the repository root'],
   ])('requires restarting the whole development stack in %s instead of relaunching the old main process', (locale, guidance) => {
     vi.stubEnv('DEV', true)
     shared.status.value = { state: 'restart_required', managed: true }

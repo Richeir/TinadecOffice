@@ -1,4 +1,6 @@
-const { shell } = require('electron');
+const { app, safeStorage, shell } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
 
 /**
  * Logto OIDC login through the user's system browser. The main window never
@@ -12,24 +14,141 @@ const { shell } = require('electron');
  *
  * The session token stays in this main process and is never handed to the
  * renderer — the renderer only receives the resolved identity over IPC.
+ *
+ * The session is written to `userData/auth/session.bin` encrypted with Electron's
+ * `safeStorage` (DPAPI on Windows, Keychain on macOS, libsecret on Linux). Without that file a
+ * launch showed "not signed in" every time, because `sessionToken` only ever lived in this
+ * process and the Core child that owns the session was restarted by the same launch.
  */
 
 let sessionToken = null;
 let identity = null;
 let activeLogin = null;
+let restored = false;
+let validation = null;
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const RETRY_DELAY_MS = 1500;
+const VALIDATION_ATTEMPTS = 6;
 
 function gatewayUrl() {
   return process.env.TINADEC_RESOLVED_GATEWAY_URL ?? process.env.TINADEC_GATEWAY_URL ?? 'http://127.0.0.1:48730';
+}
+
+function sessionFile() {
+  return path.join(app.getPath('userData'), 'auth', 'session.bin');
 }
 
 function currentIdentity() {
   return identity ? { sub: identity.sub, nickname: identity.nickname, avatar_url: identity.avatar_url, email: identity.email } : null;
 }
 
+function normalizeIdentity(me) {
+  return {
+    sub: String(me?.subject ?? me?.sub ?? ''),
+    nickname: String(me?.nickname ?? ''),
+    avatar_url: typeof me?.avatar_url === 'string' ? me.avatar_url : null,
+    email: typeof me?.email === 'string' ? me.email : null,
+  };
+}
+
+/**
+ * Decrypts the stored session. Returns null for every failure mode — missing file, no OS keyring,
+ * a rotated key, corrupt bytes — because each of them means the same thing to the caller: log in.
+ */
+function readStoredSession() {
+  let raw;
+  try {
+    raw = fs.readFileSync(sessionFile());
+  } catch {
+    return null;
+  }
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    const parsed = JSON.parse(safeStorage.decryptString(raw));
+    if (typeof parsed?.token !== 'string' || !parsed.token) return null;
+    if (!parsed?.identity || typeof parsed.identity.sub !== 'string') return null;
+    return { token: parsed.token, identity: normalizeIdentity(parsed.identity) };
+  } catch {
+    // A key that can no longer decrypt (OS profile change) is not an error to report: the user
+    // signs in once more and the file is rewritten.
+    return null;
+  }
+}
+
+function persistSession() {
+  if (!sessionToken || !identity) return;
+  // Never write a plaintext session: on a host without a keyring the user signs in next launch,
+  // which is annoying but not a credential leak on disk.
+  if (!safeStorage.isEncryptionAvailable()) return;
+  try {
+    const payload = JSON.stringify({ v: 1, token: sessionToken, identity: currentIdentity() });
+    const encrypted = safeStorage.encryptString(payload);
+    const file = sessionFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const temporary = `${file}.tmp`;
+    fs.writeFileSync(temporary, encrypted, { mode: 0o600 });
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    console.warn('[auth] could not persist the session:', error.message);
+  }
+}
+
+function clearStoredSession() {
+  try {
+    fs.rmSync(sessionFile(), { force: true });
+  } catch (error) {
+    console.warn('[auth] could not clear the stored session:', error.message);
+  }
+}
+
+/**
+ * Re-checks a restored session against Core. Only an explicit 401 clears it: at launch the
+ * gateway is often not listening yet, and treating a connection refusal as "logged out" was
+ * how a valid session would disappear for good.
+ */
+async function revalidateRestoredSession() {
+  const token = sessionToken;
+  if (!token) return;
+  for (let attempt = 0; attempt < VALIDATION_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(`${gatewayUrl()}/auth/me`, { headers: { 'x-tinadec-session': token } });
+      if (sessionToken !== token) return;
+      if (res.ok) {
+        const me = await res.json();
+        identity = normalizeIdentity(me);
+        persistSession();
+        return;
+      }
+      if (res.status === 401) {
+        sessionToken = null;
+        identity = null;
+        clearStoredSession();
+        return;
+      }
+      // Any other status is the host's problem, not proof the session died: keep the cached
+      // identity and let the next launch try again.
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+}
+
+/** Loads the stored session once, then validates it in the background. */
+function restoreSession() {
+  if (restored) return;
+  restored = true;
+  const stored = readStoredSession();
+  if (!stored) return;
+  sessionToken = stored.token;
+  identity = stored.identity;
+  validation = revalidateRestoredSession();
+}
+
 function getAuthState() {
+  restoreSession();
   const me = currentIdentity();
   return me ? { loggedIn: true, ...me } : { loggedIn: false };
 }
@@ -61,16 +180,14 @@ function openLogin() {
       const meRes = await fetch(`${gatewayUrl()}/auth/me`, { headers: { 'x-tinadec-session': token } });
       if (!meRes.ok) throw new Error(`/auth/me -> ${meRes.status}`);
       const me = await meRes.json();
-      identity = {
-        sub: String(me.subject ?? ''),
-        nickname: String(me.nickname ?? ''),
-        avatar_url: typeof me.avatar_url === 'string' ? me.avatar_url : null,
-        email: typeof me.email === 'string' ? me.email : null,
-      };
+      identity = normalizeIdentity(me);
+      persistSession();
       return currentIdentity();
     } catch (error) {
       console.error('[auth] login failed:', error.message);
       sessionToken = null;
+      identity = null;
+      clearStoredSession();
       return null;
     } finally {
       activeLogin = null;
@@ -128,19 +245,17 @@ async function updateProfile({ nickname, avatarUrl } = {}) {
     throw new Error(`/auth/profile -> ${res.status}: ${detail}`);
   }
   const me = await res.json();
-  identity = {
-    sub: String(me.subject ?? ''),
-    nickname: String(me.nickname ?? ''),
-    avatar_url: typeof me.avatar_url === 'string' ? me.avatar_url : null,
-    email: typeof me.email === 'string' ? me.email : null,
-  };
+  identity = normalizeIdentity(me);
+  persistSession();
   return currentIdentity();
 }
 
 async function logout() {
+  restoreSession();
   const token = sessionToken;
   sessionToken = null;
   identity = null;
+  clearStoredSession();
   if (token) {
     try {
       await fetch(`${gatewayUrl()}/auth/logout`, { method: 'POST', headers: { 'x-tinadec-session': token } });
@@ -151,9 +266,24 @@ async function logout() {
   return { loggedIn: false };
 }
 
+/** Tests: reset the module-level session, and wait for the startup validation. */
+function __resetForTests() {
+  sessionToken = null;
+  identity = null;
+  activeLogin = null;
+  restored = false;
+  validation = null;
+}
+
+function __validationForTests() {
+  return validation;
+}
+
 module.exports = {
   openLogin,
   logout,
   getAuthState,
   updateProfile,
+  __resetForTests,
+  __validationForTests,
 };

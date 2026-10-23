@@ -11,6 +11,7 @@ import { useDynamicPalette } from './composables/useDynamicPalette'
 import { setErrorActionLabels, setNotificationFallbackText } from './composables/useNotifications'
 import { installPreviewShimIfNeeded } from './lib/previewShim'
 import { homeController } from './controllers/HomeController'
+import { auth } from './lib/auth'
 import { installRendererErrorFallback } from './lib/rendererErrorFallback'
 import './styles.css'
 import { installCodeFont } from '@/lib/codeFont'
@@ -95,6 +96,9 @@ useDynamicPalette()
 const report = installRendererErrorFallback(app)
 try {
   app.mount('#app')
+  // The main process restores the saved login during this first call; without it the sidebar
+  // showed "not signed in" until the user opened Settings → Personal.
+  void auth.refreshAuthState()
 } catch (err) {
   // A throw at mount means nothing rendered — this is fatal, show the fallback.
   report(err, { source: 'app.mount' }, true)

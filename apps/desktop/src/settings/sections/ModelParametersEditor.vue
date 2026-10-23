@@ -69,8 +69,7 @@ async function save() {
       <p class="quiet" id="model-parameters-help">{{ t('settings.modelParametersHint') }}</p>
       <div class="model-parameters-fields">
         <div v-if="supportsReasoning" class="settings-field model-reasoning-field">
-          <label for="model-reasoning">{{ t('settings.modelReasoningEffort') }}</label>
-          <ReasoningEffortSlider id="model-reasoning" v-model="form.effort" />
+          <ReasoningEffortSlider id="model-reasoning" v-model="form.effort" :label="t('settings.modelReasoningEffort')" />
         </div>
         <div v-for="field in numberFields" :key="field.key" class="settings-field" :data-invalid="invalidFields.has(field.key) || undefined" :data-disabled="field.disabled || undefined">
           <label :for="`model-parameter-${field.key}`">{{ t(field.label) }}</label>

@@ -564,8 +564,9 @@ defineExpose({ keydown, activate, page, selectPage })
       </div>
       <!-- The slider's own keys (arrows, Home/End) stay with it instead of moving the row highlight. -->
       <div v-if="showReasoning" class="command-panel-reasoning" data-testid="command-panel-reasoning" @keydown="stopSliderKeys">
-        <label for="command-panel-reasoning-slider" :title="t('composer.reasoning.hint', { model: defaultModel?.reasoningTarget.value?.model ?? defaultModel?.current.value?.model ?? '' })">{{ t('composer.reasoning.label') }}</label>
-        <ReasoningEffortSlider id="command-panel-reasoning-slider" v-model="reasoningDraft" @commit="defaultModel?.setReasoningEffort($event)" />
+        <ReasoningEffortSlider id="command-panel-reasoning-slider" v-model="reasoningDraft" :label="t('composer.reasoning.label')"
+          :hint="t('composer.reasoning.hint', { model: defaultModel?.reasoningTarget.value?.model ?? defaultModel?.current.value?.model ?? '' })"
+          @commit="defaultModel?.setReasoningEffort($event)" />
       </div>
       </div>
       <footer class="command-panel-footer" :class="{ 'has-error': settingsError }" :role="settingsError ? 'alert' : 'status'">{{ settingsError || (settingsSaving ? t('commandPanel.saving') : t(page === 'model' || page === 'model-agents' || page === 'model-agent' ? 'commandPanel.modelFooter' : 'commandPanel.nextTask')) }}</footer>
@@ -584,8 +585,7 @@ defineExpose({ keydown, activate, page, selectPage })
 .command-panel-close { margin-left: auto; }
 .command-panel-search { display: flex; gap: 8px; align-items: center; color: var(--text-muted); margin: 4px 12px 8px; padding: 8px; border-radius: 8px; background: var(--surface-input); flex-shrink: 0; font-weight: 400; }
 .command-panel-search input { min-width: 0; width: 100%; height: auto; min-height: 0; padding: 0; border-radius: 0; line-height: 1.5; color: var(--text-primary); background: transparent; border: 0; box-shadow: none; outline: none; font: inherit; }
-.command-panel-reasoning { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; margin: 0 12px 8px; padding: 10px 10px 4px; border-radius: 9px; background: var(--surface-input); }
-.command-panel-reasoning label { color: var(--text-secondary); font-weight: 500; }
+.command-panel-reasoning { flex-shrink: 0; margin: 0 12px 8px; padding: 10px 12px 12px; border-radius: 10px; background: var(--surface-input); }
 .command-panel-list { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: 0 6px 6px; }
 .command-panel-row { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; min-height: 36px; background: transparent; border: 0; border-radius: 9px; color: inherit; font: inherit; cursor: pointer; }
 .command-panel-row.is-highlighted:not(:disabled), .command-panel-row:hover:not(:disabled) { background: var(--surface-hover); }

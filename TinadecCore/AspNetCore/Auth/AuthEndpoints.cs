@@ -70,7 +70,8 @@ public static class AuthEndpoints
             return Results.Json(new { code = "oidc_exchange_failed", message = "Logto rejected the authorization code or the id_token failed validation." }, statusCode: 401);
         }
 
-        var session = store.CreateSession(result.Value.Identity, result.Value.AccessToken);
+        await store.EnsureLoadedAsync().ConfigureAwait(false);
+        var session = await store.CreateSessionAsync(result.Value.Identity, result.Value.AccessToken).ConfigureAwait(false);
         store.CompleteLogin(state, session);
         return Results.Content(SuccessPage, "text/html; charset=utf-8");
     }
@@ -83,8 +84,11 @@ public static class AuthEndpoints
             : Results.Json(new { status = "complete", session });
     }
 
-    private static IResult MeAsync(HttpContext context, OidcSessionStore store)
+    private static async Task<IResult> MeAsync(HttpContext context, OidcSessionStore store)
     {
+        // A Desktop launch spawns a fresh Core: the session this request carries may only exist
+        // on disk right now, so the read has to wait for the one-time restore.
+        await store.EnsureLoadedAsync().ConfigureAwait(false);
         var identity = store.GetIdentity(context.Request.Headers[SessionHeader].ToString());
         if (identity is null)
             return Results.Json(new { code = "unauthorized", message = "No active login session." }, statusCode: 401);
@@ -97,9 +101,10 @@ public static class AuthEndpoints
         });
     }
 
-    private static IResult LogoutAsync(HttpContext context, OidcSessionStore store)
+    private static async Task<IResult> LogoutAsync(HttpContext context, OidcSessionStore store)
     {
-        store.Revoke(context.Request.Headers[SessionHeader].ToString());
+        await store.EnsureLoadedAsync().ConfigureAwait(false);
+        await store.RevokeAsync(context.Request.Headers[SessionHeader].ToString()).ConfigureAwait(false);
         return Results.NoContent();
     }
 
@@ -109,6 +114,7 @@ public static class AuthEndpoints
     private static async Task<IResult> UpdateProfileAsync(
         HttpContext context, OidcClient client, OidcSessionStore store, ILoggerFactory loggerFactory, CancellationToken ct)
     {
+        await store.EnsureLoadedAsync().ConfigureAwait(false);
         var session = store.GetSession(context.Request.Headers[SessionHeader].ToString());
         if (session is null)
             return Results.Json(new { code = "unauthorized", message = "No active login session." }, statusCode: 401);
@@ -136,7 +142,7 @@ public static class AuthEndpoints
         }
 
         var sessionToken = context.Request.Headers[SessionHeader].ToString();
-        store.UpdateIdentity(sessionToken, updated);
+        await store.UpdateIdentityAsync(sessionToken, updated).ConfigureAwait(false);
         return Results.Ok(new
         {
             updated.Subject,

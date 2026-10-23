@@ -499,8 +499,12 @@ ipcMain.handle('tinadec:pet-remove', async (_event, slug) => {
 // --- Agent avatars (pet per spawned agent) ---
 ipcMain.handle('tinadec:pet-avatars', async () => listAvatarPets());
 ipcMain.handle('tinadec:pet-avatar-state', async () => agentAvatars.loadState());
-ipcMain.handle('tinadec:pet-avatar-preference', async (_event, agentId, preference) =>
-  agentAvatars.setPreference(agentId, preference));
+ipcMain.handle('tinadec:pet-avatar-preference', async (_event, agentId, preference) => {
+  const saved = await agentAvatars.setPreference(agentId, preference);
+  // Other windows (a detached conversation, a spatial board) must show the new pinned face.
+  broadcastAvatarPetsChanged();
+  return saved;
+});
 ipcMain.handle('tinadec:pet-avatar-instance', async (_event, input) => agentAvatars.saveInstance(input));
 ipcMain.handle('tinadec:pet-avatar-release', async (_event, instanceKeys) =>
   agentAvatars.releaseInstances(instanceKeys));

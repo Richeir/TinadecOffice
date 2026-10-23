@@ -20,7 +20,11 @@
 | 自由会话源码目录 | `~/TinadecProjects` | 可配置源码目录，不属于产品存储或缓存 |
 | 受管 worktree | `<scope>/worktrees` | 独立工具授权与工作树生命周期 |
 
-Electron 在 ready 前设定 userData/sessionData/logs。Pet registry 与资源通过 userData 自然归属 state/desktop/pets，内存预览缓存保留原容量约束。TOML 使用 smol-toml 完整解析；启动配置错误显示文件后停止启动；Gateway URL 保存保留其他字段，重序列化不保留注释。
+Electron 在 ready 前设定 userData/sessionData/logs。Pet registry 与资源通过 userData 自然归属 state/desktop/pets，内存预览缓存保留原容量约束。
+
+**宠物形象（2026-10-23）**：内置宠物随包放在 `apps/desktop/public/pets/<slug>/`（`pet.json` + `spritesheet.{png,webp}`，8 列网格、帧 192×208），启动时由 `petStore.ensureBuiltinPets()` 幂等拷进 `pets/` 并登记 `builtin`；不可删除，也不覆盖同名的用户下载。素材尚未放入时播种是空操作，界面回退到占位图标。
+
+智能体的形象归属在**实例**而不是定义：`pets/agent-avatars.json` 的 `preferences` 按 agent slug 记录 `random` 或 `fixed(petSlug)`，`instances` 按 `runId:taskId` 记录本次派发选中的宠物（LRU 1000，淘汰最老）。挑选规则在渲染层 `src/lib/avatarAssignment.ts`，主进程只负责落库。精灵图经 `tinadec-pet://<slug>` 协议按 slug 提供，头像不搬运 base64。删除宠物会清空指向它的实例记录，并把固定该宠物的偏好重置为 random。TOML 使用 smol-toml 完整解析；启动配置错误显示文件后停止启动；Gateway URL 保存保留其他字段，重序列化不保留注释。
 
 打包服务接收 resolved `TINADEC_HOME` 和用户 storage identity，不强制覆盖 TOML backend 或数据库路径。stdout/stderr 进入主进程日志 sink；预算递归统计同用户 logs，淘汰 rotated 文件，保留当前 `.log`。Core runtime 日志参与同一预算，文件消失竞态正常处理。
 

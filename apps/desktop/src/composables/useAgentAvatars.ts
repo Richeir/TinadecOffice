@@ -47,6 +47,25 @@ async function refreshPool(): Promise<void> {
   revision.value += 1
 }
 
+/**
+ * Re-reads what another window changed (a newly downloaded pet, a pinned face). Local instance
+ * decisions win over the disk copy: this window may have just assigned one whose write has not
+ * landed yet.
+ */
+async function reloadFromDisk(): Promise<void> {
+  const api = petsApi()
+  if (api?.loadAvatarState) {
+    try {
+      const state = await api.loadAvatarState()
+      preferences.value = state?.preferences ?? {}
+      instances.value = { ...(state?.instances ?? {}), ...instances.value }
+    } catch {
+      // Keep what we already show; the next event tries again.
+    }
+  }
+  await refreshPool()
+}
+
 async function ensureLoaded(): Promise<void> {
   if (ready.value) return
   if (!loadPromise) {
@@ -62,7 +81,7 @@ async function ensureLoaded(): Promise<void> {
       if (!subscribed && api.onAvatarsChanged) {
         subscribed = true
         api.onAvatarsChanged(() => {
-          void refreshPool()
+          void reloadFromDisk()
         })
       }
       ready.value = true

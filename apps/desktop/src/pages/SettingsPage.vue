@@ -366,14 +366,23 @@ const {
 } = useAgentAvatars()
 const agentAvatarBusy = ref(false)
 
-function agentAvatarSlug(agentId: string | null | undefined): string {
+/**
+ * Preferences are keyed by slug, never by id: a sub-agent in the feed only carries `agentSlug`,
+ * and settings and the conversation must agree on which agent owns a face.
+ */
+function agentAvatarKey(agent: AgentViewDto | null | undefined): string {
+  if (!agent) return ''
+  return agent.slug || agentDirectory.value.find((item) => item.id === agent.id)?.slug || agent.id
+}
+
+function agentAvatarSlug(agent: AgentViewDto | null | undefined): string {
   // Touch the revision so a pool refresh (download/delete) re-renders every face.
   void agentAvatarRevision.value
-  return agentPreviewSlug(agentId)
+  return agentPreviewSlug(agentAvatarKey(agent))
 }
 
 const configuringAvatarPreference = computed(() => (
-  configuringAgent.value ? agentAvatarPreferenceFor(configuringAgent.value.id) : { mode: 'random' as const }
+  configuringAgent.value ? agentAvatarPreferenceFor(agentAvatarKey(configuringAgent.value)) : { mode: 'random' as const }
 ))
 
 async function chooseAgentAvatar(mode: 'random' | 'fixed', petSlug?: string) {
@@ -381,7 +390,7 @@ async function chooseAgentAvatar(mode: 'random' | 'fixed', petSlug?: string) {
   if (!agent) return
   agentAvatarBusy.value = true
   try {
-    await setAgentAvatarPreference(agent.id, mode === 'fixed' && petSlug
+    await setAgentAvatarPreference(agentAvatarKey(agent), mode === 'fixed' && petSlug
       ? { mode: 'fixed', petSlug }
       : { mode: 'random' })
   } catch (error) {
@@ -3221,7 +3230,7 @@ import '../settings/settings.css'
               >
                 <button class="agent-card-select" @click="openAgentConfig(agent)">
                   <div class="agent-card-icon pet">
-                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent.id)" :size="30" :alt="agent.name" />
+                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent)" :size="30" :alt="agent.name" />
                   </div>
                   <div class="agent-card-main">
                     <strong>{{ agent.name || agentTypeLabel(agent.agent_type) }}</strong>
@@ -3251,7 +3260,7 @@ import '../settings/settings.css'
               >
                 <button class="agent-card-select" @click="openAgentConfig(agent)">
                   <div class="agent-card-icon pet execution">
-                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent.id)" :size="30" :alt="agent.name" />
+                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent)" :size="30" :alt="agent.name" />
                   </div>
                   <div class="agent-card-main">
                     <strong>{{ agent.name || agentTypeLabel(agent.agent_type) }}</strong>
@@ -3303,7 +3312,7 @@ import '../settings/settings.css'
             <div v-else-if="configuringAgent" class="agent-detail-panel">
               <div class="agent-detail-head">
                 <div class="agent-card-icon pet" :class="{ execution: configuringAgent.layer === 'execution' }">
-                  <AgentPetAvatar :pet-slug="agentAvatarSlug(configuringAgent.id)" :size="44" :alt="configuringAgent.name" />
+                  <AgentPetAvatar :pet-slug="agentAvatarSlug(configuringAgent)" :size="44" :alt="configuringAgent.name" />
                 </div>
                 <div>
                   <h3>{{ configuringAgent.name }}</h3>

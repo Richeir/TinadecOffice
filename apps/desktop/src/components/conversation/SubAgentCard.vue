@@ -54,6 +54,12 @@ const latest = computed(() => (working.value ? describeEntry(props.node.latest, 
 const elapsed = useElapsed(toRef(() => agent.value.startedAt), toRef(() => (working.value ? null : agent.value.endedAt)))
 /** The task line and the time belong to every shape that says more than the handle. */
 const detailed = computed(() => rules.value.subAgent !== 'name')
+/**
+ * The face is a left rail, not an icon in the title row. A full-body sprite at 18px was an
+ * unreadable blob, so it grows with the card's density: a minimal row keeps a small mark, a
+ * detailed row gives the character the height of the name, task and current-step lines.
+ */
+const faceSize = computed(() => (detailed.value ? 34 : 22))
 const duration = computed(() => (detailed.value && elapsed.value !== null ? formatDuration(elapsed.value, t) : null))
 /** A finished agent's own words, cut to the one line a row can hold. */
 const result = computed(() => {
@@ -102,37 +108,41 @@ function openInPanel() {
 
 <template>
   <article class="conversation-card conversation-sub-agent" :data-status="node.status" data-testid="sub-agent-card">
-    <header class="conversation-sub-agent-head">
-      <!-- A row that cannot open anything in place is a line of text, not a button that does nothing. -->
-      <component
-        :is="expandable ? 'button' : 'div'"
-        :type="expandable ? 'button' : undefined"
-        class="conversation-sub-agent-toggle"
-        :aria-expanded="expandable ? open : undefined"
-        :aria-controls="expandable ? detailId : undefined"
-        data-testid="sub-agent-toggle"
-        @click="toggle"
-      >
-        <span class="conversation-sub-agent-face" :class="{ spinning: showSpinner }">
-          <AgentPetAvatar
-            :instance-key="instanceKeyOf(runId, agent.taskId)"
-            :agent-id="agent.agentSlug"
-            :size="18"
-            :alt="name"
-          />
-        </span>
-        <span class="conversation-sub-agent-name" :class="{ shimmer: working }">{{ name }}</span>
-        <span v-if="duration" class="conversation-sub-agent-time">{{ duration }}</span>
-        <span class="conversation-sub-agent-badge" :data-status="node.status">{{ t(`conversation.agents.status.${node.status}`) }}</span>
-        <ChevronRight v-if="expandable" class="conversation-fold-chevron" :class="{ 'is-open': open }" aria-hidden="true" />
-      </component>
-      <button v-if="!inPanel" type="button" class="conversation-icon-button" :aria-label="t('conversation.agents.openInPanel')" :title="t('conversation.agents.openInPanel')" data-testid="sub-agent-open-panel" @click="openInPanel">
-        <Maximize2 :size="12" aria-hidden="true" />
-      </button>
-    </header>
-    <p v-if="detailed && agent.title" class="conversation-sub-agent-task"><span class="conversation-sub-agent-connector" aria-hidden="true">└</span>{{ agent.title }}</p>
-    <p v-if="latest" class="conversation-sub-agent-latest shimmer" data-testid="sub-agent-latest">{{ latest }}</p>
-    <p v-else-if="result" class="conversation-sub-agent-result" data-testid="sub-agent-result">{{ result }}</p>
+    <div class="conversation-sub-agent-row">
+      <span class="conversation-sub-agent-face" :class="{ spinning: showSpinner }">
+        <AgentPetAvatar
+          :instance-key="instanceKeyOf(runId, agent.taskId)"
+          :agent-id="agent.agentSlug"
+          :size="faceSize"
+          :alt="name"
+        />
+      </span>
+      <div class="conversation-sub-agent-body">
+        <header class="conversation-sub-agent-head">
+          <!-- A row that cannot open anything in place is a line of text, not a button that does nothing. -->
+          <component
+            :is="expandable ? 'button' : 'div'"
+            :type="expandable ? 'button' : undefined"
+            class="conversation-sub-agent-toggle"
+            :aria-expanded="expandable ? open : undefined"
+            :aria-controls="expandable ? detailId : undefined"
+            data-testid="sub-agent-toggle"
+            @click="toggle"
+          >
+            <span class="conversation-sub-agent-name" :class="{ shimmer: working }">{{ name }}</span>
+            <span v-if="duration" class="conversation-sub-agent-time">{{ duration }}</span>
+            <span class="conversation-sub-agent-badge" :data-status="node.status">{{ t(`conversation.agents.status.${node.status}`) }}</span>
+            <ChevronRight v-if="expandable" class="conversation-fold-chevron" :class="{ 'is-open': open }" aria-hidden="true" />
+          </component>
+          <button v-if="!inPanel" type="button" class="conversation-icon-button" :aria-label="t('conversation.agents.openInPanel')" :title="t('conversation.agents.openInPanel')" data-testid="sub-agent-open-panel" @click="openInPanel">
+            <Maximize2 :size="12" aria-hidden="true" />
+          </button>
+        </header>
+        <p v-if="detailed && agent.title" class="conversation-sub-agent-task"><span class="conversation-sub-agent-connector" aria-hidden="true">└</span>{{ agent.title }}</p>
+        <p v-if="latest" class="conversation-sub-agent-latest shimmer" data-testid="sub-agent-latest">{{ latest }}</p>
+        <p v-else-if="result" class="conversation-sub-agent-result" data-testid="sub-agent-result">{{ result }}</p>
+      </div>
+    </div>
     <div v-if="open" :id="detailId" class="conversation-sub-agent-detail" :class="{ 'is-capped': !inPanel }" data-testid="sub-agent-detail">
       <TurnActivity v-if="node.nodes.length" :nodes="node.nodes" :run-id="runId" :workspace-root="workspaceRoot" />
       <div v-if="agent.summary" class="message-content assistant conversation-sub-agent-summary" data-testid="sub-agent-summary">
@@ -146,9 +156,12 @@ function openInPanel() {
 .conversation-sub-agent { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; }
 .conversation-sub-agent[data-status='completed'] { opacity: 0.85; }
 .conversation-sub-agent[data-status='cancelled'] { opacity: 0.6; }
+/* The face is a left rail so the character can be tall enough to read, not a 18px title icon. */
+.conversation-sub-agent-row { display: flex; align-items: flex-start; gap: 8px; }
+.conversation-sub-agent-body { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
 .conversation-sub-agent-head { display: flex; align-items: center; gap: 4px; }
-/* The face replaces the generic bot glyph; while the agent works it breathes instead of spinning. */
-.conversation-sub-agent-face { display: inline-flex; flex: none; align-items: center; }
+/* While the agent works it breathes instead of spinning. */
+.conversation-sub-agent-face { display: inline-flex; flex: none; padding-top: 1px; }
 .conversation-sub-agent-face.spinning { animation: sub-agent-face-pulse 1.4s ease-in-out infinite; }
 @keyframes sub-agent-face-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 @media (prefers-reduced-motion: reduce) { .conversation-sub-agent-face.spinning { animation: none; } }
@@ -163,10 +176,10 @@ div.conversation-sub-agent-toggle { cursor: default; }
 .conversation-sub-agent-badge[data-status='failed'], .conversation-sub-agent-badge[data-status='blocked'] { color: var(--accent-danger); }
 .conversation-sub-agent-badge[data-status='completed'] { color: var(--accent-success); }
 .conversation-fold-chevron.is-open { transform: rotate(90deg); }
-.conversation-sub-agent-task { display: flex; gap: 6px; margin: 0; padding-left: 7px; font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.conversation-sub-agent-task { display: flex; gap: 6px; margin: 0; font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .conversation-sub-agent-connector { color: var(--text-muted); }
-.conversation-sub-agent-latest { margin: 0; padding-left: 26px; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-sub-agent-result { margin: 0; padding-left: 26px; font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-sub-agent-latest { margin: 0; padding-left: 14px; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-sub-agent-result { margin: 0; padding-left: 14px; font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conversation-sub-agent-detail { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border-card); }
 /*
  * In the flow, a sub-agent's own steps stop at 20rem and scroll inside. Without the cap one

@@ -57,6 +57,15 @@ interface ThemeChangedData {
   accentColor: string;
 }
 
+interface LoginIdentity {
+  sub: string;
+  nickname: string;
+  avatar_url: string | null;
+  email: string | null;
+}
+
+type AuthState = { loggedIn: false } | ({ loggedIn: true } & LoginIdentity);
+
 type StatusBroadcast =
   | { op: 'raise'; key: string; level: 'info' | 'success' | 'warning' | 'error'; title?: string; message: string; details?: string; source?: string; createdAt: number }
   | { op: 'clear'; key: string };
@@ -195,6 +204,14 @@ declare global {
       maximizeWindow: () => void;
       closeWindow: () => void;
       openDebugStudio: () => Promise<boolean>;
+      /** Open the Logto login flow in the system browser; resolves with the synced identity or null. */
+      openLogin: () => Promise<LoginIdentity | null>;
+      /** Revoke the current login session. */
+      logout: () => Promise<{ loggedIn: false }>;
+      /** Current login session, if any. */
+      getAuthState: () => Promise<AuthState>;
+      /** Write nickname/avatar to the Logto account; rejects when the session is gone. */
+      updateProfile: (patch: { nickname?: string; avatarUrl?: string }) => Promise<LoginIdentity>;
       /** Local-only transparent pet windows. */
       pets: PetWindowApi;
       /** Terminal management API */

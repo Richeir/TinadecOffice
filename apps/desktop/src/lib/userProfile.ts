@@ -29,7 +29,7 @@ export interface UserProfile {
   nickname: string
   /** Short free-text bio shown under the nickname. */
   bio: string
-  /** Data URL of the chosen image, or null when no avatar is set. */
+  /** Data URL of the chosen image, or a remote (Logto) avatar URL, or null. */
   avatar: string | null
   /** Selected work roles (multi-select); order matches WORK_ROLES. */
   roles: WorkRole[]
@@ -58,6 +58,11 @@ function isWorkRole(value: unknown): value is WorkRole {
   return typeof value === 'string' && (WORK_ROLES as readonly string[]).includes(value)
 }
 
+/** A persisted avatar is either a locally-uploaded data URL or a remote http(s) URL (Logto picture). */
+function isAvatarValue(value: string): boolean {
+  return value.startsWith('data:image/') || value.startsWith('http://') || value.startsWith('https://')
+}
+
 const EMPTY_PROFILE: UserProfile = { nickname: '', bio: '', avatar: null, roles: [], customRole: '' }
 
 function loadPersisted(): UserProfile {
@@ -68,7 +73,7 @@ function loadPersisted(): UserProfile {
     return {
       nickname: typeof parsed.nickname === 'string' ? parsed.nickname : '',
       bio: typeof parsed.bio === 'string' ? parsed.bio : '',
-      avatar: typeof parsed.avatar === 'string' && parsed.avatar.startsWith('data:image/') ? parsed.avatar : null,
+      avatar: typeof parsed.avatar === 'string' && isAvatarValue(parsed.avatar) ? parsed.avatar : null,
       roles: Array.isArray(parsed.roles) ? parsed.roles.filter(isWorkRole) : [],
       customRole: typeof parsed.customRole === 'string' ? parsed.customRole : '',
     }

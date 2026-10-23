@@ -5239,6 +5239,12 @@ box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 72%, transparent)
   margin: 0;
 }
 
+/* The avatar link field fills the row beside the preview. */
+.personal-avatar-url-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .personal-role-field {
   display: grid;
   gap: 8px;

@@ -36,7 +36,7 @@ const PUBLIC_PATHS = new Set([
 ]);
 
 export function isPublicPath(path: string): boolean {
-  return PUBLIC_PATHS.has(path) || path.startsWith('/docs/');
+  return PUBLIC_PATHS.has(path) || path.startsWith('/docs/') || path.startsWith('/auth/');
 }
 
 /**

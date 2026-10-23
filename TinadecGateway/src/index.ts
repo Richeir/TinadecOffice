@@ -97,7 +97,7 @@ function forwardHeaders(request: Request): Record<string, string> {
   if (ifMatch) existing['if-match'] = ifMatch;
   const idempotencyKey = request.headers.get('idempotency-key') ?? request.headers.get('Idempotency-Key');
   if (idempotencyKey) existing['idempotency-key'] = idempotencyKey;
-  for (const name of ['x-tenant-id', 'x-user-id', 'x-tinadec-storage-id', 'x-tinadec-host-control']) {
+  for (const name of ['x-tenant-id', 'x-user-id', 'x-tinadec-storage-id', 'x-tinadec-host-control', 'x-tinadec-session']) {
     const value = request.headers.get(name);
     if (value) existing[name] = value;
   }
@@ -178,7 +178,7 @@ const app = new Elysia()
       const requestHeaders = request.headers.get('access-control-request-headers');
       if (requestMethod) corsHeaders['access-control-allow-methods'] = requestMethod;
       if (requestHeaders) corsHeaders['access-control-allow-headers'] = requestHeaders;
-      else corsHeaders['access-control-allow-headers'] = 'accept, content-type, authorization, x-api-key, x-tenant-id, x-user-id, x-request-id, x-tinadec-principal, x-tinadec-storage-id, idempotency-key, if-match, last-event-id';
+      else corsHeaders['access-control-allow-headers'] = 'accept, content-type, authorization, x-api-key, x-tenant-id, x-user-id, x-request-id, x-tinadec-principal, x-tinadec-storage-id, x-tinadec-session, idempotency-key, if-match, last-event-id';
       corsHeaders['access-control-max-age'] = '86400';
       set.headers = { ...set.headers, ...corsHeaders };
       set.status = 204;
@@ -227,6 +227,40 @@ const app = new Elysia()
       400: { description: 'Invalid nonce.' }, 503: { description: 'No trusted startup credential is configured.' },
     },
   } })
+  // Logto OIDC login passthrough — Core owns the flow; the Gateway only relays
+  // redirects and the X-Tinadec-Session header the Electron main process injects.
+  .get('/auth/begin', ({ request }) =>
+    proxyRaw('/auth/begin', { headers: forwardHeaders(request) }), {
+      detail: { summary: 'Begin Logto login', tags: ['Health'], security: [] },
+    })
+  .get('/auth/login', ({ request }) =>
+    proxyRaw('/auth/login' + new URL(request.url).search, { headers: forwardHeaders(request) }), {
+      detail: { summary: 'Start Logto login', tags: ['Health'], security: [] },
+    })
+  .get('/auth/callback', ({ request }) =>
+    proxyRaw('/auth/callback' + new URL(request.url).search, { headers: forwardHeaders(request) }), {
+      detail: { summary: 'OIDC callback', tags: ['Health'], security: [] },
+    })
+  .get('/auth/check', ({ request }) =>
+    proxyRaw('/auth/check' + new URL(request.url).search, { headers: forwardHeaders(request) }), {
+      detail: { summary: 'Poll login result', tags: ['Health'], security: [] },
+    })
+  .get('/auth/me', ({ request }) =>
+    proxyRaw('/auth/me', { headers: forwardHeaders(request) }), {
+      detail: { summary: 'Current identity', tags: ['Health'], security: [] },
+    })
+  .post('/auth/logout', ({ request }) =>
+    proxyRaw('/auth/logout', { method: 'POST', headers: forwardHeaders(request) }), {
+      detail: { summary: 'Revoke a login session', tags: ['Health'], security: [] },
+    })
+  .patch('/auth/profile', async ({ request }) =>
+    proxyRaw('/auth/profile', {
+      method: 'PATCH',
+      body: await request.text(),
+      headers: forwardHeaders(request),
+    }), {
+      detail: { summary: 'Update the Logto account profile', tags: ['Health'], security: [] },
+    })
   .get('/api/v1/health', async ({ set, request }) => {
     const headers = forwardHeaders(request);
     const result = await proxyJson('/api/v1/health', { headers });

@@ -1,3 +1,4 @@
+using TinadecCore.AspNetCore.Auth;
 using TinadecCore.AspNetCore.Endpoints;
 
 namespace TinadecCore.AspNetCore;
@@ -43,6 +44,7 @@ public static class TinadecCoreEndpointRouteBuilderExtensions
         endpoints.MapApprovalRuleEndpoints();
         endpoints.MapProjectOverviewEndpoints();
         endpoints.MapStubEndpoints();
+        endpoints.MapAuthEndpoints();
         return endpoints;
     }
 }

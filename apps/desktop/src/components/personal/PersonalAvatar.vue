@@ -17,9 +17,12 @@ const props = withDefaults(defineProps<{
   size?: number
   /** Empty by default: the portrait is decorative inside an already-labelled control. */
   alt?: string
+  /** Signed out there is no avatar to show: keep the frame, drop its contents. */
+  empty?: boolean
 }>(), {
   size: 28,
   alt: '',
+  empty: false,
 })
 
 const initial = computed(() => userProfile.nickname.trim().slice(0, 1).toUpperCase())
@@ -33,9 +36,11 @@ const frameStyle = computed(() => ({
 
 <template>
   <span class="personal-avatar rounded-full" :style="frameStyle">
-    <img v-if="userProfile.avatar" :src="userProfile.avatar" :alt="alt" />
-    <span v-else-if="initial" class="personal-avatar-initial">{{ initial }}</span>
-    <UserRound v-else :size="Math.round(size * 0.47)" class="personal-avatar-glyph" />
+    <template v-if="!empty">
+      <img v-if="userProfile.avatar" :src="userProfile.avatar" :alt="alt" />
+      <span v-else-if="initial" class="personal-avatar-initial">{{ initial }}</span>
+      <UserRound v-else :size="Math.round(size * 0.47)" class="personal-avatar-glyph" />
+    </template>
   </span>
 </template>
 

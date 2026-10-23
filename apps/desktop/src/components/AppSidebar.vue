@@ -43,6 +43,7 @@ import { useDebugStudio } from '@/composables/useDebugStudio'
 import { errorCodeMessage } from '@/lib/apiError'
 import { userProfile } from '@/lib/userProfile'
 import { profileNameFits } from '@/lib/profileNameFit'
+import { auth } from '@/lib/auth'
 
 const { t, te, locale } = useI18n()
 const { confirm } = useNotifications()
@@ -577,6 +578,8 @@ const PROFILE_BUTTON_PADDING = 3
 const PROFILE_NAME_GAP = 6
 
 const nickname = computed(() => userProfile.nickname.trim())
+/** Signed out, the footer names the state instead of a person. */
+const displayName = computed(() => (auth.loggedIn.value ? nickname.value : t('settings.personalNotLoggedIn')))
 const footerEl = ref<HTMLElement | null>(null)
 const footerActionsEl = ref<HTMLElement | null>(null)
 const profileNameProbe = ref<HTMLElement | null>(null)
@@ -614,12 +617,26 @@ function measureProfileName() {
 // portrait belongs to, and drops the redundant repetition once the name is up.
 // The accessible name always carries the nickname — the visible text is
 // aria-hidden, so a screen reader must not lose the identity when the row narrows.
-const profileTitle = computed(() => (nickname.value && !profileNameShown.value
-  ? `${nickname.value} · ${t('sidebar.personal')}`
-  : t('sidebar.personal')))
-const profileLabel = computed(() => (nickname.value
-  ? `${nickname.value} · ${t('sidebar.personal')}`
-  : t('sidebar.personal')))
+const profileTitle = computed(() => {
+  if (!auth.loggedIn.value) return t('settings.personalLogin')
+  return nickname.value && !profileNameShown.value
+    ? `${nickname.value} · ${t('sidebar.personal')}`
+    : t('sidebar.personal')
+})
+const profileLabel = computed(() => {
+  if (!auth.loggedIn.value) return `${t('settings.personalNotLoggedIn')} · ${t('sidebar.personal')}`
+  return nickname.value
+    ? `${nickname.value} · ${t('sidebar.personal')}`
+    : t('sidebar.personal')
+})
+
+async function handleProfileClick(): Promise<void> {
+  if (!auth.loggedIn.value) {
+    await auth.login()
+    return
+  }
+  emit('go-personal')
+}
 
 let footerResizeObserver: ResizeObserver | null = null
 onMounted(() => {
@@ -638,7 +655,7 @@ onBeforeUnmount(() => {
   footerResizeObserver = null
   if (activityClock) { clearInterval(activityClock); activityClock = null }
 })
-watch([nickname, () => props.collapsed], async () => {
+watch([displayName, () => props.collapsed], async () => {
   await nextTick()
   measureProfileName()
 })
@@ -810,22 +827,22 @@ watch([nickname, () => props.collapsed], async () => {
         :class="{ 'sidebar-profile--named': profileNameShown }"
         :title="profileTitle"
         :aria-label="profileLabel"
-        @click="emit('go-personal')"
+        @click="handleProfileClick"
       >
-        <PersonalAvatar :size="PROFILE_AVATAR_SIZE" />
+        <PersonalAvatar :size="PROFILE_AVATAR_SIZE" :empty="!auth.loggedIn.value" />
         <!-- Rendered whenever there is a name to carry, and animated by width + opacity:
              collapsing it to zero width is what makes the fade reversible mid-resize.
              The cap is the measured natural width, so the reveal never shows a clipped word. -->
         <span
-          v-if="nickname"
+          v-if="displayName"
           class="sidebar-profile-name"
           :class="{ 'sidebar-profile-name--shown': profileNameShown }"
           :style="{ '--profile-name-max': `${profileNameMax}px` }"
           aria-hidden="true"
-        >{{ nickname }}</span>
+        >{{ displayName }}</span>
         <!-- Measured, never painted: the fit test needs the name's natural width, which
              a clamped or hidden label cannot report. -->
-        <span ref="profileNameProbe" class="sidebar-profile-name-probe" aria-hidden="true">{{ nickname }}</span>
+        <span ref="profileNameProbe" class="sidebar-profile-name-probe" aria-hidden="true">{{ displayName }}</span>
       </button>
       <div ref="footerActionsEl" class="sidebar-footer-actions" :class="{ 'sidebar-footer-actions-collapsed': collapsed }">
         <UiButton

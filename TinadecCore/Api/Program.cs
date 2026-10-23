@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TinadecCore.AspNetCore;
+using TinadecCore.AspNetCore.Auth;
 using TinadecCore.Persistence;
 using TinadecCore.Runtime;
 using TinadecCore.Abstractions.Ports;
@@ -29,6 +30,7 @@ builder.Services.AddTinadecPersistence(builder.Configuration, builder.Environmen
 if (scopesEnabled) builder.Services.AddHostedService<StorageHostShutdownService>();
 builder.Services.AddTinadecCore();
 builder.Services.AddTinadecCoreHttp();
+builder.Services.AddTinadecOidc(builder.Configuration);
 if (scopesEnabled)
 {
     builder.Services.AddTinadecConfigurationFiles();

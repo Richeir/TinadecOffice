@@ -63,6 +63,7 @@ initializeTrustedHostRequests({
 });
 const layoutStore = require('./layoutStore.cjs');
 const { createDebugStudioWindow, getDebugStudioWindow } = require('./debug-studio.cjs');
+const { openLogin, logout, getAuthState, updateProfile } = require('./auth.cjs');
 const {
   createPanelWindow,
   closePanelWindow,
@@ -316,6 +317,26 @@ ipcMain.handle('tinadec:discover-services', () =>
 ipcMain.handle('tinadec:restart', () => {
   app.relaunch();
   app.exit(0);
+});
+
+// --- Logto OIDC login ---
+ipcMain.handle('tinadec:open-login', (event) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) return null;
+  return openLogin();
+});
+ipcMain.handle('tinadec:logout', (event) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) return { loggedIn: false };
+  return logout();
+});
+ipcMain.handle('tinadec:get-auth-state', (event) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) return { loggedIn: false };
+  return getAuthState();
+});
+ipcMain.handle('tinadec:update-profile', async (event, patch) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) {
+    throw new Error('Profile changes require the trusted main host page.');
+  }
+  return updateProfile(patch);
 });
 
 ipcMain.on('tinadec:minimize', (event) => {

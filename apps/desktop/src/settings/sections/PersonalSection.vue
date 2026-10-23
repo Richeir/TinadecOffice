@@ -1,24 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Briefcase, Check, Pencil, Share2, X } from '@lucide/vue'
+import { Briefcase, Check, LogIn, LogOut, Pencil, Share2, X } from '@lucide/vue'
 import { UiButton, UiCard, UiInput, UiTextarea } from '@/components/ui'
 import PersonalAvatar from '@/components/personal/PersonalAvatar.vue'
 import { useNotifications } from '@/composables/useNotifications'
 import { api as baseApi } from '@/api'
 import { scopedApi } from '@/lib/storageScope'
-const api = scopedApi(baseApi, () => 'user')
+// Usage lives in each workspace's own storage database, so the personal total is a
+// merge over every scope the host currently has open — not one scope's page.
 import {
-  AVATAR_MAX_BYTES,
   WORK_ROLES,
-  setAvatar,
   setBio,
   setCustomRole,
   setNickname,
+  setAvatar,
   setRoles,
   userProfile,
   type WorkRole,
 } from '@/lib/userProfile'
+import { auth } from '@/lib/auth'
 import { WORK_ROLE_ICONS } from '@/lib/workRoleIcons'
 import { toDayKey, type ShareUsage } from '@/lib/shareCard'
 import PersonalShareCard from './PersonalShareCard.vue'
@@ -42,19 +43,39 @@ import PersonalShareCard from './PersonalShareCard.vue'
  * is known to break on, and it cannot be mounted in tests at all.
  */
 const { t, locale } = useI18n()
-const { notify, status, dismissByKey } = useNotifications()
+const { notify, status, confirm, dismissByKey } = useNotifications()
 
 const BIO_MAX_LENGTH = 80
 const CUSTOM_ROLE_MAX_LENGTH = 24
 
 const nicknameDraft = ref(userProfile.nickname)
 const bioDraft = ref(userProfile.bio)
-const avatarInputRef = ref<HTMLInputElement | null>(null)
+/** The account avatar is a link the account centre hosts; we never store image bytes. */
+const avatarUrlDraft = ref(userProfile.avatar ?? '')
 const editDialogOpen = ref(false)
 const roleDialogOpen = ref(false)
 const shareDialogOpen = ref(false)
 const roleDraft = ref<WorkRole[]>([])
 const customRoleDraft = ref(userProfile.customRole)
+
+// ---- Logto account login (syncs avatar + nickname from the account) ----
+const authBusy = ref(false)
+async function toggleLogin(): Promise<void> {
+  if (authBusy.value) return
+  authBusy.value = true
+  try {
+    if (auth.loggedIn.value) await auth.logout()
+    else await auth.login()
+  } finally {
+    authBusy.value = false
+  }
+}
+
+/** Empty means "no avatar"; anything else must be an absolute http(s) link. */
+const avatarUrlValid = computed(() => {
+  const value = avatarUrlDraft.value.trim()
+  return value === '' || /^https?:\/\/\S+$/i.test(value)
+})
 
 // ---- Identity chip (grouped roles + bio, both read straight from the store) ----
 
@@ -88,9 +109,15 @@ const draftRoleSummary = computed(() =>
 // ---- Profile dialog (avatar + nickname + bio; mirrors the reference "编辑个人资料" dialog) ----
 
 function openEditDialog(): void {
+  // Signed out there is no account to edit; the profile fields are the account's.
+  if (!auth.loggedIn.value) {
+    void auth.login()
+    return
+  }
   dismissByKey('personal-profile')
   nicknameDraft.value = userProfile.nickname
   bioDraft.value = userProfile.bio
+  avatarUrlDraft.value = userProfile.avatar ?? ''
   editDialogOpen.value = true
 }
 
@@ -98,43 +125,53 @@ function closeEditDialog(): void {
   editDialogOpen.value = false
 }
 
-function saveEditDialog(): void {
+/**
+ * Save the dialog. Bio is local; nickname and avatar belong to the Logto account,
+ * so they are written there first — and only after the user confirms that the
+ * change reaches the account centre.
+ */
+async function saveEditDialog(): Promise<void> {
+  if (!avatarUrlValid.value) {
+    status.error({ key: 'personal-profile', source: 'desktop', message: t('settings.personalAvatarUrlInvalid') })
+    return
+  }
+  const nextNickname = nicknameDraft.value.trim()
+  const nextAvatar = avatarUrlDraft.value.trim() || null
+  const accountChanged = auth.loggedIn.value
+    && (nextNickname !== userProfile.nickname || nextAvatar !== userProfile.avatar)
+
+  if (accountChanged) {
+    const approved = await confirm({
+      title: t('settings.personalAccountConfirmTitle'),
+      message: t('settings.personalAccountConfirmMessage'),
+      details: t('settings.personalAccountConfirmDetails'),
+      confirmLabel: t('settings.personalAccountConfirmAction'),
+      cancelLabel: t('settings.personalCancel'),
+    })
+    if (!approved) return
+    try {
+      await auth.updateProfile({
+        nickname: nextNickname || undefined,
+        // Empty string is the explicit "clear the avatar" signal.
+        avatarUrl: nextAvatar ?? '',
+      })
+    } catch (error) {
+      status.error({
+        key: 'personal-profile',
+        source: 'gateway',
+        message: error instanceof Error ? error.message : t('settings.personalAccountSaveFailed'),
+      })
+      return
+    }
+  } else {
+    if (nextNickname && nextNickname !== userProfile.nickname) setNickname(nextNickname)
+    if (nextAvatar !== userProfile.avatar) setAvatar(nextAvatar)
+  }
+
   dismissByKey('personal-profile')
-  setNickname(nicknameDraft.value)
   setBio(bioDraft.value)
   editDialogOpen.value = false
   notify.success(t('settings.personalSaved'))
-}
-
-function pickAvatar(): void {
-  avatarInputRef.value?.click()
-}
-
-function onAvatarFileChange(event: Event): void {
-  dismissByKey('personal-profile')
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    status.error({ key: 'personal-profile', source: 'desktop', message: t('settings.personalAvatarNotImage') })
-    return
-  }
-  if (file.size > AVATAR_MAX_BYTES) {
-    status.error({ key: 'personal-profile', source: 'desktop', message: t('settings.personalAvatarTooLarge') })
-    return
-  }
-  const reader = new FileReader()
-  reader.onload = () => {
-    if (typeof reader.result === 'string') {
-      setAvatar(reader.result)
-      notify.success(t('settings.personalAvatarSaved'))
-    }
-  }
-  reader.onerror = () => {
-    status.error({ key: 'personal-profile', source: 'desktop', message: t('settings.personalAvatarReadFailed') })
-  }
-  reader.readAsDataURL(file)
 }
 
 // ---- Work-role dialog (multi-select chips) ----
@@ -161,9 +198,11 @@ function saveRoleDialog(): void {
   notify.success(t('settings.personalRolesSaved'))
 }
 
-// ---- Token usage: one walk over the model-invocation audit, aggregated locally ----
-// The same aggregate feeds the usage card and the share card's heatmap; the
-// per-day series is kept (not just the peaks) so the picture can be rebuilt.
+// ---- Token usage: one walk over every storage scope's model-invocation audit ----
+// Each workspace owns its own database, so the personal total is the sum of the
+// per-scope audits the host has open. The same aggregate feeds the usage card and
+// the share card's heatmap; the per-day series is kept (not just the peaks) so the
+// picture can be rebuilt.
 
 const usage = ref<ShareUsage | null>(null)
 const usageLoading = ref(false)
@@ -172,16 +211,32 @@ function formatTokenCount(value: number | null): string {
   return value === null ? '—' : value.toLocaleString(locale.value)
 }
 
+/** One scope's whole audit, paged at the API's maximum page size. */
+async function readScopeInvocations(storageId: string): Promise<Awaited<ReturnType<typeof baseApi.listModelInvocations>>['items']> {
+  const scoped = scopedApi(baseApi, () => storageId)
+  const rows: Awaited<ReturnType<typeof baseApi.listModelInvocations>>['items'] = []
+  let cursor: string | undefined
+  do {
+    const page = await scoped.listModelInvocations({ status: 'succeeded', limit: 200, cursor })
+    rows.push(...page.items)
+    cursor = page.next_cursor ?? undefined
+  } while (cursor)
+  return rows
+}
+
 async function loadTokenUsage(): Promise<void> {
   usageLoading.value = true
   try {
-    const all: Awaited<ReturnType<typeof api.listModelInvocations>>['items'] = []
-    let cursor: string | undefined
-    do {
-      const page = await api.listModelInvocations({ status: 'succeeded', limit: 200, cursor })
-      all.push(...page.items)
-      cursor = page.next_cursor ?? undefined
-    } while (cursor)
+    const scopes = await baseApi.listStorageScopes()
+    const all: Awaited<ReturnType<typeof baseApi.listModelInvocations>>['items'] = []
+    for (const scope of scopes) {
+      try {
+        all.push(...await readScopeInvocations(scope.storage_id))
+      } catch (error) {
+        // One offline workspace must not blank the personal total; skip and keep counting.
+        console.warn(`[personal] usage read failed for storage ${scope.storage_id}:`, error)
+      }
+    }
 
     const now = new Date()
     const yearAgo = new Date(now)
@@ -236,6 +291,7 @@ async function loadTokenUsage(): Promise<void> {
 
 onMounted(() => {
   void loadTokenUsage()
+  void auth.refreshAuthState()
 })
 </script>
 
@@ -250,13 +306,13 @@ onMounted(() => {
 
     <!-- Identity header: avatar + nickname + role badges, actions on the right. -->
     <section class="personal-hero" aria-labelledby="personal-hero-name">
-      <button type="button" class="personal-hero-avatar" :title="t('settings.personalEdit')" @click="openEditDialog">
-        <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" />
-        <span class="personal-hero-avatar-edit"><Pencil :size="12" /></span>
+      <button type="button" class="personal-hero-avatar" :title="auth.loggedIn.value ? t('settings.personalEdit') : t('settings.personalLogin')" @click="openEditDialog">
+        <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" :empty="!auth.loggedIn.value" />
+        <span v-if="auth.loggedIn.value" class="personal-hero-avatar-edit"><Pencil :size="12" /></span>
       </button>
       <div class="personal-hero-info">
         <div class="personal-hero-name-row">
-          <h3 id="personal-hero-name">{{ userProfile.nickname || t('settings.personalNicknameEmpty') }}</h3>
+          <h3 id="personal-hero-name">{{ auth.loggedIn.value ? (userProfile.nickname || t('settings.personalNicknameEmpty')) : t('settings.personalNotLoggedIn') }}</h3>
           <!-- Work identity: all roles in one chip, icon first, unset reads as a placeholder. -->
           <button
             type="button"
@@ -273,6 +329,11 @@ onMounted(() => {
         <p class="personal-hero-bio" :class="{ 'is-empty': !userProfile.bio }">{{ bioText }}</p>
       </div>
       <div class="personal-hero-actions">
+        <UiButton variant="outline" :disabled="authBusy" @click="toggleLogin">
+          <LogOut v-if="auth.loggedIn.value" :size="14" />
+          <LogIn v-else :size="14" />
+          {{ auth.loggedIn.value ? t('settings.personalLogout') : t('settings.personalLogin') }}
+        </UiButton>
         <UiButton variant="outline" @click="openEditDialog">
           <Pencil :size="14" />
           {{ t('settings.personalEdit') }}
@@ -333,11 +394,19 @@ onMounted(() => {
         </template>
 
         <div class="personal-dialog-avatar-row">
-          <button type="button" class="personal-hero-avatar" :title="t('settings.personalAvatarUpload')" @click="pickAvatar">
-            <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" />
-            <span class="personal-hero-avatar-edit"><Pencil :size="12" /></span>
-          </button>
-          <p class="gateway-config-meta">{{ t('settings.personalAvatarMeta') }}</p>
+          <PersonalAvatar :size="64" :alt="t('settings.personalAvatar')" />
+          <div class="gateway-config-field personal-avatar-url-field">
+            <label class="personal-field-label" for="personal-avatar-url">{{ t('settings.personalAvatarUrl') }}</label>
+            <UiInput
+              id="personal-avatar-url"
+              v-model="avatarUrlDraft"
+              :placeholder="t('settings.personalAvatarUrlPlaceholder')"
+              @keydown.enter="saveEditDialog"
+            />
+            <div class="gateway-config-meta">
+              <span>{{ t('settings.personalAvatarUrlMeta') }}</span>
+            </div>
+          </div>
         </div>
 
         <div class="gateway-config-field">
@@ -455,13 +524,5 @@ onMounted(() => {
     <Transition name="modal-fade">
       <PersonalShareCard v-if="shareDialogOpen" :usage="usage" @close="shareDialogOpen = false" />
     </Transition>
-
-    <input
-      ref="avatarInputRef"
-      type="file"
-      accept="image/*"
-      class="personal-avatar-input"
-      @change="onAvatarFileChange"
-    />
   </div>
 </template>

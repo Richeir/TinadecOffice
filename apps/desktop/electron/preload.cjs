@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('tinadec', {
   closeWindow: () => ipcRenderer.send('tinadec:close'),
   openDebugStudio: () => ipcRenderer.invoke('tinadec:open-debug-studio'),
   saveDebugStudioEnabled: (enabled) => ipcRenderer.invoke('tinadec:debug-studio-enabled-save', enabled),
+  // --- Logto OIDC login ---
+  openLogin: () => ipcRenderer.invoke('tinadec:open-login'),
+  logout: () => ipcRenderer.invoke('tinadec:logout'),
+  getAuthState: () => ipcRenderer.invoke('tinadec:get-auth-state'),
+  updateProfile: (patch) => ipcRenderer.invoke('tinadec:update-profile', patch),
   onDebugStudioEnabledChanged: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('tinadec:debug-studio-enabled-changed', handler);

@@ -64,6 +64,10 @@ export function installPreviewShimIfNeeded(): void {
       window.location.hash = '/debug-studio'
       return Promise.resolve(true)
     },
+    openLogin: () => Promise.resolve(null),
+    logout: () => Promise.resolve({ loggedIn: false }),
+    getAuthState: () => Promise.resolve({ loggedIn: false }),
+    updateProfile: () => Promise.reject(new Error('Profile changes require the desktop shell.')),
     selectBackgroundFile: () => Promise.resolve(null),
 
     // Pets (no-op in preview).

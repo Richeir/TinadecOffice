@@ -71,17 +71,24 @@ const glyphSize = computed(() => Math.max(10, Math.round(props.size * 0.58)))
 
 <style scoped>
 .agent-pet-avatar {
-  display: inline-flex;
+  position: relative;
+  display: inline-block;
   flex: none;
-  align-items: center;
-  justify-content: center;
   width: var(--agent-avatar-size);
   aspect-ratio: 192 / 208;
   overflow: hidden;
   vertical-align: middle;
 }
 
+/*
+ * The sheet is 8 frames wide; at 800% the image is exactly eight boxes wide, so the crop is
+ * whatever sits at the box's origin. It must be pinned there — a flex/grid centring context
+ * would centre the oversized image instead and show a frame from the middle of the atlas.
+ */
 .agent-pet-avatar img {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   width: 800%;
   max-width: none;
@@ -92,6 +99,9 @@ const glyphSize = computed(() => Math.max(10, Math.round(props.size * 0.58)))
 }
 
 .agent-pet-avatar-fallback {
+  position: absolute;
+  inset: 0;
+  margin: auto;
   color: var(--text-muted);
 }
 </style>

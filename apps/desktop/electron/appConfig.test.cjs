@@ -234,6 +234,14 @@ function mainConfigFixture(configFile) {
     './appBundle.cjs': {},
     './localMedia.cjs': {},
     './externalLinks.cjs': {},
+    // Logto auth (1eb448b4): no case here exercises the account channels, the stub
+    // only satisfies main.cjs's destructuring at load time with the real shapes.
+    './auth.cjs': {
+      openLogin: async () => null,
+      logout: async () => {},
+      getAuthState: async () => ({ loggedIn: false, nickname: '', avatar_url: '' }),
+      updateProfile: async () => { throw new Error('auth is stubbed in this fixture'); },
+    },
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'main.cjs'), 'utf8'), {
     require: (name) => {

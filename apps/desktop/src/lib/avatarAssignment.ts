@@ -28,6 +28,14 @@ export function instanceKeyOf(runId: string, taskId: string): string {
   return `${runId}:${taskId}`
 }
 
+/**
+ * Spatial cards and feed rows name an agent by handle (`search#1`) or by slug. Settings stores
+ * preferences per slug, so the ordinal is dropped before it is used as an agent key.
+ */
+export function agentKeyFromHandle(handle: string | null | undefined): string {
+  return (handle ?? '').split('#')[0]?.trim() ?? ''
+}
+
 export function isRandomPreference(preference: AvatarPreference | null | undefined): boolean {
   return !preference || preference.mode !== 'fixed'
 }

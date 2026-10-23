@@ -9,6 +9,8 @@ import ToolCallCard from '@/components/chat/ToolCallCard.vue'
 import TurnTimeline from '@/components/chat/TurnTimeline.vue'
 import MarkdownRender from '@/components/MarkdownRender.vue'
 import ApprovalTab from '@/components/ApprovalTab.vue'
+import AgentPetAvatar from '@/components/pets/AgentPetAvatar.vue'
+import { agentKeyFromHandle, instanceKeyOf } from '@/lib/avatarAssignment'
 import { api } from '@/api'
 import { readFileText, type ReadFileDataDto } from '@/lib/workspaceSearch'
 import type { useSpatialGit } from '@/composables/useSpatialGit'
@@ -26,6 +28,21 @@ const object = computed(() => props.object ?? objects?.value[String(state.object
 const isCompact = computed(() => !props.detail && (props.compact ?? compactItems?.value[object.value?.id ?? ''] ?? false))
 const runId = computed(() => object.value?.runId ?? (object.value && ['run', 'task', 'plan', 'tool', 'result'].includes(object.value.kind) ? object.value.groupId : undefined))
 const icons = { message: MessageSquare, meeting: Bot, run: Target, result: MessageSquare, plan: ListTodo, task: FileCode2, tool: Wrench, git: GitBranch, approval: ShieldCheck }
+/**
+ * The owner pill is the card's "who is doing this", so the face lives there rather than next to
+ * the title (that glyph is the object's kind, not the agent). The instance key is the same
+ * `runId:taskId` the conversation uses, so a task wears one face everywhere it appears.
+ */
+const ownerInstanceKey = computed(() => object.value?.runId && object.value?.taskId
+  ? instanceKeyOf(object.value.runId, object.value.taskId)
+  : '')
+const ownerAgentKey = computed(() => agentKeyFromHandle(object.value?.owner))
+const ownerFocusable = computed(() => Boolean(object.value?.owner && !props.preview && object.value.instanceId && runId.value && focusInstance))
+
+function focusOwner() {
+  if (!runId.value || !object.value?.instanceId || !focusInstance) return
+  focusInstance(runId.value, object.value.instanceId)
+}
 const kindTitle = (kind: SpatialObject['kind']) => t(kind === 'run' || kind === 'result' ? 'space.cluster.' + kind : 'space.kind.' + kind)
 const completed = computed(() => object.value?.rows?.filter(r => ['completed', 'succeeded'].includes(r.status)).length ?? 0)
 const status = (s?: string) => s && te('space.status.' + s) ? t('space.status.' + s) : s
@@ -92,8 +109,17 @@ async function readFile(path: string) {
       <h2>{{ object.title || kindTitle(object.kind) }}</h2>
     </header>
     <div v-if="object.owner || runId || object.status" class="space-card-meta nodrag nopan">
-      <button v-if="object.owner && !preview && object.instanceId && runId && focusInstance" type="button" class="space-owner" :title="t('space.cluster.focusInstance')" @click="focusInstance(runId, object.instanceId)">{{ object.owner }}</button>
-      <span v-else-if="object.owner" class="space-owner">{{ object.owner }}</span>
+      <component
+        :is="ownerFocusable ? 'button' : 'span'"
+        v-if="object.owner"
+        class="space-owner"
+        :type="ownerFocusable ? 'button' : undefined"
+        :title="ownerFocusable ? t('space.cluster.focusInstance') : undefined"
+        @click="focusOwner"
+      >
+        <AgentPetAvatar v-if="ownerInstanceKey" :instance-key="ownerInstanceKey" :agent-id="ownerAgentKey" :size="14" />
+        {{ object.owner }}
+      </component>
       <button v-if="runId && !preview && locate && object.kind !== 'run'" type="button" class="space-run" :title="t('space.cluster.locateRun', { id: runId })" @click="locate(`tasks:${runId}`)">{{ t('space.cluster.runTag', { id: runId.slice(0, 8) }) }}</button>
       <span v-else-if="runId" class="space-run" :title="runId">{{ t('space.cluster.runTag', { id: runId.slice(0, 8) }) }}</span>
       <small v-if="object.status" class="space-card-status">{{ status(object.status) }}</small>
@@ -191,7 +217,7 @@ h3 { font-size: 13px; font-weight: 600; line-height: 1.6; margin: 16px 0 8px; }
 .space-drag-handle svg { flex-shrink: 0; }
 .is-detail .space-drag-handle { cursor: default; }
 .space-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 0 18px 10px; font-size: 11px; color: var(--text-secondary); }
-.space-owner { max-width: 100%; padding: 2px 7px; border-radius: 5px; background: var(--surface-section); overflow-wrap: anywhere; }
+.space-owner { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 7px; border-radius: 5px; background: var(--surface-section); overflow-wrap: anywhere; }
 .space-run { font-family: var(--font-mono); }
 .space-card-status { margin-left: auto; font-size: 11px; }
 .space-work-body { padding: 4px 18px 14px; flex: 1; min-height: 0; overflow: auto; user-select: text; }

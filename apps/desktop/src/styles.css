@@ -1045,6 +1045,71 @@ button.agent-topology-node:hover,
   color: var(--accent-primary);
 }
 
+/* A pet avatar replaces the layer glyph: the tinted tile would fight the artwork. */
+.agent-card-icon.pet {
+  width: auto;
+  height: auto;
+  min-width: 30px;
+  overflow: visible;
+  background: transparent;
+}
+
+/* Agent settings → 形象: random plus one tile per installed pet. */
+.agent-avatar-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agent-avatar-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 76px;
+  padding: 8px 6px;
+  border: 1px solid var(--border-card);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-avatar-choice:hover {
+  background: var(--surface-hover);
+}
+
+.agent-avatar-choice.active {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.agent-avatar-choice:focus-visible {
+  outline: 1px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.agent-avatar-choice:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.agent-avatar-choice-glyph {
+  display: grid;
+  width: 26px;
+  aspect-ratio: 192 / 208;
+  place-items: center;
+}
+
+.agent-avatar-choice-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-card-main {
   display: flex;
   flex-direction: column;

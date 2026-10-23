@@ -1734,6 +1734,13 @@ export default {
     loadingPets: "ペットを読み込み中",
     noPetsFound: "一致するペットはありません",
     noDownloadedPets: "ダウンロードしたペットはありません",
+builtinPetBadge: "内蔵",
+builtinPetHint: "アプリに同梱された代替イメージです。削除できません",
+agentAvatarSection: "イメージ",
+agentAvatarHint: "ランダムでは派遣ごとに変わります。固定すると、このエージェントは毎回同じペットを使います。",
+agentAvatarRandom: "ランダム",
+agentAvatarEmpty: "利用できるペット素材がありません。代わりに予備のイメージを表示します。",
+agentAvatarSaveFailed: "イメージを保存できませんでした",
     petDownloaded: "ダウンロード済み",
     petKind: {
       pet: "ペット",

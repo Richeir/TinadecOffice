@@ -1734,6 +1734,13 @@ export default {
     loadingPets: "Загрузка питомцев",
     noPetsFound: "Подходящих питомцев нет",
     noDownloadedPets: "Загруженных питомцев нет",
+builtinPetBadge: "Встроенный",
+builtinPetHint: "Встроенный запасной образ, удалить нельзя",
+agentAvatarSection: "Образ",
+agentAvatarHint: "«Случайно» — у каждого запуска свой питомец; «закреплено» — этот агент всегда использует одного.",
+agentAvatarRandom: "Случайно",
+agentAvatarEmpty: "Материалы питомцев ещё не установлены; агенты используют заглушку.",
+agentAvatarSaveFailed: "Не удалось сохранить образ",
     petDownloaded: "Загружен",
     petKind: {
       pet: "Питомец",

@@ -1734,6 +1734,13 @@ export default {
     loadingPets: "正在載入寵物",
     noPetsFound: "沒有符合的寵物",
     noDownloadedPets: "尚未下載寵物",
+builtinPetBadge: "內建",
+builtinPetHint: "隨應用程式內建的備援形象，不可刪除",
+agentAvatarSection: "形象",
+agentAvatarHint: "隨機時每次派發換一隻；固定後該智能體的每次任務都用這隻。",
+agentAvatarRandom: "隨機",
+agentAvatarEmpty: "尚無可用的寵物素材，智能體將使用佔位形象。",
+agentAvatarSaveFailed: "形象儲存失敗",
     petDownloaded: "已下載",
     petKind: {
       pet: "寵物",

@@ -184,6 +184,9 @@ onBeforeUnmount(() => {
                   <div class="pet-gallery-title-row">
                     <span class="pet-item-name" :title="pet.displayName">{{ pet.displayName }}</span>
                     <UiBadge v-if="pet.enabled" variant="secondary" class="pet-card-badge">{{ t('settings.petEnabled') }}</UiBadge>
+                    <UiBadge v-if="pet.builtin" variant="outline" class="pet-card-badge" :title="t('settings.builtinPetHint')">
+                      {{ t('settings.builtinPetBadge') }}
+                    </UiBadge>
                   </div>
                   <span class="pet-item-meta" :title="[petKindLabel(pet.kind), pet.submittedBy].filter(Boolean).join(' · ')">{{ petKindLabel(pet.kind) }}<template v-if="pet.submittedBy"> · {{ pet.submittedBy }}</template></span>
                   <div class="pet-gallery-actions">
@@ -206,7 +209,7 @@ onBeforeUnmount(() => {
                         <FolderOpen :size="15" />
                         {{ t('settings.openPetFolder') }}
                       </button>
-                      <button class="pet-menu-action danger" type="button" @click="removePet(pet)">
+                      <button v-if="!pet.builtin" class="pet-menu-action danger" type="button" @click="removePet(pet)">
                         <Trash2 :size="15" />
                         {{ t('settings.deletePet') }}
                       </button>

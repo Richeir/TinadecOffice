@@ -35,6 +35,7 @@ import {
   Server,
   Settings2,
   ShieldCheck,
+  Shuffle,
   Square,
   Sun,
   Terminal,
@@ -132,6 +133,7 @@ import {
   type ProjectTemplateSummary
 } from '../toolCatalog'
 import PetPreview from '@/components/PetPreview.vue'
+import AgentPetAvatar from '@/components/pets/AgentPetAvatar.vue'
 import CommandPaletteButton from '@/components/CommandPaletteButton.vue'
 import { UiButton, UiInput, UiCard, UiBadge, UiLabel, UiSkeleton, UiSwitch, UiDropdownMenu, UiSelectField } from '@/components/ui'
 import AgentTopologyCanvas from '@/components/AgentTopologyCanvas.vue'
@@ -148,6 +150,7 @@ import PanelStyleControl from '@/components/ui/panel-style-control.vue'
 import { usePanelStyles } from '@/composables/usePanelStyles'
 import { createSettingsLeaveGuard } from './settingsNavigation'
 import { useNotifications } from '@/composables/useNotifications'
+import { useAgentAvatars } from '@/composables/useAgentAvatars'
 import { useHostAccess } from '@/lib/hostAccess'
 import { useRecoverableRead, type ReadContext } from '@/composables/useRecoverableRead'
 import { toErrorState, type ErrorState } from '@/composables/useErrorState'
@@ -349,6 +352,44 @@ const agentDefinitionLoadingId = ref('')
 const agentReadDiagnostics = ref<Array<{ source: string; error: ErrorState }>>([])
 const modelCenterBusy = ref(false)
 const agentRuntimeBusy = ref(false)
+
+/**
+ * Agent avatars: the pet an agent wears. This is local cosmetic state, not part of the agent's
+ * Core definition, so it stays editable even for built-in agents.
+ */
+const {
+  pool: agentAvatarPool,
+  revision: agentAvatarRevision,
+  preferenceFor: agentAvatarPreferenceFor,
+  agentPreviewSlug,
+  setAgentPreference: setAgentAvatarPreference,
+} = useAgentAvatars()
+const agentAvatarBusy = ref(false)
+
+function agentAvatarSlug(agentId: string | null | undefined): string {
+  // Touch the revision so a pool refresh (download/delete) re-renders every face.
+  void agentAvatarRevision.value
+  return agentPreviewSlug(agentId)
+}
+
+const configuringAvatarPreference = computed(() => (
+  configuringAgent.value ? agentAvatarPreferenceFor(configuringAgent.value.id) : { mode: 'random' as const }
+))
+
+async function chooseAgentAvatar(mode: 'random' | 'fixed', petSlug?: string) {
+  const agent = configuringAgent.value
+  if (!agent) return
+  agentAvatarBusy.value = true
+  try {
+    await setAgentAvatarPreference(agent.id, mode === 'fixed' && petSlug
+      ? { mode: 'fixed', petSlug }
+      : { mode: 'random' })
+  } catch (error) {
+    notify.error(error, { title: t('settings.agentAvatarSaveFailed') })
+  } finally {
+    agentAvatarBusy.value = false
+  }
+}
 
 const showModal = ref(false)
 const showTemplatePicker = ref(false)
@@ -3179,7 +3220,9 @@ import '../settings/settings.css'
                 :class="{ active: selectedAgentId === agent.id, disabled: !agent.enabled }"
               >
                 <button class="agent-card-select" @click="openAgentConfig(agent)">
-                  <div class="agent-card-icon"><Workflow :size="17" /></div>
+                  <div class="agent-card-icon pet">
+                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent.id)" :size="30" :alt="agent.name" />
+                  </div>
                   <div class="agent-card-main">
                     <strong>{{ agent.name || agentTypeLabel(agent.agent_type) }}</strong>
                     <span>{{ agent.description || agentSourceKindLabel(agentSourceKindFor(agent.id)) }}</span>
@@ -3207,7 +3250,9 @@ import '../settings/settings.css'
                 :class="{ active: selectedAgentId === agent.id, disabled: !agent.enabled }"
               >
                 <button class="agent-card-select" @click="openAgentConfig(agent)">
-                  <div class="agent-card-icon execution"><Cpu :size="17" /></div>
+                  <div class="agent-card-icon pet execution">
+                    <AgentPetAvatar :pet-slug="agentAvatarSlug(agent.id)" :size="30" :alt="agent.name" />
+                  </div>
                   <div class="agent-card-main">
                     <strong>{{ agent.name || agentTypeLabel(agent.agent_type) }}</strong>
                     <span>{{ agent.description || agentSourceKindLabel(agentSourceKindFor(agent.id)) }}</span>
@@ -3257,8 +3302,8 @@ import '../settings/settings.css'
             </div>
             <div v-else-if="configuringAgent" class="agent-detail-panel">
               <div class="agent-detail-head">
-                <div class="agent-card-icon" :class="{ execution: configuringAgent.layer === 'execution' }">
-                  <component :is="configuringAgent.layer === 'operation' ? Workflow : Cpu" :size="20" />
+                <div class="agent-card-icon pet" :class="{ execution: configuringAgent.layer === 'execution' }">
+                  <AgentPetAvatar :pet-slug="agentAvatarSlug(configuringAgent.id)" :size="44" :alt="configuringAgent.name" />
                 </div>
                 <div>
                   <h3>{{ configuringAgent.name }}</h3>
@@ -3297,6 +3342,43 @@ import '../settings/settings.css'
                     @update:model-value="setAgentEnabled(configuringAgent, $event)"
                   />
                 </div>
+              </div>
+
+              <!-- 形象 — 这个智能体被派发时用的宠物；随机则每个实例各自一张脸 -->
+              <div class="agent-config-section" data-testid="agent-avatar-section">
+                <div class="agent-config-section-title">{{ t('settings.agentAvatarSection') }}</div>
+                <p class="agent-config-hint">{{ t('settings.agentAvatarHint') }}</p>
+                <div class="agent-avatar-choices" role="radiogroup" :aria-label="t('settings.agentAvatarSection')">
+                  <button
+                    type="button"
+                    role="radio"
+                    class="agent-avatar-choice"
+                    :class="{ active: configuringAvatarPreference.mode !== 'fixed' }"
+                    :aria-checked="configuringAvatarPreference.mode !== 'fixed'"
+                    :disabled="agentAvatarBusy"
+                    data-testid="agent-avatar-random"
+                    @click="chooseAgentAvatar('random')"
+                  >
+                    <span class="agent-avatar-choice-glyph"><Shuffle :size="18" /></span>
+                    <span class="agent-avatar-choice-name">{{ t('settings.agentAvatarRandom') }}</span>
+                  </button>
+                  <button
+                    v-for="pet in agentAvatarPool"
+                    :key="pet.slug"
+                    type="button"
+                    role="radio"
+                    class="agent-avatar-choice"
+                    :class="{ active: configuringAvatarPreference.mode === 'fixed' && configuringAvatarPreference.petSlug === pet.slug }"
+                    :aria-checked="configuringAvatarPreference.mode === 'fixed' && configuringAvatarPreference.petSlug === pet.slug"
+                    :disabled="agentAvatarBusy"
+                    :data-testid="`agent-avatar-${pet.slug}`"
+                    @click="chooseAgentAvatar('fixed', pet.slug)"
+                  >
+                    <AgentPetAvatar :pet-slug="pet.slug" :size="26" :alt="pet.displayName" />
+                    <span class="agent-avatar-choice-name">{{ pet.displayName }}</span>
+                  </button>
+                </div>
+                <p v-if="agentAvatarPool.length === 0" class="agent-config-hint">{{ t('settings.agentAvatarEmpty') }}</p>
               </div>
 
               <!-- 目录证据 — 来源 / Mode 使用位置 / 有效预览 / 最近调用 -->

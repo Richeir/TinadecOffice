@@ -223,7 +223,14 @@ internal sealed class FormalModeResolver : IFormalModeResolver
                         || promptVersion.PromptPipelineId != promptPipelineId
                         || !string.Equals(promptVersion.Status, "published", StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException($"Mode node '{node.NodeKey}' does not reference a published PromptVersion owned by its prompt pipeline.");
-                    VerifyHash(promptVersion.GraphJson, promptVersion.ContentHash, node.PromptVersionHash, $"PromptVersion '{promptVersion.Id}'");
+                    // The pack installer hashes graph + overlay (AgentPackService.PublishPromptPipelineAsync):
+                    // content is GraphJson alone when no i18n overlay exists, GraphJson + "\n" + I18nJson
+                    // otherwise. Manual prompt-version writers never set an overlay, so the same rule
+                    // covers both conventions — verifying GraphJson alone breaks every localized pack.
+                    var promptBody = promptVersion.I18nJson is null
+                        ? promptVersion.GraphJson
+                        : promptVersion.GraphJson + "\n" + promptVersion.I18nJson;
+                    VerifyHash(promptBody, promptVersion.ContentHash, node.PromptVersionHash, $"PromptVersion '{promptVersion.Id}'");
                     promptGraph = LocalizePromptGraph(promptVersion.GraphJson, promptVersion.I18nJson, interfaceLocale);
                 }
                 else if (node.PromptPipelineId is not null || !string.IsNullOrWhiteSpace(node.PromptVersionHash))

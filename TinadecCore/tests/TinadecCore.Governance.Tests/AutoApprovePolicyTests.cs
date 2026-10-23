@@ -187,14 +187,29 @@ public sealed class AutoApprovePolicyTests
         var shell = await policy.EvaluateAsync(new ToolApprovalAutoPolicyContext("shell", "low", Guid.NewGuid()));
         var suffix = await policy.EvaluateAsync(new ToolApprovalAutoPolicyContext("file_delete", "low", Guid.NewGuid()));
 
-        // web_fetch does not touch the workspace, so nothing but this list keeps the
-        // read-only auto-release from handing a run free egress.
+        // web_fetch cannot change the workspace and carries its own SSRF guard, so
+        // it is now released like the other low-risk reads. A scope that wants a
+        // click adds it to runtime.toml [approval] human_only_tools.
         var egress = await policy.EvaluateAsync(new ToolApprovalAutoPolicyContext("web_fetch", "low", Guid.NewGuid()));
 
         Assert.Equal(ToolApprovalAutoPolicyOutcome.NotEngaged, listed.Outcome);
         Assert.Equal(ToolApprovalAutoPolicyOutcome.NotEngaged, shell.Outcome);
         Assert.Equal(ToolApprovalAutoPolicyOutcome.NotEngaged, suffix.Outcome);
-        Assert.Equal(ToolApprovalAutoPolicyOutcome.NotEngaged, egress.Outcome);
+        Assert.Equal(ToolApprovalAutoPolicyOutcome.Approved, egress.Outcome);
+    }
+
+    [Fact]
+    public async Task RuntimePolicy_CanPutWebFetchBackBehindAHumanClick()
+    {
+        var policy = new ToolApprovalPolicy { HumanOnlyTools = ["web_fetch"] };
+        var auto = new ToolApprovalAutoPolicy(
+            Options.Create(new AutoApproveOptions()),
+            new FixedPolicySource(policy));
+
+        var verdict = await auto.EvaluateAsync(new ToolApprovalAutoPolicyContext("web_fetch", "low", Guid.NewGuid()));
+
+        Assert.True(policy.IsHumanOnlyTool("web_fetch"));
+        Assert.Equal(ToolApprovalAutoPolicyOutcome.NotEngaged, verdict.Outcome);
     }
 
     /// <summary>
@@ -375,10 +390,10 @@ public sealed class AutoApprovePolicyTests
     [Fact]
     public void DelegatedOptIn_UnknownCeilingFailsClosed_AndConfiguredHumanToolsStayHuman()
     {
-        Assert.False(DelegatedApprovalRules.Delegable(new() { DelegatedApprovalRiskMax = "unknown" }, "shell", "low", true));
-        Assert.False(DelegatedApprovalRules.Delegable(new(), "write_file", "unknown", true));
-        Assert.False(DelegatedApprovalRules.Delegable(new() { HumanOnlyTools = ["write_file"] }, "write_file", "low", true));
-        Assert.False(DelegatedApprovalRules.Delegable(new() { DelegatedApprovalRiskMax = "low" }, "shell", "medium", true));
+        Assert.False(DelegatedApprovalRules.Delegable(new AutoApproveOptions { DelegatedApprovalRiskMax = "unknown" }, "shell", "low", true));
+        Assert.False(DelegatedApprovalRules.Delegable(new AutoApproveOptions(), "write_file", "unknown", true));
+        Assert.False(DelegatedApprovalRules.Delegable(new AutoApproveOptions { HumanOnlyTools = ["write_file"] }, "write_file", "low", true));
+        Assert.False(DelegatedApprovalRules.Delegable(new AutoApproveOptions { DelegatedApprovalRiskMax = "low" }, "shell", "medium", true));
     }
 
     private sealed class OptedInRules : IApprovalRules
@@ -390,6 +405,11 @@ public sealed class AutoApprovePolicyTests
         public Task<ApprovalRuleView?> MatchCommandAsync(Guid sessionId, string tool, string command, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<bool> VerifyCommandRuleAsync(Guid id, Guid runId, string tool, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<ApprovalRuleView> RecordUseAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FixedPolicySource(ToolApprovalPolicy policy) : IToolApprovalPolicySource
+    {
+        public ToolApprovalPolicy Current => policy;
     }
 
     /// <summary>

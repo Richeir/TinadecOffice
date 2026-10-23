@@ -1,0 +1,4 @@
+version = 1
+[storage]
+backend = "sqlite"
+# PostgreSQL uses a credential reference bound in the user security store.

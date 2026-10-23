@@ -1,0 +1,16 @@
+schema_version = 1
+project_id = "ffbbddc8-1bdc-4502-a94d-b6ed31bde911"
+backend = "sqlite"
+configuration_version = 1
+initialized_at = "2026-10-23T03:59:04.8874111+00:00"
+defaults_digest = "b4fa5b873f142f9b4062a625a8743e2e9a57dfdc15accf5cecec23295fc760c4"
+
+[workspace]
+name = "TinadecOffice"
+primary_root_id = "ddd57c67-a9f1-46c3-b7e5-e0b8cca3e758"
+icon = "bot"
+color = "default"
+
+[[workspace.roots]]
+id = "ddd57c67-a9f1-46c3-b7e5-e0b8cca3e758"
+path = "."

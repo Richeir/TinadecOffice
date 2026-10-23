@@ -1,3 +1,5 @@
+using TinadecCore.Abstractions.Ports;
+
 namespace TinadecCore.Governance;
 
 /// <summary>
@@ -11,7 +13,7 @@ public sealed class AutoApproveOptions
     public const string SectionName = "TinadecApproval";
 
     /// <summary>Bumped whenever the policy semantics change; written into every auto decision and event.</summary>
-    public const string PolicyVersion = "auto-approve-v1";
+    public const string PolicyVersion = ToolApprovalPolicy.PolicyVersion;
 
     public bool AutoApproveEnabled { get; set; }
 
@@ -36,10 +38,12 @@ public sealed class AutoApproveOptions
     /// "_delete" or starting with "delete_" is additionally refused regardless of this list.
     /// "shell" is the registered id of the command tool ("command_run" predates it and stays
     /// listed); a shell call can drive any write the sandbox allows, so it never auto-approves.
-    /// "mcp_invoke" and "web_fetch" are here because they leave the machine: the ask-mode
-    /// read-only release classifies them as non-mutating, and egress is a risk of its own
-    /// regardless of what it writes.</summary>
-    public string[] HumanOnlyTools { get; set; } = ["git_push", "command_run", "shell", "git_worktree_remove", "mcp_invoke", "web_fetch"];
+    /// "mcp_invoke" stays here because it can change an external system. "web_fetch" is
+    /// deliberately absent: it cannot change the workspace, its address guard rejects
+    /// private/loopback targets, and gating every fetch was the 22-minute read stall in
+    /// another shape. A scope that wants a click can add it back through
+    /// <c>runtime.toml [approval] human_only_tools</c>.</summary>
+    public string[] HumanOnlyTools { get; set; } = ["git_push", "command_run", "shell", "git_worktree_remove", "mcp_invoke"];
 
     /// <summary>
     /// The highest risk a delegated approval gate (<c>delegate-*</c> permission modes) may decide.
@@ -54,4 +58,18 @@ public sealed class AutoApproveOptions
         HumanOnlyTools.Contains(toolId, StringComparer.OrdinalIgnoreCase)
         || toolId.EndsWith("_delete", StringComparison.OrdinalIgnoreCase)
         || toolId.StartsWith("delete_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Fallback shape for embedded hosts that register no runtime document. Product
+    /// hosts take <see cref="ToolApprovalPolicy"/> from the scope's runtime.toml.
+    /// </summary>
+    public ToolApprovalPolicy ToPolicy() => new()
+    {
+        Enabled = AutoApproveEnabled,
+        RiskMax = AutoApproveRiskMax,
+        MaxPerRun = AutoApproveMaxPerRun,
+        ReleaseReadOnlyInAskMode = ReleaseReadOnlyInAskMode,
+        DelegatedRiskMax = DelegatedApprovalRiskMax,
+        HumanOnlyTools = HumanOnlyTools
+    };
 }

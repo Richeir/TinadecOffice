@@ -325,6 +325,12 @@ public sealed record AgentRuntimeConfigurationSnapshot(
 
     /// <summary>Lane master switch and ceilings; absent TOML keeps lanes off.</summary>
     public OrchestrationPolicy Orchestration { get; init; } = OrchestrationPolicy.Disabled;
+
+    /// <summary>
+    /// User-editable approval policy. Null when runtime.toml has no [approval]
+    /// section, which keeps the host's compiled options for that scope.
+    /// </summary>
+    public ToolApprovalPolicy? Approval { get; init; }
 }
 
 public sealed record RuntimeConfigurationDiagnostic(string State, string Detail, string SourcePath, DateTimeOffset CheckedAt);
@@ -503,6 +509,24 @@ public sealed class AgentRuntimeConfigurationStore : IAgentRuntimeConfiguration,
                 Integer(orchestration, "max_lanes_per_run", 4),
                 Integer(orchestration, "max_tasks_per_lane", 6));
         OrchestrationPolicy.Validate(orchestrationPolicy);
+        // Approval is opt-in like triggers and lanes: a baseline without
+        // [approval] keeps the compiled baseline so embedded hosts do not gain
+        // an unconfigured auto-approval path. The shipped runtime.toml carries
+        // the commented section, which is what a real scope loads.
+        var approval = OptionalTable(root, "approval");
+        var approvalPolicy = approval is null
+            ? null
+            : new ToolApprovalPolicy
+            {
+                Enabled = Boolean(approval, "enabled", ToolApprovalPolicy.Default.Enabled),
+                RiskMax = Text(approval, "risk_max", ToolApprovalPolicy.Default.RiskMax),
+                MaxPerRun = Integer(approval, "max_per_run", ToolApprovalPolicy.Default.MaxPerRun),
+                ReleaseReadOnlyInAskMode = Boolean(approval, "release_read_only_in_ask_mode", ToolApprovalPolicy.Default.ReleaseReadOnlyInAskMode),
+                DelegatedRiskMax = Text(approval, "delegated_risk_max", ToolApprovalPolicy.Default.DelegatedRiskMax),
+                HumanOnlyTools = Strings(approval, "human_only_tools", ToolApprovalPolicy.Default.HumanOnlyTools),
+                DelegationBlockedTools = Strings(approval, "delegation_blocked_tools", ToolApprovalPolicy.Default.DelegationBlockedTools)
+            };
+        if (approvalPolicy is not null) ToolApprovalPolicy.Validate(approvalPolicy);
         return new AgentRuntimeConfigurationSnapshot(
             version,
             hash,
@@ -515,7 +539,8 @@ public sealed class AgentRuntimeConfigurationStore : IAgentRuntimeConfiguration,
             toolPolicy)
         {
             Triggers = triggersPolicy,
-            Orchestration = orchestrationPolicy
+            Orchestration = orchestrationPolicy,
+            Approval = approvalPolicy
         };
     }
 
@@ -540,5 +565,9 @@ public sealed class AgentRuntimeConfigurationStore : IAgentRuntimeConfiguration,
     private static string Text(TomlTable table, string key, string fallback = "") => table.TryGetValue(key, out var value) ? value?.ToString() ?? fallback : fallback;
     private static int Integer(TomlTable table, string key, int fallback) => table.TryGetValue(key, out var value) ? Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture) : fallback;
     private static bool Boolean(TomlTable table, string key) => table.TryGetValue(key, out var value) && Convert.ToBoolean(value, System.Globalization.CultureInfo.InvariantCulture);
+    private static bool Boolean(TomlTable table, string key, bool fallback) => table.TryGetValue(key, out var value) ? Convert.ToBoolean(value, System.Globalization.CultureInfo.InvariantCulture) : fallback;
     private static string[] Strings(TomlTable table, string key) => table.TryGetValue(key, out var value) && value is TomlArray array ? array.Select(x => x?.ToString() ?? string.Empty).Where(x => x.Length > 0).ToArray() : [];
+    private static string[] Strings(TomlTable table, string key, IReadOnlyList<string> fallback) => table.TryGetValue(key, out var value) && value is TomlArray array
+        ? array.Select(x => x?.ToString() ?? string.Empty).Where(x => x.Length > 0).ToArray()
+        : fallback.ToArray();
 }

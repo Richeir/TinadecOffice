@@ -30,7 +30,13 @@ public sealed record ToolApprovalAutoPolicyContext(
     string? LaneKey = null,
     string? ParametersHash = null,
     Guid? ExecutionId = null,
-    int AutoPolicyUsesThisRun = 0);
+    int AutoPolicyUsesThisRun = 0,
+    /// <summary>
+    /// True for an admitted run with a frozen configuration, where the scope's
+    /// runtime.toml [approval] policy is authoritative. False keeps the host's
+    /// compiled options for legacy/test runs that were never frozen.
+    /// </summary>
+    bool UseRuntimePolicy = true);
 
 public sealed record ToolApprovalAutoPolicyVerdict(
     ToolApprovalAutoPolicyOutcome Outcome,

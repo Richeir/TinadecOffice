@@ -1,0 +1,8 @@
+# Tinadec runtime data is local; configuration and skills may be shared.
+/data/
+/state/
+/logs/
+/cache/
+/temp/
+/worktrees/
+/packages/

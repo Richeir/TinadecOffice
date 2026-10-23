@@ -1,0 +1,4 @@
+version = 1
+[logging]
+rotation_bytes = 10485760
+total_bytes = 209715200

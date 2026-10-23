@@ -297,7 +297,7 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
         var payload = Assert.IsType<JsonElement>(auto.Payload["payload"]!);
         Assert.Equal(execution.Id, payload.GetProperty("execution_id").GetGuid());
         Assert.Equal("l2", payload.GetProperty("lane_key").GetString());
-        Assert.Equal("auto-approve-v1", payload.GetProperty("policy_version").GetString());
+        Assert.Equal(ToolApprovalPolicy.PolicyVersion, payload.GetProperty("policy_version").GetString());
     }
 
     [Fact]
@@ -373,22 +373,7 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
         var (projectId, sessionId) = await CreateProjectAndSessionAsync("preauth-fullaccess");
         var run = await InsertRunAsync(sessionId);
         var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, "full:0:0:0");
-
-        var content = _factory!.Services.GetRequiredService<IContentStore>();
-        var scope = TenantAccessor().Current;
-        var bytes = Encoding.UTF8.GetBytes("{\"permissionMode\":\"full-access\"}");
-        var stored = await content.PutAsync(new ContentWriteRequest(
-            scope.TenantId, scope.WorkspaceId, "run_configuration", "application/json", new MemoryStream(bytes)));
-        await using (var db = await DbFactory().CreateDbContextAsync())
-        {
-            var row = await db.Runs.SingleAsync(x => x.Id == run.Id);
-            row.FrozenConfigurationReference = stored.Value;
-            row.FrozenConfigurationHash = stored.Sha256;
-            row.FrozenConfigurationLength = stored.Length;
-            row.FrozenConfigurationSchemaVersion = "preauth-tests";
-            row.FrozenConfigurationAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync();
-        }
+        await FreezeRunAsync(run.Id, "{\"permissionMode\":\"full-access\"}");
 
         var minted = await ExecutionCoordinator().TryMintPreAuthorizedApprovalAsync(execution.Id);
 
@@ -397,6 +382,35 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
 
         var start = await ExecutionCoordinator().TryStartAsync(execution.Id);
         Assert.Equal("running", start.Status);
+    }
+
+    [Fact]
+    public async Task AskMode_ReadOnlyLowRiskApproval_MintsWithoutAHuman()
+    {
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("readonly-mint");
+        var run = await InsertRunAsync(sessionId);
+        var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, "fetch:0:0:0",
+            toolId: "web_fetch", risk: "low", mutatesWorkspace: false);
+        await FreezeRunAsync(run.Id, "{\"permissionMode\":\"ask\"}");
+
+        var minted = await ExecutionCoordinator().TryMintPreAuthorizedApprovalAsync(execution.Id);
+
+        Assert.NotNull(minted);
+        Assert.Equal("read_only_approval_release", minted!.Source);
+        var start = await ExecutionCoordinator().TryStartAsync(execution.Id);
+        Assert.Equal("running", start.Status);
+    }
+
+    [Fact]
+    public async Task AskMode_ReadOnlyHumanOnlyTool_StaysPending()
+    {
+        var (projectId, sessionId) = await CreateProjectAndSessionAsync("readonly-human-only");
+        var run = await InsertRunAsync(sessionId);
+        var execution = await PrepareExecutionAsync(projectId, sessionId, run.Id, "shell-read:0:0:0",
+            toolId: "shell", risk: "low", mutatesWorkspace: false);
+        await FreezeRunAsync(run.Id, "{\"permissionMode\":\"ask\"}");
+
+        Assert.Null(await ExecutionCoordinator().TryMintPreAuthorizedApprovalAsync(execution.Id));
     }
 
     [Fact]
@@ -491,6 +505,23 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
         return grant;
     }
 
+    private async Task FreezeRunAsync(Guid runId, string contentJson)
+    {
+        var content = _factory!.Services.GetRequiredService<IContentStore>();
+        var scope = TenantAccessor().Current;
+        var bytes = Encoding.UTF8.GetBytes(contentJson);
+        var stored = await content.PutAsync(new ContentWriteRequest(
+            scope.TenantId, scope.WorkspaceId, "run_configuration", "application/json", new MemoryStream(bytes)));
+        await using var db = await DbFactory().CreateDbContextAsync();
+        var row = await db.Runs.SingleAsync(x => x.Id == runId);
+        row.FrozenConfigurationReference = stored.Value;
+        row.FrozenConfigurationHash = stored.Sha256;
+        row.FrozenConfigurationLength = stored.Length;
+        row.FrozenConfigurationSchemaVersion = "preauth-tests";
+        row.FrozenConfigurationAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
     private async Task<ToolExecutionSnapshot> PrepareExecutionAsync(
         Guid projectId,
         Guid sessionId,
@@ -498,7 +529,8 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
         string toolCallKey,
         string toolId = "write_file",
         string risk = "high",
-        string? laneKey = null)
+        string? laneKey = null,
+        bool mutatesWorkspace = true)
     {
         var coordinator = ExecutionCoordinator();
         var scope = TenantAccessor().Current;
@@ -512,7 +544,7 @@ public sealed class PreAuthorizationMintTests : IAsyncLifetime
             Guid.NewGuid(),
             toolId,
             risk,
-            MutatesWorkspace: true,
+            MutatesWorkspace: mutatesWorkspace,
             RequiresApproval: true,
             Parameters,
             ToolParametersHash.Compute(Parameters),

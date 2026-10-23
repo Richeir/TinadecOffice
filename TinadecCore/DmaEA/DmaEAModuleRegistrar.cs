@@ -21,6 +21,9 @@ public sealed class DmaEAModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<AgentRuntimeConfigurationStore>();
         builder.Services.AddSingleton<IConfigurationDocumentValidator, RuntimeConfigurationDocumentValidator>();
         builder.Services.AddSingleton<IAgentRuntimeConfiguration>(sp => sp.GetRequiredService<AgentRuntimeConfigurationStore>());
+        // Governance consumes the policy through this port; DmaEA owns the
+        // runtime.toml document, so the dependency points one way only.
+        builder.Services.AddSingleton<IToolApprovalPolicySource, RuntimeToolApprovalPolicySource>();
         builder.Services.AddSingleton<IAgentRuntimeConfigurationResolver, AgentRuntimeConfigurationResolver>();
         builder.Services.AddSingleton<IRuntimeContextSettings, RuntimeContextSettingsAdapter>();
         // The chat client factory, the harness transports, the binary resolver and the terminal host are

@@ -1,0 +1,370 @@
+schema_version = 1
+version = 28
+[[model_provider_instances]]
+id = "96156005-6549-4bd0-b1fa-88b779980b21"
+connection_kind = "api-key"
+created_at = "2026-10-09T06:15:59.8220026+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+current_version_id = "deeb6a72-be1c-44e4-8a02-2b4fde91d9da"
+display_name = "OpenAI (dev default)"
+driver = "openai"
+enabled = true
+revision = 1
+scope = "workspace"
+secret_reference = "provider-9615600565494bd0b1fa88b779980b21"
+tenant_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d001"
+updated_at = "2026-10-12T01:09:21.8071487+00:00"
+updated_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+workspace_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d002"
+
+[[model_provider_instances]]
+id = "382344d6-fb21-486d-b164-7e39795065c8"
+connection_kind = "api-key"
+created_at = "2026-10-12T01:07:44.5241630+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+current_version_id = "07dc0f29-0b0d-4f7c-ba9b-a071b1390abe"
+display_name = "xxy"
+driver = "openai-compatible"
+enabled = true
+revision = 20
+scope = "workspace"
+secret_reference = "provider-382344d6fb21486db1647e39795065c8"
+tenant_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d001"
+updated_at = "2026-10-23T03:58:22.7443094+00:00"
+updated_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+workspace_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d002"
+[[model_provider_versions]]
+id = "f1e8d2b2-9575-4789-b26c-dadadf746362"
+content_hash = "83aada1c474692668444918c3597f4036d7ee179d32f0d2f471482edbf80ef7b"
+content_length = 86
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/83aada1c474692668444918c3597f4036d7ee179d32f0d2f471482edbf80ef7b"
+content = "{\"base_url\":\"https://api.openai.com/v1\",\"model\":\"gpt-4o-mini\",\"capabilities\":[\"chat\"]}"
+created_at = "2026-10-09T06:15:59.8220026+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "96156005-6549-4bd0-b1fa-88b779980b21"
+version = 1
+
+[[model_provider_versions]]
+id = "d8e88af4-1eb4-4982-ab3e-13f227693fb2"
+content_hash = "26c8d861ba438de0f318c96b0bbf6e8c92eaf67986d1d5313e323bfa57992fe8"
+content_length = 224
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/26c8d861ba438de0f318c96b0bbf6e8c92eaf67986d1d5313e323bfa57992fe8"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true}"
+created_at = "2026-10-12T01:07:44.5241630+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 1
+
+[[model_provider_versions]]
+id = "a53d5ef6-7e79-4007-b788-7357e6dd6ff6"
+content_hash = "26a5b91034f80affc0d1f9b72831142acad8a1ad2a752fcd162eacb3776aede4"
+content_length = 319
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/26a5b91034f80affc0d1f9b72831142acad8a1ad2a752fcd162eacb3776aede4"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\"}"
+created_at = "2026-10-12T01:09:06.7134365+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 2
+
+[[model_provider_versions]]
+id = "deeb6a72-be1c-44e4-8a02-2b4fde91d9da"
+content_hash = "4002ea3bff6a86c12957e904c10514c2d6225fc6d0376309809225065a05c292"
+content_length = 219
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/4002ea3bff6a86c12957e904c10514c2d6225fc6d0376309809225065a05c292"
+content = "{\"base_url\":\"https://api.openai.com/v1\",\"models\":[],\"capabilities\":[\"chat\"],\"id\":\"96156005-6549-4bd0-b1fa-88b779980b21\",\"driver\":\"openai\",\"display_name\":\"OpenAI (dev default)\",\"connection_kind\":\"api-key\",\"enabled\":true}"
+created_at = "2026-10-12T01:09:21.8071487+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "96156005-6549-4bd0-b1fa-88b779980b21"
+version = 2
+
+[[model_provider_versions]]
+id = "7958d24f-3e95-4067-95c2-534ff9999ba2"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-12T01:09:50.5609372+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 3
+
+[[model_provider_versions]]
+id = "74a6f061-ba0e-47b9-bb0e-6d93484f7dcb"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-13T03:16:04.2642184+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 4
+
+[[model_provider_versions]]
+id = "ca6b0f7b-a128-4cbf-8aed-043c6d859ad2"
+content_hash = "8439310932a4268405cf1d13771b67bce159dcaab79bbbcc8c7e08b47ad67674"
+content_length = 389
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/8439310932a4268405cf1d13771b67bce159dcaab79bbbcc8c7e08b47ad67674"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"low\"}}}"
+created_at = "2026-10-16T12:50:33.1573124+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 5
+
+[[model_provider_versions]]
+id = "b963e139-a6f5-4a1e-9fcd-b0b9f23582e7"
+content_hash = "0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content_length = 392
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"medium\"}}}"
+created_at = "2026-10-16T12:50:34.8507470+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 6
+
+[[model_provider_versions]]
+id = "48a9f262-50d1-4976-a012-ad07e8f981d7"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:14:04.0470065+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 7
+
+[[model_provider_versions]]
+id = "c0a08eb7-8230-467c-81c7-389e47333925"
+content_hash = "0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content_length = 392
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"medium\"}}}"
+created_at = "2026-10-23T00:15:43.7965261+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 8
+
+[[model_provider_versions]]
+id = "b5e55173-ca0d-43cc-b79c-23658f948035"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:16:33.8738590+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 9
+
+[[model_provider_versions]]
+id = "da235f08-dcbc-42fa-8650-86c8d7eacb7a"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-23T00:24:29.1480531+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 10
+
+[[model_provider_versions]]
+id = "c2f091f6-e5c7-45b0-821d-9f53ebaf4f59"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:28:17.6008194+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 11
+
+[[model_provider_versions]]
+id = "2a306768-f911-4386-9968-db2bd44b4bb8"
+content_hash = "0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content_length = 392
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"medium\"}}}"
+created_at = "2026-10-23T00:32:34.6232291+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 12
+
+[[model_provider_versions]]
+id = "9f693dec-69ec-4a68-86be-f386723ddf95"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-23T00:32:45.7131217+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 13
+
+[[model_provider_versions]]
+id = "bf495488-c581-44c9-87aa-01b7d2a2f0e6"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:44:59.4960014+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 14
+
+[[model_provider_versions]]
+id = "d5ec679f-10e0-44db-8c47-8a931534de48"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-23T00:49:42.7608942+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 15
+
+[[model_provider_versions]]
+id = "6c3ce6a6-1088-4b97-89cb-9ba0e7f76d09"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:49:45.7957606+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 16
+
+[[model_provider_versions]]
+id = "fb520c98-5af8-4aee-9622-f1e9333da66f"
+content_hash = "b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content_length = 390
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/b699c083dae22a7b4d57070cd9012820e370e6703330890e16c757d8e4f8f77c"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"high\"}}}"
+created_at = "2026-10-23T00:57:19.3190072+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 17
+
+[[model_provider_versions]]
+id = "d69ffc3c-fa6e-4037-b206-a1e79dacdaf2"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T00:57:23.0110321+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 18
+
+[[model_provider_versions]]
+id = "ee0c7d37-174e-432a-b037-de4151611dcb"
+content_hash = "7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content_length = 391
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/7220ac7d64b511afa2a03d9ce544ad5a341b045319c71e75385c55b4aa9f5f04"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"xhigh\"}}}"
+created_at = "2026-10-23T03:57:44.8585261+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 19
+
+[[model_provider_versions]]
+id = "07dc0f29-0b0d-4f7c-ba9b-a071b1390abe"
+content_hash = "0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content_length = 392
+content_reference = "content/tenants/c7d1e4f6a2514a4e9a011a0f4b77d001/c7d1e4f6a2514a4e9a011a0f4b77d002/model-config/0cc39f3ac9f29c0323755a94d833115f93e69e6f180591df0e2b2394c37c01e7"
+content = "{\"driver\":\"openai-compatible\",\"display_name\":\"xxy\",\"connection_kind\":\"api-key\",\"protocol\":\"openai-responses\",\"base_url\":\"https://api.xxyapi.com/v1\",\"models\":[\"deepseek-v4.1-flash\"],\"capabilities\":[\"chat\",\"streaming\",\"tool-calls\"],\"enabled\":true,\"id\":\"382344d6-fb21-486d-b164-7e39795065c8\",\"model\":\"deepseek-v4.1-flash\",\"model_parameters\":{\"deepseek-v4.1-flash\":{\"reasoning_effort\":\"medium\"}}}"
+created_at = "2026-10-23T03:58:22.7443094+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+provider_id = "382344d6-fb21-486d-b164-7e39795065c8"
+version = 20
+[[model_routes]]
+id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+created_at = "2026-10-09T06:15:59.8220026+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+current_version_id = "b318eb7f-21a6-4eb1-9b5e-4c06c9812b82"
+purpose = "chat"
+revision = 5
+scope = "workspace"
+tenant_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d001"
+updated_at = "2026-10-13T03:27:37.6446028+00:00"
+updated_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+workspace_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d002"
+[[model_route_versions]]
+id = "6bcc530e-d7e0-44cb-8d23-611d6e5d8525"
+created_at = "2026-10-09T06:15:59.8220026+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 1
+
+[[model_route_versions]]
+id = "cfb7c78a-2b83-473d-9ca7-86320b2666d0"
+created_at = "2026-10-12T01:09:14.9073481+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 2
+
+[[model_route_versions]]
+id = "051483ee-9a1a-4323-a460-a5edfc9c3665"
+created_at = "2026-10-12T01:09:26.9118262+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 3
+
+[[model_route_versions]]
+id = "4583f9ed-115c-42d1-afe1-f84a7dc59342"
+created_at = "2026-10-12T02:51:19.2418863+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 4
+
+[[model_route_versions]]
+id = "14138a87-d18b-42d1-ab13-47b53d0997e2"
+created_at = "2026-10-13T03:14:50.7367770+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 5
+
+[[model_route_versions]]
+id = "b318eb7f-21a6-4eb1-9b5e-4c06c9812b82"
+created_at = "2026-10-13T03:27:37.6446028+00:00"
+created_by_principal_id = "c7d1e4f6-a251-4a4e-9a01-1a0f4b77d003"
+route_id = "52371d14-7830-4183-9cf8-f8f98a922edc"
+version = 6
+[[model_route_candidates]]
+id = "4f27f8c6-be22-4c0b-bf5d-bd2dc94c6710"
+model = "gpt-4o-mini"
+position = 0
+provider_instance_id = "96156005-6549-4bd0-b1fa-88b779980b21"
+route_version_id = "6bcc530e-d7e0-44cb-8d23-611d6e5d8525"
+
+[[model_route_candidates]]
+id = "bfa95a72-dc1c-4d88-a7ee-5329868ed174"
+model = "deepseek-v4.1-flash"
+position = 0
+provider_instance_id = "382344d6-fb21-486d-b164-7e39795065c8"
+route_version_id = "cfb7c78a-2b83-473d-9ca7-86320b2666d0"
+
+[[model_route_candidates]]
+id = "65153791-2fe8-41dd-9e09-5a1fdf2d2ca4"
+model = "deepseek-v4.1-flash"
+position = 0
+provider_instance_id = "382344d6-fb21-486d-b164-7e39795065c8"
+route_version_id = "051483ee-9a1a-4323-a460-a5edfc9c3665"
+
+[[model_route_candidates]]
+id = "3b9eead0-0bf5-40b5-b622-0c5a4f214857"
+model = "deepseek-v4.1-flash"
+position = 0
+provider_instance_id = "382344d6-fb21-486d-b164-7e39795065c8"
+route_version_id = "4583f9ed-115c-42d1-afe1-f84a7dc59342"
+
+[[model_route_candidates]]
+id = "c025cee1-969a-491a-9f49-5fef5a85c6ca"
+model = "deepseek-v4.1-flash"
+position = 0
+provider_instance_id = "382344d6-fb21-486d-b164-7e39795065c8"
+route_version_id = "14138a87-d18b-42d1-ab13-47b53d0997e2"
+
+[[model_route_candidates]]
+id = "87cfc460-2f0b-4ed9-a791-1293d5d554e2"
+model = "deepseek-v4.1-flash"
+position = 0
+provider_instance_id = "382344d6-fb21-486d-b164-7e39795065c8"
+route_version_id = "b318eb7f-21a6-4eb1-9b5e-4c06c9812b82"

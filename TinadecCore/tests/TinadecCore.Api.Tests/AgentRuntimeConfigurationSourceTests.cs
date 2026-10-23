@@ -49,6 +49,37 @@ public sealed class AgentRuntimeConfigurationSourceTests : IDisposable
         Assert.Equal(missing.FileName, services.GetRequiredService<AgentRuntimeConfigurationStore>().Diagnostic.SourcePath);
     }
 
+    [Fact]
+    public void ApprovalSection_IsTheSourceOfTheToolApprovalPolicy()
+    {
+        var snapshot = AgentRuntimeConfigurationStore.LoadSnapshot(PackagedBaseline, 1);
+        var approval = Assert.IsType<ToolApprovalPolicy>(snapshot.Approval);
+
+        Assert.True(approval.Enabled);
+        Assert.Equal("low", approval.RiskMax);
+        Assert.Equal(32, approval.MaxPerRun);
+        Assert.True(approval.ReleaseReadOnlyInAskMode);
+        Assert.True(approval.IsHumanOnlyTool("shell"));
+        Assert.False(approval.IsHumanOnlyTool("web_fetch"));
+        Assert.True(approval.IsDelegationBlocked("web_fetch"));
+    }
+
+    [Fact]
+    public void ApprovalSection_CanNarrowAndReAddTools()
+    {
+        var text = File.ReadAllText(PackagedBaseline)
+            .Replace("risk_max = \"low\"", "risk_max = \"medium\"", StringComparison.Ordinal)
+            .Replace("human_only_tools = [\"git_push\", \"command_run\", \"shell\", \"git_worktree_remove\", \"mcp_invoke\"]",
+                "human_only_tools = [\"web_fetch\"]", StringComparison.Ordinal);
+
+        var snapshot = AgentRuntimeConfigurationStore.LoadSnapshotText(text, "runtime.toml", 1);
+        var approval = Assert.IsType<ToolApprovalPolicy>(snapshot.Approval);
+
+        Assert.Equal("medium", approval.RiskMax);
+        Assert.True(approval.IsHumanOnlyTool("web_fetch"));
+        Assert.False(approval.IsHumanOnlyTool("shell"));
+    }
+
     private static string PackagedBaseline => Path.Combine(AppContext.BaseDirectory, "Configuration", "default-agent-runtime.toml");
     private static ServiceProvider Build(IConfiguration configuration, IScopeStorageLocations scope, IScopeConfigurationDocuments? documents = null)
     {

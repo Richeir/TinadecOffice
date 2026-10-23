@@ -75,6 +75,46 @@ build = 0
 refactor = 0
 investigate = 0
 
+# Tool approval policy. This section is the user-facing source of truth for
+# which calls may run without a click. Every key is optional: an omitted key
+# keeps the built-in baseline, and a file without this section keeps the
+# compiled defaults (used by embedded hosts).
+[approval]
+# Master switch for the "auto-approve" permission mode. A frozen "full-access"
+# run ignores it and releases every call; "default"/"ask" still parks writes.
+enabled = true
+
+# Highest risk rank the auto-approve policy may release on its own:
+# low < medium < elevated < high < critical. "elevated" is never auto-approved
+# at any ceiling. Unknown values fail the runtime.toml load instead of guessing.
+risk_max = "low"
+
+# Per-run ceiling on policy-minted approvals. When it is spent the call parks
+# for a person (never denied). Read-only tools also spend this budget, so raise
+# it if a normal exploratory run does many fetches.
+max_per_run = 32
+
+# In "default"/"ask", release read-only claims and read-only approval-gated
+# tools without a click. A read cannot change the workspace; the tool process
+# still enforces its own root and address guards. Mutating calls and
+# human_only_tools are untouched.
+release_read_only_in_ask_mode = true
+
+# Tools that always wait for a person, whatever the risk and mode (a frozen
+# full-access run is the only exception). Tool ids ending in "_delete" or
+# starting with "delete_" are refused as well. web_fetch is deliberately absent:
+# it cannot change the workspace and its guard rejects private/loopback targets.
+# Add "web_fetch" here to force a click on every fetch.
+human_only_tools = ["git_push", "command_run", "shell", "git_worktree_remove", "mcp_invoke"]
+
+# Tools a delegated approval gate (delegate-*) may never decide on its own.
+# Egress stays with the person in delegated modes.
+delegation_blocked_tools = ["web_fetch", "mcp_invoke"]
+
+# Highest risk a delegated approval gate may decide. Above it the call waits
+# for the person. Keep at or below "medium" unless the delegate is trusted.
+delegated_risk_max = "medium"
+
 # Operational-role trigger chain (context compression, skill recommendation,
 # experience curation, git stewardship). Roles stay dormant when disabled or
 # when the frozen roster does not carry the role. context_token_threshold must

@@ -19,6 +19,7 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
     private readonly INonceMaterialStore _nonceMaterials;
     private readonly TimeProvider _timeProvider;
     private readonly IOptions<AutoApproveOptions> _autoApproveOptions;
+    private readonly IToolApprovalPolicySource? _toolApprovalPolicy;
     private readonly ILifecycleManager? _lifecycle;
     private readonly IApprovalRules? _approvalRules;
 
@@ -30,7 +31,8 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
         INonceMaterialStore? nonceMaterials = null,
         IOptions<AutoApproveOptions>? autoApproveOptions = null,
         ILifecycleManager? lifecycle = null,
-        IApprovalRules? approvalRules = null)
+        IApprovalRules? approvalRules = null,
+        IToolApprovalPolicySource? toolApprovalPolicy = null)
     {
         _dbFactory = dbFactory;
         _tenantAccessor = tenantAccessor;
@@ -40,7 +42,14 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
         _autoApproveOptions = autoApproveOptions ?? Options.Create(new AutoApproveOptions());
         _lifecycle = lifecycle;
         _approvalRules = approvalRules;
+        _toolApprovalPolicy = toolApprovalPolicy;
     }
+
+    /// <summary>
+    /// The scope's runtime.toml policy when the host registered the runtime
+    /// document; the compiled options are only the embedding fallback.
+    /// </summary>
+    private ToolApprovalPolicy ApprovalPolicy => _toolApprovalPolicy?.Current ?? _autoApproveOptions.Value.ToPolicy();
 
     /// <summary>
     /// Captures the currently published policy versions for run admission.  The
@@ -876,16 +885,16 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
         bool approveIntent,
         CancellationToken cancellationToken)
     {
-        var options = _autoApproveOptions.Value;
+        var policy = ApprovalPolicy;
         var toolId = ExtractToolId(request.Resource);
-        if (!AutoApprovePolicyRules.Engages(options, approveIntent, toolId, request.Risk))
+        if (!AutoApprovePolicyRules.Engages(policy, approveIntent, toolId, request.Risk))
             return (AutoPolicyOutcome.NotEngaged, toolId, 0);
         // Run-less requests share the null-run pool so a background flow cannot
         // farm unlimited grants by omitting the run id.
         var used = await db.AuthorizationDecisions.CountAsync(x =>
             x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId
             && x.RunId == request.RunId && x.DecisionSource == "auto_policy", cancellationToken).ConfigureAwait(false);
-        var remaining = options.AutoApproveMaxPerRun - used;
+        var remaining = policy.MaxPerRun - used;
         return remaining > 0
             ? (AutoPolicyOutcome.Approved, toolId, remaining - 1)
             : (AutoPolicyOutcome.BudgetExhausted, toolId, 0);
@@ -1433,9 +1442,10 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
             return "approval_rule_released";
         if (string.Equals(command.PermissionMode, "full-access", StringComparison.Ordinal))
             return "full_access_auto_grant";
+        var policy = ApprovalPolicy;
         if (string.Equals(command.PermissionMode, "auto-approve", StringComparison.Ordinal))
         {
-            return AutoApprovePolicyRules.Engages(_autoApproveOptions.Value, approveIntent: true, toolId, command.Risk)
+            return AutoApprovePolicyRules.Engages(policy, approveIntent: true, toolId, command.Risk)
                 ? "auto_policy_released"
                 : null;
         }
@@ -1448,14 +1458,14 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
         if (ApprovalDelegationModes.IsDelegated(command.PermissionMode)
             && !string.Equals(command.Claim.Action, "read", StringComparison.OrdinalIgnoreCase))
         {
-            if (DelegatedApprovalRules.Delegable(_autoApproveOptions.Value, toolId, command.Risk))
+            if (DelegatedApprovalRules.Delegable(policy, toolId, command.Risk))
                 return "delegated_gate_release";
             // Shell (human-only by default) reaches the gates only when this run's session opted
             // it in; the gates re-verify against the run's own session, never the call's word.
             var optedIn = _approvalRules is not null
                 && command.RunId is { } optRunId
                 && await _approvalRules.IsDelegatedToolAsync(optRunId, toolId, cancellationToken).ConfigureAwait(false);
-            if (DelegatedApprovalRules.Delegable(_autoApproveOptions.Value, toolId, command.Risk, optedIn))
+            if (DelegatedApprovalRules.Delegable(policy, toolId, command.Risk, optedIn))
                 return "delegated_gate_release";
         }
 
@@ -1472,10 +1482,9 @@ public sealed class GovernanceService : IAuthorizationService, IPolicyDecisionPo
         var askFamily = string.Equals(command.PermissionMode, "ask", StringComparison.Ordinal)
             || string.Equals(command.PermissionMode, "default", StringComparison.Ordinal)
             || ApprovalDelegationModes.IsDelegated(command.PermissionMode);
-        if (!askFamily || !_autoApproveOptions.Value.ReleaseReadOnlyInAskMode) return null;
+        if (!askFamily || !policy.ReleaseReadOnlyInAskMode) return null;
         if (!string.Equals(command.Claim.Action, "read", StringComparison.OrdinalIgnoreCase)) return null;
-        var options = _autoApproveOptions.Value;
-        if (string.IsNullOrWhiteSpace(toolId) || options.IsHumanOnlyTool(toolId)) return null;
+        if (string.IsNullOrWhiteSpace(toolId) || policy.IsHumanOnlyTool(toolId)) return null;
         return "read_only_auto_release";
     }
 

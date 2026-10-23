@@ -26,6 +26,7 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
     private readonly INonceMaterialStore _nonceMaterials;
     private readonly ILifecycleManager? _lifecycle;
     private readonly IToolApprovalAutoPolicy? _autoPolicy;
+    private readonly IToolApprovalPolicySource? _approvalPolicy;
     private readonly TimeSpan _decisionWindow;
     private readonly TimeSpan _executionWindow;
 
@@ -37,7 +38,8 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         INonceMaterialStore? nonceMaterials = null,
         ILifecycleManager? lifecycle = null,
         IOptions<TinadecApprovalOptions>? approvalOptions = null,
-        IToolApprovalAutoPolicy? autoPolicy = null)
+        IToolApprovalAutoPolicy? autoPolicy = null,
+        IToolApprovalPolicySource? approvalPolicy = null)
     {
         _factory = factory;
         _tenant = tenant;
@@ -46,6 +48,7 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         _nonceMaterials = nonceMaterials ?? new InMemoryNonceMaterialStore();
         _lifecycle = lifecycle;
         _autoPolicy = autoPolicy;
+        _approvalPolicy = approvalPolicy;
         var options = approvalOptions?.Value ?? new TinadecApprovalOptions();
         _decisionWindow = TimeSpan.FromMinutes(Math.Clamp(options.DecisionWindowMinutes, 1, 1440));
         _executionWindow = TimeSpan.FromMinutes(Math.Clamp(options.ExecutionWindowMinutes, 1, 1440));
@@ -360,6 +363,7 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
         var frozenMode = await ReadFrozenPermissionModeAsync(execution.RunId, cancellationToken).ConfigureAwait(false);
         PreAuthorizationRecord? spent = null;
         string? autoPolicyVersion = null;
+        var readOnlyRelease = false;
         if (string.Equals(frozenMode, "full-access", StringComparison.Ordinal))
         {
             // The frozen manifest and per-instance grants are still enforced by
@@ -417,36 +421,56 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
                 }
             }
 
-            // No grant covered the call, so ask the auto-approve policy — the
-            // third release path. A missing port, an abstaining policy, or an
-            // exhausted budget all leave the approval pending rather than
-            // denying it: a denial is terminal and a human could never grant
-            // the call afterwards. The budget counts this store's own durable
-            // auto-policy decisions for the run, so each release path spends
-            // the budget it can actually see.
+            // No grant covered the call. A read-only, low-risk tool is released
+            // in the ask/default family by the same policy switch the PDP uses:
+            // it cannot change the workspace, so the click adds no authority. A
+            // tool the user listed as human-only still parks. The auto-approve
+            // policy is the next path and only applies to an auto-approve run —
+            // a default/ask run must not silently gain unattended writes.
             if (spent is null)
             {
-                var autoPolicyUses = await db.ApprovalDecisions.AsNoTracking()
-                    .Where(decision => decision.Reason == "auto_policy_approved"
-                        && db.ApprovalRequests.Any(approval => approval.Id == decision.ApprovalRequestId
-                            && approval.RunId == execution.RunId))
-                    .CountAsync(cancellationToken).ConfigureAwait(false);
-                var verdict = _autoPolicy is null
-                    ? null
-                    : await _autoPolicy.EvaluateAsync(new ToolApprovalAutoPolicyContext(
-                        execution.ToolId,
-                        execution.Risk,
-                        execution.RunId,
-                        execution.LaneKey,
-                        execution.ParametersHash,
-                        execution.Id,
-                        autoPolicyUses), cancellationToken).ConfigureAwait(false);
-                if (verdict is null || !verdict.Approved) return null;
-                autoPolicyVersion = verdict.PolicyVersion;
+                var policy = _approvalPolicy?.Current ?? ToolApprovalPolicy.Default;
+                var askFamily = string.Equals(frozenMode, "ask", StringComparison.Ordinal)
+                    || string.Equals(frozenMode, "default", StringComparison.Ordinal)
+                    || ApprovalDelegationModes.IsDelegated(frozenMode);
+                readOnlyRelease = askFamily
+                    && policy.ReleaseReadOnlyInAskMode
+                    && !execution.MutatesWorkspace
+                    && RiskRank(execution.Risk) <= RiskRank("low")
+                    && !policy.IsHumanOnlyTool(execution.ToolId);
+                if (!readOnlyRelease)
+                {
+                    var autoPolicyUses = await db.ApprovalDecisions.AsNoTracking()
+                        .Where(decision => decision.Reason == "auto_policy_approved"
+                            && db.ApprovalRequests.Any(approval => approval.Id == decision.ApprovalRequestId
+                                && approval.RunId == execution.RunId))
+                        .CountAsync(cancellationToken).ConfigureAwait(false);
+                    var verdict = _autoPolicy is null
+                        ? null
+                        : await _autoPolicy.EvaluateAsync(new ToolApprovalAutoPolicyContext(
+                            execution.ToolId,
+                            execution.Risk,
+                            execution.RunId,
+                            execution.LaneKey,
+                            execution.ParametersHash,
+                            execution.Id,
+                            autoPolicyUses,
+                            UseRuntimePolicy: frozenMode is not null), cancellationToken).ConfigureAwait(false);
+                    if (verdict is null || !verdict.Approved) return null;
+                    autoPolicyVersion = verdict.PolicyVersion;
+                }
             }
         }
 
+        // Only a frozen full-access run mints without a grant, a read-only
+        // release or a policy decision. Every other mode keeps the approval
+        // pending so a person can still decide it.
+        if (spent is null && !readOnlyRelease && autoPolicyVersion is null
+            && !string.Equals(frozenMode, "full-access", StringComparison.Ordinal))
+            return null;
+
         var source = spent is not null ? "pre_authorized"
+            : readOnlyRelease ? "read_only_approval_release"
             : autoPolicyVersion is not null ? "auto_policy"
             : "full_access_auto_mint";
         var reason = source == "auto_policy" ? "auto_policy_approved" : source;
@@ -473,7 +497,7 @@ public sealed class ToolApprovalCoordinator : IToolApprovalCoordinator, IToolExe
             // A policy decision has no human behind it; leaving the column empty
             // keeps the audit trail from attributing it to the run initiator.
             DecidedByPrincipalId = spent?.GrantedByPrincipalId
-                ?? (source == "auto_policy" ? Guid.Empty : run.InitiatedByPrincipalId),
+                ?? (source is "auto_policy" or "read_only_approval_release" ? Guid.Empty : run.InitiatedByPrincipalId),
             CreatedAt = now
         });
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

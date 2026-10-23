@@ -16,7 +16,7 @@
 
 | 文件 | 编辑权威与消费者 |
 | --- | --- |
-| `runtime.toml` | DmaEA 运行策略、预算与触发策略；热重载后的有效内容在准入冻结 |
+| `runtime.toml` | DmaEA 运行策略、预算与触发策略；`[approval]` 持有工具审批策略（自动批准风险上限、每次运行预算、只读放行、`human_only_tools`、委托上限）；热重载后的有效内容在准入冻结。缺少 `[approval]` 时沿用宿主编译配置。 |
 | `agents.toml` | Agent/Mode/Prompt Pipeline/Tool Definition、默认绑定与已发布配置版本 |
 | `models.toml` | Provider、路由及其配置版本；凭据只保存用户 SecretStore 引用 |
 | `tools.toml` | 共享工具默认、Agent 覆盖与受管理程序记录 |

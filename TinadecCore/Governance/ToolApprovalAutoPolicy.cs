@@ -21,28 +21,36 @@ namespace TinadecCore.Governance;
 public sealed class ToolApprovalAutoPolicy : IToolApprovalAutoPolicy
 {
     private readonly IOptions<AutoApproveOptions> _options;
+    private readonly IToolApprovalPolicySource? _policySource;
 
-    public ToolApprovalAutoPolicy(IOptions<AutoApproveOptions> options) => _options = options;
+    public ToolApprovalAutoPolicy(
+        IOptions<AutoApproveOptions> options,
+        IToolApprovalPolicySource? policySource = null)
+    {
+        _options = options;
+        _policySource = policySource;
+    }
 
     public Task<ToolApprovalAutoPolicyVerdict> EvaluateAsync(
         ToolApprovalAutoPolicyContext context,
         CancellationToken cancellationToken = default)
     {
-        if (!AutoApprovePolicyRules.Engages(_options.Value, approveIntent: true, context.ToolId, context.Risk))
+        var policy = (context.UseRuntimePolicy ? _policySource?.Current : null) ?? _options.Value.ToPolicy();
+        if (!AutoApprovePolicyRules.Engages(policy, approveIntent: true, context.ToolId, context.Risk))
         {
             return Task.FromResult(new ToolApprovalAutoPolicyVerdict(ToolApprovalAutoPolicyOutcome.NotEngaged));
         }
 
-        var remaining = _options.Value.AutoApproveMaxPerRun - context.AutoPolicyUsesThisRun;
+        var remaining = policy.MaxPerRun - context.AutoPolicyUsesThisRun;
         return Task.FromResult(remaining > 0
             ? new ToolApprovalAutoPolicyVerdict(
                 ToolApprovalAutoPolicyOutcome.Approved,
-                AutoApproveOptions.PolicyVersion,
+                ToolApprovalPolicy.PolicyVersion,
                 "auto_policy_approved",
                 remaining - 1)
             : new ToolApprovalAutoPolicyVerdict(
                 ToolApprovalAutoPolicyOutcome.BudgetExhausted,
-                AutoApproveOptions.PolicyVersion,
+                ToolApprovalPolicy.PolicyVersion,
                 "auto_policy_budget_exhausted"));
     }
 }

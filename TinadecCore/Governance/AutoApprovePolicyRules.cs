@@ -1,3 +1,5 @@
+using TinadecCore.Abstractions.Ports;
+
 namespace TinadecCore.Governance;
 
 /// <summary>
@@ -36,11 +38,18 @@ internal static class AutoApprovePolicyRules
     /// never a denial.
     /// </summary>
     public static bool Engages(AutoApproveOptions options, bool approveIntent, string? toolId, string? risk) =>
-        options.AutoApproveEnabled
+        Engages(options.ToPolicy(), approveIntent, toolId, risk);
+
+    /// <summary>
+    /// The product path: the policy comes from the scope's runtime.toml rather
+    /// than the compiled fallback.
+    /// </summary>
+    public static bool Engages(ToolApprovalPolicy policy, bool approveIntent, string? toolId, string? risk) =>
+        policy.Enabled
         && approveIntent
-        && !(toolId is not null && options.IsHumanOnlyTool(toolId))
+        && !(toolId is not null && policy.IsHumanOnlyTool(toolId))
         && !string.Equals(risk?.Trim(), "elevated", StringComparison.OrdinalIgnoreCase)
-        && RiskRank(risk) <= RiskRank(options.AutoApproveRiskMax);
+        && RiskRank(risk) <= RiskRank(policy.RiskMax);
 }
 
 /// <summary>
@@ -52,15 +61,21 @@ internal static class AutoApprovePolicyRules
 public static class DelegatedApprovalRules
 {
     public static bool Delegable(AutoApproveOptions options, string? toolId, string? risk, bool optedIn = false) =>
+        Delegable(options.ToPolicy(), toolId, risk, optedIn);
+
+    public static bool Delegable(ToolApprovalPolicy policy, string? toolId, string? risk, bool optedIn = false) =>
         !string.IsNullOrWhiteSpace(toolId)
-        && (!options.IsHumanOnlyTool(toolId)
+        && (!policy.IsHumanOnlyTool(toolId)
             || (optedIn && Abstractions.Ports.DelegatedToolOptInRules.IsEligibleTool(toolId)))
+        // Egress stays with the person in delegated modes even after the
+        // auto-approve policy started releasing read-only fetches.
+        && !policy.IsDelegationBlocked(toolId)
         // Core's own virtual tools with an approval (create_workspace) keep the person's click: their
         // approval gate is their whole safety net.
         && !Abstractions.Ports.CoreVirtualToolPolicy.IsCoreVirtual(toolId)
         // An opt-in moves a low/medium shell call to the judge, never the risk ceiling.
         // Unknown ceilings must not sort above unknown risks and accidentally admit them.
         && AutoApprovePolicyRules.RiskRank(risk) <= 1
-        && AutoApprovePolicyRules.RiskRank(options.DelegatedApprovalRiskMax) != int.MaxValue
-        && AutoApprovePolicyRules.RiskRank(risk) <= AutoApprovePolicyRules.RiskRank(options.DelegatedApprovalRiskMax);
+        && AutoApprovePolicyRules.RiskRank(policy.DelegatedRiskMax) != int.MaxValue
+        && AutoApprovePolicyRules.RiskRank(risk) <= AutoApprovePolicyRules.RiskRank(policy.DelegatedRiskMax);
 }

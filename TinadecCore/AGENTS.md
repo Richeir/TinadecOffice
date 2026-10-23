@@ -15,6 +15,8 @@
 
 `/auth/profile` 走同一条续期路径，因此登录一小时后仍能改昵称头像（旧实现会拿过期 OP token 去请求）。旧格式的落盘会话（无 refresh token 字段）仍可读取，只是不能续期，重登一次即获得。`AddTinadecOidc` 用 `sp.GetService<ISecretStore>()` 组装存储：没有可写密钥库的宿主（测试）自动退化为内存态，不阻断登录。
 
+**Client Secret 不写进仓库**：`appsettings.json` 只保留 Authority / ClientId / RedirectUri，密钥由环境变量 `TinadecOidc__ClientSecret`（用户级）注入，`__` 映射到配置节的 `ClientSecret`。缺失时 `TinadecOidcOptions.Enabled` 为 false，`/auth/begin` 返回 503 `oidc_not_configured`——这是判断环境变量是否生效的直接信号。
+
 验证：`OidcSessionStoreTests` 7/7（跨实例恢复、刷新令牌落盘、旧格式兼容、撤销落盘、资料更新落盘、过期丢弃、损坏不阻断、无密钥库可用、待登录不持久化）、`OidcSessionRefreshTests` 9/9（过期刷新并落盘、invalid_grant 撤销、网络故障保留、有效令牌不刷新、无 refresh token 直通、并发只刷新一次、未知会话）。
 
 ## 2026-10-19 Team 子任务标题事件契约

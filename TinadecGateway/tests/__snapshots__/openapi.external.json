@@ -15521,6 +15521,97 @@
           "Projects"
         ]
       }
+    },
+    "/auth/begin": {
+      "get": {
+        "operationId": "getAuthBegin",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Begin Logto login",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "operationId": "getAuthCallback",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "OIDC callback",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/check": {
+      "get": {
+        "operationId": "getAuthCheck",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Poll login result",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "operationId": "getAuthLogin",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Start Logto login",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "postAuthLogout",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Revoke a login session",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "getAuthMe",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Current identity",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/auth/profile": {
+      "patch": {
+        "operationId": "patchAuthProfile",
+        "responses": {
+          "200": {}
+        },
+        "security": [],
+        "summary": "Update the Logto account profile",
+        "tags": [
+          "Health"
+        ]
+      }
     }
   },
   "security": [

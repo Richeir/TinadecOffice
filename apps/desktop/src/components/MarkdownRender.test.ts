@@ -23,9 +23,9 @@ vi.mock('pele/lazy', () => ({
   })),
 }))
 
-function render(content: string) {
+function render(content: string, extra: Record<string, unknown> = {}) {
   return mount(MarkdownRender, {
-    props: { content },
+    props: { content, ...extra } as never,
     attachTo: document.body,
     global: { plugins: [createI18n({
       legacy: false, locale: 'en',
@@ -41,6 +41,8 @@ function render(content: string) {
             markdownBackReference: 'Back to reference {n}',
             markdownDiagram: 'Diagram',
             markdownDiagramError: 'Diagram failed',
+            markdownDocRef: 'Open {path}',
+            markdownDocRefLine: 'Open {path} at line {line}',
             callout: {
               note: 'Note',
               tip: 'Tip',
@@ -227,6 +229,69 @@ describe('Markdown extended syntax', () => {
     expect(scrollIntoView).toHaveBeenCalled()
     expect(window.location.hash).toBe(hash)
     expect(wrapper.get('h2').classes()).toContain('is-anchor-target')
+    wrapper.unmount()
+  })
+})
+
+describe('Markdown document references', () => {
+  /** Only `docs/spec.md` is a real file; everything else stays text. */
+  const resolver = (raw: string) => {
+    if (raw.startsWith('docs/spec.md')) return { path: 'docs/spec.md', line: raw.includes(':') ? Number(raw.split(':')[1]) : undefined }
+    return null
+  }
+
+  it('leaves inline code untouched when no resolver is supplied', () => {
+    const wrapper = render('看这里 `docs/spec.md:12`')
+    expect(wrapper.find('.markdown-doc-ref').exists()).toBe(false)
+    expect(wrapper.get('.markdown-prose code').text()).toBe('docs/spec.md:12')
+    wrapper.unmount()
+  })
+
+  it('upgrades a verified inline code reference and reports the line on click', async () => {
+    const wrapper = render('看这里 `docs/spec.md:12`，以及 `src/other.ts`', { docRefs: resolver })
+    const refs = wrapper.findAll('.markdown-doc-ref')
+    expect(refs).toHaveLength(1)
+
+    const ref = refs[0]!
+    expect(ref.attributes('data-doc-path')).toBe('docs/spec.md')
+    expect(ref.attributes('data-doc-line')).toBe('12')
+    expect(ref.attributes('role')).toBe('button')
+    expect(ref.attributes('title')).toBe('Open docs/spec.md at line 12')
+    // The code keeps its own markup (and the line suffix) inside the clickable wrapper.
+    expect(ref.get('code').text()).toBe('docs/spec.md:12')
+
+    await ref.trigger('click')
+    expect(wrapper.emitted('open-doc')?.at(-1)).toEqual([{ path: 'docs/spec.md', line: 12 }])
+    wrapper.unmount()
+  })
+
+  it('decorates a relative link but never an external one', () => {
+    const wrapper = render('[docs/spec.md](./docs/spec.md) 与 [外链](https://example.invalid/a.md)', { docRefs: resolver })
+    const refs = wrapper.findAll('.markdown-doc-ref')
+    expect(refs).toHaveLength(1)
+    expect(refs[0]!.attributes('data-doc-path')).toBe('docs/spec.md')
+    const anchors = wrapper.findAll('a')
+    const external = anchors.find((anchor) => anchor.attributes('href') === 'https://example.invalid/a.md')
+    expect(external?.classes()).not.toContain('markdown-doc-ref')
+    wrapper.unmount()
+  })
+
+  it('opens a reference from the keyboard', async () => {
+    const wrapper = render('`docs/spec.md`', { docRefs: resolver })
+    await wrapper.get('.markdown-doc-ref').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('open-doc')?.at(-1)).toEqual([{ path: 'docs/spec.md' }])
+    wrapper.unmount()
+  })
+
+  it('re-parses when the resolver version changes so a late verdict can upgrade text', async () => {
+    let verified = false
+    const lateResolver = (raw: string) => (verified && raw === 'docs/spec.md' ? { path: raw } : null)
+    const wrapper = render('`docs/spec.md`', { docRefs: lateResolver, docRefsVersion: 0 })
+    expect(wrapper.find('.markdown-doc-ref').exists()).toBe(false)
+
+    verified = true
+    await wrapper.setProps({ docRefsVersion: 1 })
+    expect(wrapper.find('.markdown-doc-ref').exists()).toBe(true)
     wrapper.unmount()
   })
 })

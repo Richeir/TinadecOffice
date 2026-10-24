@@ -117,6 +117,8 @@ const panelSources = import.meta.glob(
     // The code page and its Git panels, including the approval and status lines built in script.
     './../pages/CodePage.vue',
     './../components/code/*.vue',
+    // The sidebar document reader: its empty, oversized and unsupported states all speak.
+    './../components/document/*.vue',
     './../components/git/*.vue',
     './../controllers/CodeController.ts',
     './../composables/useGitOperation.ts',

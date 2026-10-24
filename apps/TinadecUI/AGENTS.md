@@ -81,7 +81,7 @@ UIE is the **only** layout system. The legacy panel system (`ContextPanel`/`Pane
 - **Market readiness**: Market selects its target snapshot after `ready` and before creating the canvas; never mount the previously shared Home cards as a temporary Market tree.
 - **First activation**: `UieCardHost` creates content when its tab is first active. Thereafter hidden tabs keep the same component and local state, with reactive `uie:active`; do not turn this into destroy-on-every-tab-switch.
 - **Detached windows**: the window `type` is the UIE descriptor id; `useDetachedTabs` adds `sessionId`/`projectPath` on detach and strips them on reattach.
-- **Feature icons** come only from `cards/home/featureCatalog.ts` (`featureIconFor`).
+- **Feature icons** come only from `cards/home/featureCatalog.ts` (`featureIconFor`). Any descriptor that renders as a tab must have a catalog entry: without one it falls back to a Globe and becomes indistinguishable from every other unknown card. Every catalog entry is also a Home-grid tile except `git`, which has its own status widget above the grid — a tile that opens a panel with nothing to show is a dead entry, so give the card a useful empty state (the document viewer's is the workspace shelf) rather than hiding it.
 - **Tab middle-click**: `BrowserTabBar` and `UieStack` close non-pinned tabs on `auxclick` button 1, consume the event on pinned Home, and leave left activation, right detach, and left drag behavior unchanged. The contract is covered by `apps/desktop/src/components/BrowserTabBar.test.ts`.
 
 ## The three modules

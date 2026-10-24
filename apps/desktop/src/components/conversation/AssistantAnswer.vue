@@ -4,7 +4,9 @@ import { computed, ref, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MarkdownRender from '@/components/MarkdownRender.vue'
 import { useSmoothText } from '@/composables/useSmoothText'
+import { useDocumentRefs } from '@/composables/useDocumentRefs'
 import { formatClock, formatDuration } from '@/lib/conversation/format'
+import type { DocumentRef } from '@/lib/documentPath'
 
 /**
  * The answer body. It is never folded: activity collapses around it, the answer stays.
@@ -22,12 +24,23 @@ const props = defineProps<{
   last?: boolean
   /** A short interim answer between steps: clamped to two quiet lines, the full text on hover. */
   compact?: boolean
+  /** The active project root; document references only exist inside one. */
+  workspaceRoot?: string | null
 }>()
+const emit = defineEmits<{ 'open-doc': [ref: DocumentRef] }>()
 const { t, locale } = useI18n()
 
 const shown = useSmoothText(toRef(props, 'content'), computed(() => Boolean(props.streaming)))
 const copied = ref(false)
 const clock = computed(() => (props.createdAt ? formatClock(props.createdAt, locale.value) : ''))
+
+/**
+ * References stay plain text while the answer streams: verifying them mid-reply would
+ * run a directory listing every few deltas, and the link would appear and disappear as
+ * the model kept typing. Once the turn settles they upgrade in one re-parse.
+ */
+const refs = useDocumentRefs(toRef(props, 'workspaceRoot'))
+const docRefs = computed(() => (props.streaming ? null : refs.resolve))
 
 function copy() {
   void navigator.clipboard?.writeText(props.content)
@@ -39,7 +52,12 @@ function copy() {
 <template>
   <div class="conversation-answer" :class="{ 'is-last': last, 'is-compact': compact }" :title="compact ? content : undefined" :aria-busy="streaming ? 'true' : undefined" :data-testid="streaming ? 'chat-streaming-reply' : 'assistant-answer'">
     <div class="message-content assistant">
-      <MarkdownRender :content="shown" />
+      <MarkdownRender
+        :content="shown"
+        :doc-refs="docRefs"
+        :doc-refs-version="refs.revision.value"
+        @open-doc="emit('open-doc', $event)"
+      />
       <span v-if="streaming" class="conversation-caret" aria-hidden="true" />
     </div>
     <div v-if="!streaming && !compact" class="conversation-answer-footer">

@@ -19,6 +19,8 @@ import SupervisionGate from './SupervisionGate.vue'
 import CorrectionQuestionGate from './CorrectionQuestionGate.vue'
 import CorrectionFeedback from './CorrectionFeedback.vue'
 import type { CorrectionQuestion, CorrectionTrace } from '@/lib/conversation/correction'
+import { openDocument } from '@/lib/documentWorkspace'
+import type { DocumentRef } from '@/lib/documentPath'
 
 /**
  * One turn: the user's message, then for each run its work, the approvals it is waiting
@@ -35,6 +37,11 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ edit: [payload: { id: string; content: string }] }>()
 const { t, te } = useI18n()
+
+/** A reference click opens the reader in the right column; the turn itself stays put. */
+function openDoc(ref: DocumentRef): void {
+  openDocument({ path: ref.path, line: ref.line, cwd: props.workspaceRoot })
+}
 
 interface RunView {
   id: string
@@ -189,7 +196,13 @@ const toolCount = computed(() => {
       <!-- Why a run stopped is never folded away with its work. -->
       <TurnMarker v-if="run.activity?.failure" type="run_failed" :data="{ category: run.activity.failure.category, message: run.activity.failure.message }" />
       <TurnMarker v-if="run.status === 'cancelled'" type="run_cancelled" />
-      <AssistantAnswer v-if="run.streamingText && !answers.some((answer) => answer.run_id === run.id)" :content="run.streamingText" streaming />
+      <AssistantAnswer
+        v-if="run.streamingText && !answers.some((answer) => answer.run_id === run.id)"
+        :content="run.streamingText"
+        :workspace-root="workspaceRoot"
+        streaming
+        @open-doc="openDoc"
+      />
       <!-- A live run with no answer text yet. Measured on real runs the gap before the first
            answer frame is 69-86% of the run; without a body here the panel just looks idle. -->
       <p
@@ -222,6 +235,8 @@ const toolCount = computed(() => {
       :tool-count="index === answers.length - 1 ? toolCount : 0"
       :last="last && index === answers.length - 1"
       :compact="isCompactAnswer(answer.content, index, answers.length)"
+      :workspace-root="workspaceRoot"
+      @open-doc="openDoc"
     />
     <CorrectionFeedback
       v-for="run in runs.filter((item) => item.correction && (

@@ -31,13 +31,16 @@ const rootRef = ref<HTMLElement | null>(null)
 const { isCompact } = useResponsiveMode(rootRef)
 
 // The feature list is the shared catalog; the approval card additionally
-// shows the pending-count badge.
+// shows the pending-count badge. Git is the one catalog entry that is not a
+// tile here: it has its own status widget above the grid.
 const features = computed(() =>
-  FEATURE_CATALOG.filter((entry) => entry.descriptorId !== 'git').map((entry) =>
-    entry.descriptorId === 'approval'
-      ? { ...entry, badge: () => c.approvals.value.filter((a) => a.status === 'pending').length }
-      : entry,
-  ),
+  FEATURE_CATALOG
+    .filter((entry) => entry.descriptorId !== 'git')
+    .map((entry) =>
+      entry.descriptorId === 'approval'
+        ? { ...entry, badge: () => c.approvals.value.filter((a) => a.status === 'pending').length }
+        : entry,
+    ),
 )
 
 function openCard(descriptorId: string) {

@@ -15,6 +15,7 @@ import { createAgentTerminalSource } from '@/composables/useTerminalSource'
 import { useToolPreview } from '@/composables/useToolPreview'
 import { errorCategoryMessage } from '@/lib/apiError'
 import { formatDuration } from '@/lib/conversation/format'
+import { openDocument } from '@/lib/documentWorkspace'
 import type { ToolEntry } from '@/lib/conversation/reducer'
 import { displayPath, entrySentence, verbKey, type VerbPhase } from '@/lib/conversation/toolSentence'
 import ToolPreview from './ToolPreview.vue'
@@ -50,6 +51,15 @@ const failure = computed(() => {
   return errorCategoryMessage(props.entry.errorCategory, { t, te }) ?? props.entry.errorCategory ?? ''
 })
 const isShell = computed(() => sentence.value.verb === 'run')
+
+/**
+ * A file this call changed is also a document the user may want to read. The path comes
+ * from the tool, so it is trusted as a real file; `cwd` only rejects anything outside the
+ * workspace.
+ */
+function openChanged(path: string): void {
+  openDocument({ path, cwd: props.workspaceRoot, source: 'tool' })
+}
 
 const open = ref(false)
 const { preview, loading, error, load } = useToolPreview(toRef(() => props.entry.id), toRef(() => props.entry.status))
@@ -120,7 +130,14 @@ function openInTerminal() {
         <p v-if="entry.argumentsSummary" class="conversation-tool-args">{{ entry.argumentsSummary }}</p>
         <pre v-if="isShell && tail && (running || !preview?.preview)" class="conversation-code" data-testid="tool-live-tail">{{ tail }}</pre>
         <ul v-if="entry.changedPaths.length" class="conversation-tool-changes" role="list" :aria-label="t('conversation.tool.changedFiles')">
-          <li v-for="path in entry.changedPaths" :key="path">{{ displayPath(path, workspaceRoot) }}</li>
+          <li v-for="path in entry.changedPaths" :key="path">
+            <button
+              type="button"
+              class="conversation-link-button"
+              :title="t('conversation.tool.openFile', { path: displayPath(path, workspaceRoot) })"
+              @click="openChanged(path)"
+            >{{ displayPath(path, workspaceRoot) }}</button>
+          </li>
         </ul>
         <p v-if="previewSpinner" class="conversation-preview-caption"><Spinner decorative class="conversation-glyph" /> {{ t('conversation.tool.preview.loading') }}</p>
         <p v-else-if="error" class="conversation-preview-caption">{{ t('conversation.tool.preview.failed') }}

@@ -1,4 +1,6 @@
 import type { Component } from 'vue'
+import CodeEditorCard from '@/components/code/CodeEditorCard.vue'
+import DocumentReaderCard from '@/components/document/DocumentReaderCard.vue'
 import SpatialWorkCard from '@/components/spatial/SpatialWorkCard.vue'
 import { createCardRegistry, type CardRegistry } from '../../engine/registry'
 import NavCard from './home/NavCard.vue'
@@ -44,6 +46,14 @@ export function buildUieRegistry(): CardRegistry {
     // mounting two TerminalCards would attach two xterm views to the same terminal IDs and
     // let one view dispose the other's renderer.
     { type: 'terminal', component: TerminalCard, minWidth: 260, minHeight: 160, singleton: true, movable: true, closable: true, detachable: true, defaultTitle: '' },
+    // Documents are two cards, not one: the viewer is read-only and gets its paths from
+    // references, the editor owns the folder tree and the approval save. Both are singleton
+    // — the viewer hosts every open document as an internal tab (the feature column's own
+    // bar is icon-only at 420px, so one card per document would be a row of identical
+    // fallback icons with no filename), and one editor per workspace is the point of
+    // "open in editor".
+    { type: 'docReader', component: DocumentReaderCard, minWidth: 320, minHeight: 220, singleton: true, movable: true, closable: true, detachable: true, defaultTitle: '' },
+    { type: 'codeEditor', component: CodeEditorCard, minWidth: 320, minHeight: 220, singleton: true, movable: true, closable: true, detachable: true, defaultTitle: '' },
     { type: 'marketFilter', component: MarketFilterCard, minWidth: 240, minHeight: 160, singleton: true, movable: false, closable: false, detachable: false, defaultTitle: '' },
     { type: 'marketCatalog', component: MarketCatalogCard, minWidth: 280, minHeight: 160, singleton: true, movable: false, closable: false, detachable: false, defaultTitle: '' },
     { type: 'marketDetail', component: MarketDetailCard, minWidth: 280, minHeight: 160, singleton: true, movable: false, closable: false, detachable: false, defaultTitle: '' },

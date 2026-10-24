@@ -6,34 +6,26 @@ import { Marked } from 'marked'
 import markedFootnote from 'marked-footnote'
 import markedKatex from 'marked-katex-extension'
 import DOMPurify from 'dompurify'
-import hljs from 'highlight.js/lib/core'
-import bash from 'highlight.js/lib/languages/bash'
-import cpp from 'highlight.js/lib/languages/cpp'
-import csharp from 'highlight.js/lib/languages/csharp'
-import css from 'highlight.js/lib/languages/css'
-import diff from 'highlight.js/lib/languages/diff'
-import dockerfile from 'highlight.js/lib/languages/dockerfile'
-import go from 'highlight.js/lib/languages/go'
-import ini from 'highlight.js/lib/languages/ini'
-import java from 'highlight.js/lib/languages/java'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
-import markdown from 'highlight.js/lib/languages/markdown'
-import plaintext from 'highlight.js/lib/languages/plaintext'
-import powershell from 'highlight.js/lib/languages/powershell'
-import python from 'highlight.js/lib/languages/python'
-import rust from 'highlight.js/lib/languages/rust'
-import sql from 'highlight.js/lib/languages/sql'
-import typescript from 'highlight.js/lib/languages/typescript'
-import xml from 'highlight.js/lib/languages/xml'
-import yaml from 'highlight.js/lib/languages/yaml'
 import 'katex/dist/katex.min.css'
+import { highlightCode } from '@/lib/highlight'
+import type { DocumentRef } from '@/lib/documentPath'
 import MarkdownDiagram from './MarkdownDiagram.vue'
 import UiIslandCard from './ui/island-card.vue'
 
 const props = defineProps<{
   content: string
+  /**
+   * Optional document-reference resolver. When omitted the renderer behaves exactly as
+   * before (space mode and the sub-agent cards pass nothing); when supplied, an inline
+   * code span or a link that resolves to a real workspace file becomes a clickable
+   * reference.
+   */
+  docRefs?: ((raw: string) => DocumentRef | null) | null
+  /** Changing this re-parses the blocks so late verifications can upgrade plain text. */
+  docRefsVersion?: number
 }>()
+
+const emit = defineEmits<{ 'open-doc': [ref: DocumentRef] }>()
 
 const { t } = useI18n()
 
@@ -68,54 +60,56 @@ const marked = new Marked()
 marked.use(markedKatex({ throwOnError: false, strict: 'ignore' }))
 marked.use(markedFootnote())
 
-const languageModules: Array<[string, unknown]> = [
-  ['bash', bash],
-  ['cpp', cpp],
-  ['csharp', csharp],
-  ['css', css],
-  ['diff', diff],
-  ['dockerfile', dockerfile],
-  ['go', go],
-  ['ini', ini],
-  ['java', java],
-  ['javascript', javascript],
-  ['json', json],
-  ['markdown', markdown],
-  ['plaintext', plaintext],
-  ['powershell', powershell],
-  ['python', python],
-  ['rust', rust],
-  ['sql', sql],
-  ['typescript', typescript],
-  ['xml', xml],
-  ['yaml', yaml],
-]
-for (const [name, definition] of languageModules) hljs.registerLanguage(name, definition as never)
+/**
+ * Document references: an inline code span or a relative link whose text resolves to a
+ * real workspace file. The host element keeps `data-doc-*` instead of a Vue handler
+ * because the prose arrives through `v-html`; the click is delegated on `bodyRef`.
+ */
+function markDocumentRefs(fragment: DocumentFragment): void {
+  const resolve = props.docRefs
+  if (!resolve) return
+  for (const code of Array.from(fragment.querySelectorAll('code'))) {
+    // Fenced blocks are their own island and are never a reference.
+    if (code.closest('pre')) continue
+    const raw = (code.textContent ?? '').trim()
+    const ref = resolve(raw)
+    if (!ref) continue
+    wrapReference(code, ref)
+  }
+  for (const anchor of Array.from(fragment.querySelectorAll('a[href]'))) {
+    const href = anchor.getAttribute('href') ?? ''
+    // Only relative links can be workspace documents; schemes and in-page anchors cannot.
+    if (!href || href.startsWith('#') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(href)) continue
+    const ref = resolve((anchor.textContent ?? '').trim() || href)
+    if (!ref) continue
+    decorateReference(anchor, ref)
+  }
+}
+
+function decorateReference(element: Element, ref: DocumentRef): void {
+  element.classList.add('markdown-doc-ref')
+  element.setAttribute('data-doc-path', ref.path)
+  element.setAttribute('role', 'button')
+  element.setAttribute('tabindex', '0')
+  if (ref.line) element.setAttribute('data-doc-line', String(ref.line))
+  element.setAttribute(
+    'title',
+    ref.line
+      ? t('chat.markdownDocRefLine', { path: ref.path, line: ref.line })
+      : t('chat.markdownDocRef', { path: ref.path }),
+  )
+}
 
 /**
- * A reply is re-parsed on every streaming delta, so the same code block would be
- * highlighted again and again. The cache keeps that off the hot path; it is
- * cleared wholesale at the cap because a reply is not worth LRU bookkeeping.
+ * The reference keeps its `<code>` so the inline-code typography still applies; the
+ * wrapper is the click target.
  */
-const highlightCache = new Map<string, string>()
-const HIGHLIGHT_CACHE_LIMIT = 240
-
-function highlightCode(code: string, language: string | null): string {
-  const key = `${language ?? ''}\u0000${code}`
-  const cached = highlightCache.get(key)
-  if (cached !== undefined) return cached
-  // `getLanguage` probes the alias table without logging; `highlight` warns and
-  // throws on an unknown alias, so a fence like ```foobar degrades quietly.
-  const known = language ? hljs.getLanguage(language) : undefined
-  let value: string
-  try {
-    value = hljs.highlight(code, { language: known ? language! : 'plaintext', ignoreIllegals: true }).value
-  } catch {
-    value = hljs.highlight(code, { language: 'plaintext', ignoreIllegals: true }).value
-  }
-  if (highlightCache.size >= HIGHLIGHT_CACHE_LIMIT) highlightCache.clear()
-  highlightCache.set(key, value)
-  return value
+function wrapReference(code: Element, ref: DocumentRef): void {
+  const anchor = document.createElement('a')
+  anchor.setAttribute('href', '#')
+  decorateReference(anchor, ref)
+  code.replaceWith(anchor)
+  anchor.appendChild(code)
 }
 
 function escapeHtml(text: string): string {
@@ -226,6 +220,9 @@ function calloutBlock(quote: Element): MarkdownBlock | null {
 }
 
 const blocks = computed<MarkdownBlock[]>(() => {
+  // Late reference verifications bump this counter; reading it here re-parses the reply
+  // exactly once per settled batch instead of once per streaming delta.
+  void props.docRefsVersion
   const raw = marked.parse(props.content, {
     breaks: true,
     gfm: true,
@@ -236,6 +233,7 @@ const blocks = computed<MarkdownBlock[]>(() => {
   const fragment = DOMPurify.sanitize(raw, { RETURN_DOM_FRAGMENT: true })
   applyHeadingAnchors(fragment, t('chat.markdownAnchor'))
   localizeFootnotes(fragment)
+  markDocumentRefs(fragment)
   for (const table of fragment.querySelectorAll('table')) {
     const scroll = document.createElement('div')
     scroll.className = 'markdown-table-scroll'
@@ -298,6 +296,39 @@ function onAnchorClick(event: MouseEvent) {
   flashAnchor(target)
 }
 
+/** The document reference sits inside `v-html`, so its activation is delegated here. */
+function documentRefTarget(event: Event): HTMLElement | null {
+  const element = (event.target as HTMLElement | null)?.closest?.('[data-doc-path]')
+  return element instanceof HTMLElement && element.hasAttribute('data-doc-path') ? element : null
+}
+
+function openDocumentRef(element: HTMLElement): void {
+  const path = element.getAttribute('data-doc-path') ?? ''
+  if (!path) return
+  const line = Number(element.getAttribute('data-doc-line') ?? '')
+  emit('open-doc', Number.isFinite(line) && line > 0 ? { path, line } : { path })
+}
+
+function onBodyClick(event: MouseEvent) {
+  const element = documentRefTarget(event)
+  if (element) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    openDocumentRef(element)
+    return
+  }
+  onAnchorClick(event)
+}
+
+/** A reference announces itself as a button, so Enter and Space must work too. */
+function onBodyKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  const element = documentRefTarget(event)
+  if (!element) return
+  event.preventDefault()
+  openDocumentRef(element)
+}
+
 const copiedIndex = ref<number | null>(null)
 const failedIndex = ref<number | null>(null)
 let feedbackTimer: ReturnType<typeof setTimeout> | null = null
@@ -355,7 +386,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="bodyRef" class="markdown-body" @click="onAnchorClick">
+  <div ref="bodyRef" class="markdown-body" @click="onBodyClick" @keydown="onBodyKeydown">
     <template v-for="(block, index) in blocks" :key="index">
       <UiIslandCard v-if="block.kind === 'code'" class="markdown-island markdown-code" padding="none">
         <div class="markdown-code-header">

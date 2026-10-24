@@ -26,6 +26,8 @@ const props = defineProps<{
   fontSize?: number
   wordWrap?: 'on' | 'off'
   tabSize?: number
+  /** Scroll this line into view and mark it — a document reference opened from the transcript. */
+  revealLine?: number
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +61,8 @@ const lastPublishedAction = ref<string | null>(null)
 
 let editor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null
 let model: import('monaco-editor').editor.ITextModel | null = null
+let monacoRef: typeof import('monaco-editor') | null = null
+let revealDecorations: string[] = []
 
 const language = computed(() => detectLanguage(props.filePath))
 const isDirty = computed(() => content.value !== originalContent.value)
@@ -109,9 +113,27 @@ async function loadFile(): Promise<void> {
   }
 }
 
+/**
+ * A reference can point at line N of the file it opened. The cursor is left alone — the
+ * user may already be typing — so only the viewport moves and the row is tinted.
+ */
+function revealReferencedLine(): void {
+  const line = props.revealLine
+  if (!editor || !monacoRef || !line || line < 1) return
+  const current = editor.getModel()
+  if (!current) return
+  const target = Math.min(line, current.getLineCount())
+  editor.revealLineInCenter(target)
+  revealDecorations = editor.deltaDecorations(revealDecorations, [{
+    range: new monacoRef.Range(target, 1, target, 1),
+    options: { isWholeLine: true, className: 'doc-editor-reveal-line' },
+  }])
+}
+
 async function renderEditor(): Promise<void> {
   if (!containerRef.value) return
   const monaco = await getMonaco()
+  monacoRef = monaco
 
   if (model) {
     model.dispose()
@@ -122,6 +144,8 @@ async function renderEditor(): Promise<void> {
 
   if (editor) {
     editor.setModel(model)
+    revealDecorations = []
+    revealReferencedLine()
     return
   }
 
@@ -151,6 +175,8 @@ async function renderEditor(): Promise<void> {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     void handleSave()
   })
+
+  revealReferencedLine()
 }
 
 async function handleSave(): Promise<void> {
@@ -321,6 +347,8 @@ onBeforeUnmount(() => {
 watch(() => [props.cwd, props.filePath], () => {
   void loadFile()
 })
+
+watch(() => props.revealLine, () => { revealReferencedLine() })
 
 watch(language, (lang) => {
   if (model) {

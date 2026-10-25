@@ -34,6 +34,8 @@ export interface GatewayConfig {
   corsExtraOrigins: string[];
   /** 请求超时（毫秒）。注意：当前没有代理路径消费它，设置它不会产生任何效果，见下方注释。 */
   requestTimeoutMs: number;
+  /** 请求耗时日志采样率。0 = 只出 Server-Timing 响应头，不写日志。 */
+  perfSampleRate: number;
   /** 是否信任反向代理头 */
   trustProxy: boolean;
 }
@@ -60,6 +62,12 @@ function getEnvNumber(key: string, fallback: number): number {
   if (!raw) return fallback;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/** 一个越界的采样率会让每个请求都写日志，或让日志完全消失，两者都不诚实。 */
+function clampRate(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value >= 1 ? 1 : value;
 }
 
 export function loadConfig(): GatewayConfig {
@@ -109,6 +117,8 @@ export function loadConfig(): GatewayConfig {
     // not a bug fix, so it stays a separate item rather than riding along silently.
     requestTimeoutMs: getEnvNumber('TINADEC_GATEWAY_TIMEOUT_MS', 120_000),
     trustProxy: isCloud,
+    // 默认 0：观测不能以日志 IO 为代价。排查性能时再显式打开（0.05 = 5%）。
+    perfSampleRate: clampRate(getEnvNumber('TINADEC_GATEWAY_PERF_SAMPLE', 0)),
   };
 }
 

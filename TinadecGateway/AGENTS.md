@@ -1,5 +1,19 @@
 # GATEWAY KNOWLEDGE
 
+## 2026-10-25 Request timing, model-center snapshot, shared run→session lookup
+
+`src/timing.ts` puts `Server-Timing` on **every** response. Only `total` is unconditional — segments appear where a route measures itself (`snapshot.<part>` on the model-center snapshot, `task-nodes.*` / `context-versions.*` on the two run-scoped routes). The header must be emitted from three places, not one: `onRequest` (OPTIONS 204, 401), `onError` (thrown and unmatched requests, which never reach `onAfterHandle`) and `onAfterHandle`. `finalizeRequestTiming` is single-shot because `onError` and `onAfterHandle` are not on the same path.
+
+**`server-timing` must stay in `access-control-expose-headers`.** The renderer is a different origin from this gateway (`app://bundle` packaged, `127.0.0.1:5173` in dev), and a browser hides any response header not on that list — so dropping it makes the desktop read timing silently blank in the real app while every Node test still passes, because Node does not enforce CORS. `storageProxy.test.ts` pins the entry.
+
+**`TINADEC_GATEWAY_PERF_SAMPLE`** (default `0`) is a hard switch for the timing *log* only; the header is always sent. Measuring must not become the cost it measures, so the default writes nothing. `<= 0` or non-finite clamps to 0, `>= 1` to 1. The log line carries method, bounded pathname, status and segment durations — never a body, query string or credential field.
+
+**`GET /api/v1/model-center/snapshot`** reads the seven independent settings projections in one round trip. Each part carries its own `ok`/`status`/`data`/`error`, so one failing upstream degrades only its own section; only "every part failed" is a 502. A mapping throw is reported as `GATEWAY_MAPPING_FAILED` rather than disguised as an unreachable Core. The per-endpoint routes stay the default path — this is an optional fast path, and the desktop falls back to them when the shape is unusable.
+
+**`src/runSessionLookup.ts`** shares the run→session orchestration query between `task-nodes` and `context-versions` (2 s TTL, 256 entries, delete-before-set so a re-read does not pin an entry to the eviction head). Both routes 404 first on a run-scoped read, then pay the same orchestration round trip; without sharing, one panel refresh pays it twice. Failures normalize to `null` — the caller is already walking a fallback chain.
+
+Boundary: SSE and byte proxies (`proxySse`, `proxyRaw` and the attachment/download paths) return their own `Response`, so `set.headers` does not merge into them and they carry no `Server-Timing`. Fixing that means changing how Elysia merges headers on a returned `Response`; it is a separate item, not done. Evidence and readings: `.tinadec_dev/reports/2026-10-25-settings-cold-start.zh-CN.md`.
+
 ## 2026-10-13 Tool execution preview proxy (APP-HOME-108 P0)
 
 `GET /api/v1/sessions/:sessionId/tool-executions` forwarded `run_id` as `runId`, which Core never read; it now forwards `run_id` and `limit` under their own names (Core still accepts `runId`). New pure passthrough `GET /api/v1/tool-executions/:executionId/preview` forwards only `max_bytes`, sets `cache-control: no-store` on success and failure, and maps errors through `mapCoreErrorToExternal` (Core's `tool_execution_not_found` survives). Scoping, redaction and the byte budget are Core's; Gateway never reshapes or caches the body. Documentation DTOs `ToolExecutionPreview/ToolResultPreview/ToolPreviewLine/ToolPreviewEntry` live in `externalDtoOpenApi.ts`; external snapshot and Desktop `schema.d.ts` regenerated together.
@@ -141,6 +155,7 @@ Gateway 是北向无状态门面。用户 Code 工具执行入口代理 Core `/a
 | `TINADEC_GATEWAY_API_KEY` | — | API Key |
 | `TINADEC_GATEWAY_CORS_ORIGINS` | — | 额外 CORS 来源（逗号分隔） |
 | `TINADEC_GATEWAY_TIMEOUT_MS` | `120000` | 请求超时 |
+| `TINADEC_GATEWAY_PERF_SAMPLE` | `0` | 按请求耗时日志的采样率；`0` = 只出 `Server-Timing` 响应头、不写日志，`1` = 全采。越界与非有限值会被钳到 `[0,1]` |
 
 ### Gateway 薄代理原则
 - Gateway 不存储任何业务状态

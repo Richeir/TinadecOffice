@@ -68,6 +68,10 @@ test('SSE cursor proxy and CORS retain scope headers', async () => {
   assert.equal(response.status, 204);
   assert.match(response.headers.get('access-control-allow-headers') ?? '', /x-tinadec-storage-id/);
   assert.match(response.headers.get('access-control-expose-headers') ?? '', /etag/);
+  // A cross-origin renderer cannot read a header that is not exposed, so a missing entry
+  // here makes the desktop read timing silently blank in the real app while every Node
+  // test still passes.
+  assert.match(response.headers.get('access-control-expose-headers') ?? '', /server-timing/);
 });
 
 test('Gateway forwards supplied host credentials for JSON, bytes and SSE but never signs anonymous requests', async () => {

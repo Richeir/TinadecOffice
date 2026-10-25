@@ -9559,6 +9559,19 @@
         ]
       }
     },
+    "/api/v1/model-center/snapshot": {
+      "get": {
+        "description": "Reads the seven independent settings projections in one round trip. Each part carries its own status, so a single failing upstream degrades only its own section. The per-endpoint routes remain the default path.",
+        "operationId": "getApiV1Model-centerSnapshot",
+        "responses": {
+          "200": {}
+        },
+        "summary": "Model center cold-start snapshot (optional fast path)",
+        "tags": [
+          "ModelCenter"
+        ]
+      }
+    },
     "/api/v1/model-invocations": {
       "get": {
         "operationId": "getApiV1Model-invocations",

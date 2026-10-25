@@ -42,6 +42,15 @@ import { registerTinaChatRoutes, tinaChatSchemas } from './tinaChatRoutes.js';
 import { registerOrganizationRoutes, organizationSchemas } from './organizationRoutes.js';
 import { registerToolsSettingsRoutes, toolsSettingsSchemas } from './toolsSettingsRoutes.js';
 import { registerStorageRoutes, storageSchemas } from './storageRoutes.js';
+import {
+  finalizeRequestTiming,
+  logRequestTiming,
+  measureSegment,
+  requestTimingFor,
+  shouldSample,
+  startRequestTiming,
+} from './timing.js';
+import { resolveRunSessionId } from './runSessionLookup.js';
 
 const config = getConfig();
 const requestAuthContexts = new WeakMap<Request, AuthContext>();
@@ -56,7 +65,12 @@ function corsHeadersFor(origin: string | null): Record<string, string> {
     headers['access-control-allow-origin'] = origin;
     headers['access-control-allow-credentials'] = 'true';
     headers['vary'] = 'Origin';
-    headers['access-control-expose-headers'] = 'etag, x-request-id, x-tinadec-storage-id, content-disposition';
+    // The renderer is a different origin from this gateway (app://bundle when packaged,
+    // 127.0.0.1:5173 in dev), so a header missing from this list is invisible to it no
+    // matter what the response carries. server-timing is what the desktop read path
+    // measures; unexposed, the whole observation goes silently blank in the real app
+    // while still passing in Node, where CORS is not enforced.
+    headers['access-control-expose-headers'] = 'etag, x-request-id, x-tinadec-storage-id, content-disposition, server-timing';
   }
   return headers;
 }
@@ -115,6 +129,29 @@ function setProxyResponseHeaders(
   if (etag) set.headers.etag = etag;
 }
 
+/**
+ * 每个响应都带 Server-Timing；分段时间只出现在路由主动测量的位置，total 始终可用。
+ * 日志按采样率输出，默认 0（只出头）——观测不能靠自身带来的 IO 开销换取。
+ */
+function emitServerTiming(
+  request: Request,
+  set: { headers: Record<string, string | number>; status?: number | string },
+) {
+  const timing = requestTimingFor(request);
+  if (!timing) return;
+  const snapshot = finalizeRequestTiming(timing);
+  if (!snapshot) return;
+  set.headers['server-timing'] = snapshot.header;
+  if (shouldSample(config.perfSampleRate)) {
+    logRequestTiming(
+      request.method,
+      new URL(request.url).pathname,
+      typeof set.status === 'number' ? set.status : 0,
+      snapshot,
+    );
+  }
+}
+
 function setToolTransportResponseHeaders(
   set: { headers: Record<string, string | number> },
   requestId: string,
@@ -144,6 +181,8 @@ const app = new Elysia()
     const rid = ensureRequestId(request.headers.get('x-request-id') ?? request.headers.get('X-Request-Id'));
     set.headers['x-request-id'] = rid;
     set.headers['x-tinadec-principal'] = PRINCIPAL_VALUE;
+    // 抛错/未匹配的请求不会经过 onAfterHandle，而错误恰恰是最需要耗时归因的一类。
+    emitServerTiming(request, set);
     const path = new URL(request.url).pathname;
     if (code === 'NOT_FOUND') {
       set.status = 404;
@@ -171,6 +210,8 @@ const app = new Elysia()
     }
   })
   .onRequest(({ request, set }) => {
+    // 计时必须在任何早退（OPTIONS / 认证失败）之前开始，否则总耗时与分段就对不上。
+    startRequestTiming(request);
     const origin = request.headers.get('origin');
     const corsHeaders = corsHeadersFor(origin);
     if (request.method === 'OPTIONS') {
@@ -182,6 +223,7 @@ const app = new Elysia()
       corsHeaders['access-control-max-age'] = '86400';
       set.headers = { ...set.headers, ...corsHeaders };
       set.status = 204;
+      emitServerTiming(request, set);
       return '';
     }
     Object.assign(set.headers, corsHeaders);
@@ -198,9 +240,14 @@ const app = new Elysia()
     if (!authResult.ok) {
       setStatus(set, 401);
       set.headers['content-type'] = 'application/problem+json';
+      emitServerTiming(request, set);
       return toProblemDetails(401, authResult.error?.code ?? 'forbidden', authResult.error?.message ?? 'Authentication failed.', path);
     }
     if (authResult.context) requestAuthContexts.set(request, authResult.context);
+  })
+  // 只写响应头；不等待、不缓冲 body，SSE 与流式响应走同一条路。
+  .onAfterHandle(({ request, set }) => {
+    emitServerTiming(request, set);
   })
   .get('/api/v1/host-challenge', ({ set, request }) => {
     set.headers['cache-control'] = 'no-store';
@@ -340,6 +387,56 @@ const app = new Elysia()
     setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
     return mapModelReadiness(result.data);
   }, { detail: { summary: 'Model catalog readiness', tags: ['Health'] } })
+  .get('/api/v1/model-center/snapshot', async ({ set, request }) => {
+    const headers = forwardHeaders(request);
+    const timing = requestTimingFor(request);
+    const rid = (headers as Record<string, string>)['x-request-id'];
+    // 设置页冷启动的七个读彼此独立、没有数据依赖。一次往返里并行取回，任何一段失败
+    // 只降级它自己那一个分区，不让整页的 Promise.all 一起拒绝。分端点一个不少地保留：
+    // 这只是可选的快路径，旧路径仍是默认可用路径。
+    const read = (name: string, path: string, map: (data: unknown) => unknown = (data) => data) =>
+      measureSegment(timing, `snapshot.${name}`, async () => {
+        const result: Awaited<ReturnType<typeof proxyJson>> = await proxyJson(path, { headers }).catch(
+          (error: unknown) => ({ status: 502, data: { code: 'CORE_UNREACHABLE', message: error instanceof Error ? error.message : 'Read failed' } }),
+        );
+        if (result.status >= 400) {
+          return { ok: false as const, status: result.status, error: mapCoreErrorToExternal(result.status, result.data, path) };
+        }
+        try {
+          return { ok: true as const, status: result.status, data: map(result.data) };
+        } catch (error) {
+          // 映射抛错是网关自己的 bug，不能冒充上游不可达，也不能穿出去把整页拒掉。
+          return { ok: false as const, status: 500, error: { code: 'GATEWAY_MAPPING_FAILED', message: error instanceof Error ? error.message : 'Mapping failed' } };
+        }
+      });
+    const [providers, templates, routes, acpAdapters, modelReadiness, catalogReadiness, readiness] = await Promise.all([
+      read('providers', '/api/v1/model-providers'),
+      read('templates', '/api/v1/model-provider-templates'),
+      read('routes', '/api/v1/model-routes'),
+      read('acp-adapters', '/api/v1/acp/adapters'),
+      read('model-readiness', '/api/v1/model-readiness', mapModelReadiness),
+      read('catalog-readiness', '/api/v1/model-catalog-readiness', mapModelReadiness),
+      read('readiness', '/api/v1/readiness', mapReadiness),
+    ]);
+    const parts = {
+      providers,
+      templates,
+      routes,
+      acp_adapters: acpAdapters,
+      model_readiness: modelReadiness,
+      catalog_readiness: catalogReadiness,
+      readiness,
+    };
+    // 全部失败才是失败：部分失败由调用方按分区降级，与逐端点读取时的行为一致。
+    if (!Object.values(parts).some((part) => part.ok)) {
+      setStatus(set, 502);
+      set.headers['content-type'] = 'application/problem+json';
+      return toProblemDetails(502, 'core_unreachable', 'No part of the model center snapshot could be read.', '/api/v1/model-center/snapshot', rid);
+    }
+    setStatus(set, 200);
+    setProxyResponseHeaders(set as never, rid);
+    return { parts };
+  }, { detail: { summary: 'Model center cold-start snapshot (optional fast path)', tags: ['ModelCenter'], description: 'Reads the seven independent settings projections in one round trip. Each part carries its own status, so a single failing upstream degrades only its own section. The per-endpoint routes remain the default path.' } })
   .get('/api/v1/tool-layer-readiness', async ({ set, request }) => {
     const headers = forwardHeaders(request);
     const result = await proxyJson('/api/v1/tool-layer-readiness', { headers });
@@ -792,30 +889,31 @@ const app = new Elysia()
   }, { detail: { summary: 'Run stream (SSE)', tags: ['Runs'], description: 'Durable SSE with id=seq and event=kind, Last-Event-ID / ?cursor= & ?after_seq resume. Kinds: ack/queued/assigned/steering/context_conflict/control/ephemeral_agent/delta/done/error. occurred_at is the durable journal timestamp; idle keep-alive is an SSE comment ": heartbeat" that never advances the cursor' } })
   .get('/api/v1/runs/:runId/task-nodes', async ({ params, set, request }) => {
     const headers = forwardHeaders(request);
+    const timing = requestTimingFor(request);
     // Core stores task nodes per session; runId alone insufficient. Try run-scoped first, fallback to session-derived via orchestration.
-    const direct = await proxyJson(`/api/v1/runs/${params.runId}/task-nodes`, { headers });
+    const direct = await measureSegment(timing, 'task-nodes.direct', () =>
+      proxyJson(`/api/v1/runs/${params.runId}/task-nodes`, { headers }));
     if (direct.status < 400) {
       setStatus(set, direct.status);
       setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
       return mapTaskNodes(direct.data);
     }
-    // Fallback: derive session from run orchestration if Core has no direct route
+    // Fallback: derive session from run orchestration if Core has no direct route.
+    // The lookup is shared with /context-versions: both routes 404 first and otherwise
+    // pay the same orchestration round trip twice on every panel refresh.
     if (direct.status === 404) {
-      const orch = await proxyJson(`/api/v1/runs/${params.runId}/orchestration`, { headers });
-      if (orch.status >= 200 && orch.status < 300) {
-        const orchData = orch.data as Record<string, unknown> | null;
-        const run = orchData?.run as Record<string, unknown> | undefined;
-        const sessionId = run?.session_id ?? run?.sessionId;
-        if (sessionId) {
-          const sessNodes = await proxyJson(`/api/v1/sessions/${String(sessionId)}/task-nodes`, { headers });
-          setStatus(set, sessNodes.status);
-          if (sessNodes.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(sessNodes.status, sessNodes.data, `/api/v1/runs/${params.runId}/task-nodes`); }
-          const allRaw = mapTaskNodes(sessNodes.data);
-          const all = Array.isArray(allRaw) ? allRaw as Array<{ run_id: string }> : [];
-          const filtered = all.filter(n => n.run_id === params.runId);
-          setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
-          return filtered.length ? filtered : all;
-        }
+      const sessionId = await measureSegment(timing, 'task-nodes.orchestration', () =>
+        resolveRunSessionId(params.runId, headers));
+      if (sessionId) {
+        const sessNodes = await measureSegment(timing, 'task-nodes.session', () =>
+          proxyJson(`/api/v1/sessions/${sessionId}/task-nodes`, { headers }));
+        setStatus(set, sessNodes.status);
+        if (sessNodes.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(sessNodes.status, sessNodes.data, `/api/v1/runs/${params.runId}/task-nodes`); }
+        const allRaw = mapTaskNodes(sessNodes.data);
+        const all = Array.isArray(allRaw) ? allRaw as Array<{ run_id: string }> : [];
+        const filtered = all.filter(n => n.run_id === params.runId);
+        setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
+        return filtered.length ? filtered : all;
       }
     }
     setStatus(set, direct.status);
@@ -824,28 +922,27 @@ const app = new Elysia()
   }, { detail: { summary: 'Run task nodes', tags: ['Runs'] } })
   .get('/api/v1/runs/:runId/context-versions', async ({ params, query, set, request }) => {
     const headers = forwardHeaders(request);
-    const direct = await proxyJson(`/api/v1/runs/${params.runId}/context-versions${(() => { const s = new URLSearchParams(); if ((query as Record<string,unknown>).limit) s.set('limit', String((query as Record<string,unknown>).limit)); return s.toString() ? `?${s.toString()}` : ''; })()}`, { headers });
+    const timing = requestTimingFor(request);
+    const direct = await measureSegment(timing, 'context-versions.direct', () =>
+      proxyJson(`/api/v1/runs/${params.runId}/context-versions${(() => { const s = new URLSearchParams(); if ((query as Record<string,unknown>).limit) s.set('limit', String((query as Record<string,unknown>).limit)); return s.toString() ? `?${s.toString()}` : ''; })()}`, { headers }));
     if (direct.status < 400) {
       setStatus(set, direct.status);
       setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
       return mapContextVersions(direct.data);
     }
     if (direct.status === 404) {
-      const orch = await proxyJson(`/api/v1/runs/${params.runId}/orchestration`, { headers });
-      if (orch.status >= 200 && orch.status < 300) {
-        const orchData = orch.data as Record<string, unknown> | null;
-        const run = orchData?.run as Record<string, unknown> | undefined;
-        const sessionId = run?.session_id ?? run?.sessionId;
-        if (sessionId) {
-          const search = new URLSearchParams();
-          search.set('run_id', params.runId);
-          if ((query as Record<string,unknown>).limit) search.set('limit', String((query as Record<string,unknown>).limit));
-          const sess = await proxyJson(`/api/v1/sessions/${String(sessionId)}/context-versions?${search.toString()}`, { headers });
-          setStatus(set, sess.status);
-          if (sess.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(sess.status, sess.data, `/api/v1/runs/${params.runId}/context-versions`); }
-          setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
-          return mapContextVersions(sess.data);
-        }
+      const sessionId = await measureSegment(timing, 'context-versions.orchestration', () =>
+        resolveRunSessionId(params.runId, headers));
+      if (sessionId) {
+        const search = new URLSearchParams();
+        search.set('run_id', params.runId);
+        if ((query as Record<string,unknown>).limit) search.set('limit', String((query as Record<string,unknown>).limit));
+        const sess = await measureSegment(timing, 'context-versions.session', () =>
+          proxyJson(`/api/v1/sessions/${sessionId}/context-versions?${search.toString()}`, { headers }));
+        setStatus(set, sess.status);
+        if (sess.status >= 400) { set.headers['content-type'] = 'application/problem+json'; return mapCoreErrorToExternal(sess.status, sess.data, `/api/v1/runs/${params.runId}/context-versions`); }
+        setProxyResponseHeaders(set as never, (headers as Record<string,string>)['x-request-id']);
+        return mapContextVersions(sess.data);
       }
     }
     setStatus(set, direct.status);

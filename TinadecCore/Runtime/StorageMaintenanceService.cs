@@ -13,7 +13,9 @@ using TinadecCore.Persistence;
 
 namespace TinadecCore.Runtime;
 
-public sealed record StorageCategoryStatistics(string Category, string Path, long SizeBytes, long FileCount, bool Clearable);
+public sealed record StorageCategoryStatistics(string Category, string Path, long SizeBytes, long FileCount, bool Clearable,
+    /// <summary>True when the walk hit its budget: the numbers are a floor, not a total.</summary>
+    bool Truncated = false);
 public sealed record StorageStatistics(string StorageId, IReadOnlyList<StorageCategoryStatistics> Categories, IReadOnlyList<ConfigurationDiagnostic> Diagnostics);
 public sealed record StorageCleanupPreview(string PreviewId, string StorageId, string Category, string Path, long FileCount, long SizeBytes, DateTimeOffset ExpiresAt);
 
@@ -21,6 +23,18 @@ public sealed record StorageCleanupPreview(string PreviewId, string StorageId, s
 public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
 {
     private readonly ConcurrentDictionary<string, Cleanup> _previews = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Usage is a reading, not an audit: it runs on every storage-section open, so it must have
+    /// a bounded cost. A working install's cache is tens of thousands of files (measured: 27,221
+    /// files / 663 MiB, 152 s cold and ~20 s warm on Windows with real-time scanning), which is
+    /// far too long to hold an HTTP request — and the UI only needs "is this category big" and
+    /// "can I clear it". Each category therefore walks its own budget, stops at the first one
+    /// that runs out, and says so instead of pretending the partial sum is a total.
+    /// Cleanup previews still enumerate the real set they are about to delete.
+    /// </summary>
+    internal static readonly TimeSpan StatisticsBudget = TimeSpan.FromMilliseconds(400);
+
     public Task<StorageStatistics> StatisticsAsync(StorageScopeDescriptor scope, CancellationToken ct)
     {
         var diagnostics = new List<ConfigurationDiagnostic>();
@@ -29,13 +43,52 @@ public sealed class StorageMaintenanceService(IStorageScopeRegistry registry)
         {
             try
             {
-                var files = OwnedFiles(scope.Root, path, ct);
-                categories.Add(new(category, path, files.Sum(x => x.Length), files.Count, category is "cache" or "temp" or "logs"));
+                var (size, count, truncated) = MeasureDirectory(scope.Root, path, StatisticsBudget, ct);
+                categories.Add(new(category, path, size, count, category is "cache" or "temp" or "logs", truncated));
+                if (truncated)
+                    diagnostics.Add(new("storage_statistics_partial", path + ": this category holds more files than the usage reading measures."));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             { diagnostics.Add(new("storage_unreadable", path + ": " + ex.Message)); }
         }
         return Task.FromResult(new StorageStatistics(scope.StorageId, categories, diagnostics));
+    }
+
+    /// <summary>
+    /// Walk one owned directory within a time budget. The first directory to run out stops the
+    /// rest of that category's walk (a partial sum across an arbitrary subtree would be
+    /// meaningless), so `truncated` means "at least this much".
+    /// </summary>
+    internal static (long SizeBytes, long FileCount, bool Truncated) MeasureDirectory(string root, string directory, TimeSpan budget, CancellationToken ct)
+    {
+        if (!Directory.Exists(directory)) return (0, 0, false);
+        StorageScopePaths.RejectLinks(root, directory);
+        var started = Stopwatch.GetTimestamp();
+        long size = 0; long count = 0;
+        var pending = new Stack<string>(); pending.Push(directory);
+        while (pending.TryPop(out var current))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Stopwatch.GetElapsedTime(started) >= budget) return (size, count, true);
+            IEnumerable<string> entries;
+            try { entries = Directory.EnumerateFileSystemEntries(current); }
+            catch (DirectoryNotFoundException) { continue; }
+            foreach (var entry in entries)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Stopwatch.GetElapsedTime(started) >= budget) return (size, count, true);
+                try
+                {
+                    var attributes = File.GetAttributes(entry);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("Owned storage contains a link: " + entry);
+                    if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry);
+                    else { size += new FileInfo(entry).Length; count++; }
+                }
+                catch (FileNotFoundException) { }
+                catch (DirectoryNotFoundException) { }
+            }
+        }
+        return (size, count, false);
     }
 
     public async Task<StorageCleanupPreview> PreviewAsync(string storageId, string category, CancellationToken ct)

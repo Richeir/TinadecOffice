@@ -172,3 +172,28 @@ it('does not apply late maintenance completion or stats to a newly selected scop
   expect(mocks.getStorageStats).toHaveBeenCalledTimes(reads)
   wrapper.unmount()
 })
+// A byte count nobody asked to wait for used to hold the whole app: `canLeave()` refused while
+// the scope read was in flight, and the settings leave guard, the section switcher and the
+// window close button all ask it. The read holds no unsaved state, so it must not answer "no".
+it('lets the user leave while the slow scope read is still in flight', async () => {
+  let resolveStats!: (value: unknown) => void
+  mocks.getStorageStats.mockImplementationOnce(() => new Promise(resolve => { resolveStats = resolve }))
+  const wrapper = mount(StorageSection, chinese()); await flushPromises()
+
+  // The section says why it is slow instead of freezing silently.
+  expect(wrapper.text()).toContain('正在统计存储占用')
+  await expect((wrapper.vm as unknown as { canLeave(): Promise<boolean> }).canLeave()).resolves.toBe(true)
+
+  resolveStats({ storage_id: 'user', categories: [], diagnostics: [] }); await flushPromises()
+  wrapper.unmount()
+})
+
+// The other half of the same contract: the flag still exists, and it still covers writes. A
+// guard that never says "no" would be as wrong as one that never says "yes".
+it('still holds the user for a write they started themselves', async () => {
+  mocks.configureStorage.mockImplementationOnce(() => new Promise(() => {}))
+  const wrapper = mount(StorageSection, chinese()); await flushPromises()
+  await wrapper.findAll('button').find(button => button.text() === '应用存储配置')!.trigger('click'); await flushPromises()
+  await expect((wrapper.vm as unknown as { canLeave(): Promise<boolean> }).canLeave()).resolves.toBe(false)
+  wrapper.unmount()
+})

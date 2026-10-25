@@ -43,6 +43,18 @@ const backend = ref('sqlite')
 const root = ref('')
 const postgresReference = ref('')
 const busy = ref(false)
+/**
+ * The scope read (`stats` + `diagnostics` + the document) is the slow one: Core walks every
+ * owned file, which on a working install means tens of thousands of cache entries. `busy`
+ * used to cover it, and `canLeave()` refused while busy — so the whole section, the nav and
+ * the app's own close button were held hostage by a byte count nobody had asked to wait for.
+ * `loading` is that read; it disables the controls that would act on half-known state and
+ * nothing else. `busy` stays for actions the user explicitly started, where blocking is the
+ * honest signal that the write is in flight.
+ */
+const loading = ref(false)
+/** Actions span both flags: a user-started write blocks leaving, a refresh does not. */
+const working = computed(() => busy.value || loading.value)
 // The full failure (code, category, actions, trace id), not just a sentence. The plain
 // `error` string below stays for compact inline slots that only need the message.
 const failure = useErrorState()
@@ -61,6 +73,8 @@ function hostAction(storageId: string, action: 'configure' | 'cleanup' | 'conten
 function bytes(size: number) { return `${(size / 1024 / 1024).toFixed(2)} MiB` }
 function restart() { window.tinadec?.restartApp() }
 async function canLeave() {
+  // A read in flight must not trap the user in this section: it holds no unsaved state and
+  // its result is discarded by the generation check when the read lands elsewhere.
   if (busy.value) return false
   if (!dirty.value) return true
   return await confirm({ title: t('storage.unsavedTitle'), message: t('storage.unsavedMessage'), confirmLabel: t('storage.discardDraft'), destructive: true })
@@ -74,7 +88,7 @@ async function loadDocument(current = generation) {
   document.value = result; text.value = baseline.value = result.text; diagnostics.value = result.diagnostics
 }
 async function loadContext() {
-  const current = ++generation; busy.value = true; failure.clear(); preview.value = null; contentPreview.value = null; deletePreview.value = null; notice.value = ''
+  const current = ++generation; loading.value = true; failure.clear(); preview.value = null; contentPreview.value = null; deletePreview.value = null; notice.value = ''
   const captured = scopeId.value
   stats.value = null; scopeDiagnostics.value = []; document.value = null
   try {
@@ -89,20 +103,20 @@ async function loadContext() {
     backend.value = scope.value?.backend.toLowerCase() === 'postgresql' ? 'postgresql' : 'sqlite'; root.value = scope.value?.storage_root ?? ''; postgresReference.value = scope.value?.postgres_connection_reference ?? ''
     await loadDocument(current)
   } catch (value) { if (current === generation) failure.set(value) }
-  finally { if (current === generation) busy.value = false }
+  finally { if (current === generation) loading.value = false }
 }
 async function refresh(preserveDraft = false) {
   if (!canAccessBackend.value) return
   if (!(preserveDraft && dirty.value) && !await canLeave()) return
   const current = ++generation
-  busy.value = true; failure.clear()
+  loading.value = true; failure.clear()
   try {
     const rows = await api.listStorageScopes()
     if (current !== generation || !canAccessBackend.value) return
     scopes.value = rows
     if (!scope.value && !(preserveDraft && dirty.value)) scopeId.value = 'user'
   } catch (value) { if (current === generation) failure.set(value) }
-  finally { if (current === generation) busy.value = false }
+  finally { if (current === generation) loading.value = false }
   if (current !== generation || error.value) return
   if (preserveDraft && dirty.value) {
     notice.value = t('storage.reconnectedDraftKept')
@@ -114,8 +128,8 @@ async function selectScope(next: string) {
 }
 async function selectDocument(next: string) {
   if (next === documentId.value || !await canLeave()) return
-  documentId.value = next; const current = ++generation; busy.value = true; failure.clear()
-  try { await loadDocument(current) } catch (value) { if (current === generation) failure.set(value) } finally { if (current === generation) busy.value = false }
+  documentId.value = next; const current = ++generation; loading.value = true; failure.clear()
+  try { await loadDocument(current) } catch (value) { if (current === generation) failure.set(value) } finally { if (current === generation) loading.value = false }
 }
 async function validate() {
   const current = generation
@@ -271,7 +285,7 @@ async function closeScope() {
 }
 watch(canAccessBackend, ready => {
   if (ready) void refresh(true)
-  else { ++generation; closeController.value?.abort(); preview.value = null; contentPreview.value = null; deletePreview.value = null; busy.value = false }
+  else { ++generation; closeController.value?.abort(); preview.value = null; contentPreview.value = null; deletePreview.value = null; busy.value = false; loading.value = false }
 })
 onMounted(() => { window.addEventListener('beforeunload', beforeUnload); void window.tinadec?.getAppConfig?.().then(result => { hostStorage.value = result.storage }).catch(() => {}); void refresh() })
 onBeforeUnmount(() => { ++generation; closeController.value?.abort(); window.removeEventListener('beforeunload', beforeUnload) })
@@ -287,10 +301,13 @@ const failureRecovery = computed(() => recoveryActions(failure.error.value, {
 </script>
 
 <template>
-  <section class="storage-settings" :aria-busy="busy">
-    <div class="model-center-heading"><div><h2>{{ t('storage.title') }}</h2><p>{{ t('storage.description') }}</p></div><UiButton variant="outline" :disabled="busy" @click="refresh()">{{ t('common.refresh') }}</UiButton></div>
+  <section class="storage-settings" :aria-busy="working">
+    <div class="model-center-heading"><div><h2>{{ t('storage.title') }}</h2><p>{{ t('storage.description') }}</p></div><UiButton variant="outline" :disabled="working" @click="refresh()">{{ t('common.refresh') }}</UiButton></div>
     <p v-if="!canAccessBackend" role="status">{{ hostReason }}</p>
-    <label class="storage-field">{{ t('storage.scope') }}<UiSelectField data-testid="storage-scope" :value="scopeId" :disabled="busy" :aria-label="t('storage.scope')" :options="scopes.map((item) => ({ value: item.storage_id, label: `${item.scope_kind} · ${item.project_root || item.storage_root}` }))" @change="selectScope" /></label>
+    <!-- A slow scope read says what it is doing instead of freezing the section silently.
+         Cache walks reach tens of thousands of files on a working install. -->
+    <p v-if="loading" class="quiet" role="status">{{ t('storage.readingScope') }}</p>
+    <label class="storage-field">{{ t('storage.scope') }}<UiSelectField data-testid="storage-scope" :value="scopeId" :disabled="working" :aria-label="t('storage.scope')" :options="scopes.map((item) => ({ value: item.storage_id, label: `${item.scope_kind} · ${item.project_root || item.storage_root}` }))" @change="selectScope" /></label>
     <div v-if="failureState" class="tools-field-error" role="alert">
       <p>{{ failureState.message }}</p>
       <!-- The reason, the actions and the correlation id all belong together: a sentence
@@ -306,24 +323,24 @@ const failureRecovery = computed(() => recoveryActions(failure.error.value, {
     <template v-if="scope">
       <p class="quiet"><code>{{ scope.storage_id }}</code> · {{ scope.backend }} · {{ (scope.external ? t('storage.externalStorage') : t('storage.defaultStorage')) }}</p>
       <p v-if="scopeId === 'user' && hostStorage" class="quiet">{{ t('storage.desktopStartupSource') }}: {{ t(`storage.hostSource.${hostStorage.source}`, hostStorage.source) }} · <code>{{ hostStorage.bootstrap_config }}</code> · {{ t('storage.hostUserRoot') }}: <code>{{ hostStorage.root }}</code><span v-if="hostStorage.managed"> · {{ t('storage.managedByHome') }}</span><span v-if="!hostStorage.local_services"> · {{ t('storage.externalServiceMode') }}</span></p>
-      <div class="storage-actions"><UiButton variant="outline" size="sm" :disabled="busy || !canAccessBackend || scope.availability === 'error'" @click="exportScope">{{ t('storage.exportZip') }}</UiButton><UiButton v-if="scopeId !== 'user'" variant="outline" size="sm" :disabled="busy" @click="closeScope">{{ t('storage.closeProjectStorage') }}</UiButton><UiButton v-if="scopeId !== 'user'" variant="outline" size="sm" :disabled="busy || !canAccessBackend" @click="unregisterScope">{{ t('storage.unregisterProject') }}</UiButton><UiButton v-if="scope.restart_required && hostStorage?.local_services !== false" variant="outline" size="sm" :disabled="busy" @click="restart">{{ t('storage.restartToApply') }}</UiButton></div>
+      <div class="storage-actions"><UiButton variant="outline" size="sm" :disabled="working || !canAccessBackend || scope.availability === 'error'" @click="exportScope">{{ t('storage.exportZip') }}</UiButton><UiButton v-if="scopeId !== 'user'" variant="outline" size="sm" :disabled="working" @click="closeScope">{{ t('storage.closeProjectStorage') }}</UiButton><UiButton v-if="scopeId !== 'user'" variant="outline" size="sm" :disabled="working || !canAccessBackend" @click="unregisterScope">{{ t('storage.unregisterProject') }}</UiButton><UiButton v-if="scope.restart_required && hostStorage?.local_services !== false" variant="outline" size="sm" :disabled="working" @click="restart">{{ t('storage.restartToApply') }}</UiButton></div>
       <dl class="storage-paths"><div v-for="(value, key) in scope.paths" :key="key"><dt>{{ categoryLabel(String(key)) }}</dt><dd><code>{{ value }}</code></dd></div></dl>
       <div v-if="scopeDiagnostics.length" class="tools-validation" role="status"><p v-for="(item, index) in scopeDiagnostics" :key="index" :title="diagnosticTitle(item)">{{ diagnosticText(item) }}</p></div>
       <fieldset class="storage-capability-fields" :disabled="!canAccessBackend || scope.availability === 'error'">
-      <div class="storage-config"><label class="storage-field">{{ t('storage.backend') }}<UiSelectField v-model="backend" :disabled="busy" :aria-label="t('storage.backend')" :options="[{ value: 'sqlite', label: 'SQLite' }, { value: 'postgresql', label: 'PostgreSQL' }]" /></label><label class="storage-field">{{ t('storage.root') }}<UiInput v-model="root" :disabled="busy" /></label><label v-if="backend === 'postgresql'" class="storage-field">{{ t('storage.postgresReference') }}<UiInput v-model="postgresReference" :disabled="busy" :placeholder="t('storage.secretReference')" /></label><UiButton variant="outline" :disabled="busy || dirty" @click="configure">{{ t('storage.applyStorage') }}</UiButton></div>
-      <label v-if="scope.scope_kind === 'project'" class="storage-policy"><input type="checkbox" :checked="scope.allow_storage_write" :disabled="busy" @change="writePolicy" />{{ t('storage.allowAgentWrites') }}</label>
+      <div class="storage-config"><label class="storage-field">{{ t('storage.backend') }}<UiSelectField v-model="backend" :disabled="working" :aria-label="t('storage.backend')" :options="[{ value: 'sqlite', label: 'SQLite' }, { value: 'postgresql', label: 'PostgreSQL' }]" /></label><label class="storage-field">{{ t('storage.root') }}<UiInput v-model="root" :disabled="working" /></label><label v-if="backend === 'postgresql'" class="storage-field">{{ t('storage.postgresReference') }}<UiInput v-model="postgresReference" :disabled="working" :placeholder="t('storage.secretReference')" /></label><UiButton variant="outline" :disabled="working || dirty" @click="configure">{{ t('storage.applyStorage') }}</UiButton></div>
+      <label v-if="scope.scope_kind === 'project'" class="storage-policy"><input type="checkbox" :checked="scope.allow_storage_write" :disabled="working" @change="writePolicy" />{{ t('storage.allowAgentWrites') }}</label>
       <h3>{{ t('storage.usageTitle') }}</h3>
-      <table v-if="stats" class="storage-table"><thead><tr><th>{{ t('storage.category') }}</th><th>{{ t('storage.sizeFiles') }}</th><th>{{ t('storage.action') }}</th></tr></thead><tbody><tr v-for="category in stats.categories" :key="category.category"><td><strong>{{ categoryLabel(category.category) }}</strong><code>{{ category.path }}</code></td><td>{{ bytes(category.size_bytes) }} / {{ category.file_count }}</td><td><UiButton v-if="category.clearable" variant="outline" size="sm" :disabled="busy" @click="previewCleanup(category.category)">{{ t('storage.previewCleanup') }}</UiButton></td></tr></tbody></table>
-      <div v-if="preview" class="tools-validation" role="status"><strong>{{ t('storage.cleanupPreview') }} · {{ categoryLabel(preview.category) }}</strong><p><code>{{ preview.path }}</code></p><p>{{ bytes(preview.size_bytes) }} · {{ preview.file_count }} {{ t('storage.files') }} · {{ t('storage.expires') }} {{ formatTime(preview.expires_at) }}</p><UiButton variant="destructive" :disabled="busy" @click="cleanup">{{ t('storage.executePreview') }}</UiButton><UiButton variant="ghost" :disabled="busy" @click="preview = null">{{ t('common.cancel') }}</UiButton></div>
-      <div class="storage-actions"><UiButton variant="outline" size="sm" :disabled="busy" @click="previewContent">{{ t('storage.previewContent') }}</UiButton><UiButton v-if="scope.scope_kind === 'project'" variant="outline" size="sm" :disabled="busy" @click="previewDelete">{{ t('storage.previewDelete') }}</UiButton></div>
-      <div v-if="contentPreview" class="tools-validation" role="status"><strong>{{ t('storage.contentPreview') }}</strong><p>{{ bytes(contentPreview.size_bytes) }} · {{ contentPreview.file_count }} {{ t('storage.files') }} · {{ formatTime(contentPreview.expires_at) }}</p><p>{{ t('storage.referenceChecks') }}: <code>{{ JSON.stringify(contentPreview.references) }}</code></p><p>{{ t('storage.referenceChecksHint') }}</p><UiButton variant="destructive" :disabled="busy" @click="collectContent">{{ t('storage.collectPreview') }}</UiButton><UiButton variant="ghost" :disabled="busy" @click="contentPreview = null">{{ t('common.cancel') }}</UiButton></div>
-      <div v-if="deletePreview" class="tools-validation" role="alert"><strong>{{ t('storage.deletePreview') }}</strong><p><code>{{ deletePreview.path }}</code></p><p>{{ bytes(deletePreview.size_bytes) }} · {{ deletePreview.file_count }} {{ t('storage.files') }} · {{ formatTime(deletePreview.expires_at) }}</p><UiButton variant="destructive" :disabled="busy" @click="deleteProjectStorage">{{ t('storage.deleteThis') }}</UiButton><UiButton variant="ghost" :disabled="busy" @click="deletePreview = null">{{ t('common.cancel') }}</UiButton></div>
+      <table v-if="stats" class="storage-table"><thead><tr><th>{{ t('storage.category') }}</th><th>{{ t('storage.sizeFiles') }}</th><th>{{ t('storage.action') }}</th></tr></thead><tbody><tr v-for="category in stats.categories" :key="category.category"><td><strong>{{ categoryLabel(category.category) }}</strong><code>{{ category.path }}</code><span v-if="category.truncated" class="quiet"> · {{ t('storage.statsPartial') }}</span></td><td>{{ bytes(category.size_bytes) }} / {{ category.file_count }}<template v-if="category.truncated">+</template></td><td><UiButton v-if="category.clearable" variant="outline" size="sm" :disabled="working" @click="previewCleanup(category.category)">{{ t('storage.previewCleanup') }}</UiButton></td></tr></tbody></table>
+      <div v-if="preview" class="tools-validation" role="status"><strong>{{ t('storage.cleanupPreview') }} · {{ categoryLabel(preview.category) }}</strong><p><code>{{ preview.path }}</code></p><p>{{ bytes(preview.size_bytes) }} · {{ preview.file_count }} {{ t('storage.files') }} · {{ t('storage.expires') }} {{ formatTime(preview.expires_at) }}</p><UiButton variant="destructive" :disabled="working" @click="cleanup">{{ t('storage.executePreview') }}</UiButton><UiButton variant="ghost" :disabled="working" @click="preview = null">{{ t('common.cancel') }}</UiButton></div>
+      <div class="storage-actions"><UiButton variant="outline" size="sm" :disabled="working" @click="previewContent">{{ t('storage.previewContent') }}</UiButton><UiButton v-if="scope.scope_kind === 'project'" variant="outline" size="sm" :disabled="working" @click="previewDelete">{{ t('storage.previewDelete') }}</UiButton></div>
+      <div v-if="contentPreview" class="tools-validation" role="status"><strong>{{ t('storage.contentPreview') }}</strong><p>{{ bytes(contentPreview.size_bytes) }} · {{ contentPreview.file_count }} {{ t('storage.files') }} · {{ formatTime(contentPreview.expires_at) }}</p><p>{{ t('storage.referenceChecks') }}: <code>{{ JSON.stringify(contentPreview.references) }}</code></p><p>{{ t('storage.referenceChecksHint') }}</p><UiButton variant="destructive" :disabled="working" @click="collectContent">{{ t('storage.collectPreview') }}</UiButton><UiButton variant="ghost" :disabled="working" @click="contentPreview = null">{{ t('common.cancel') }}</UiButton></div>
+      <div v-if="deletePreview" class="tools-validation" role="alert"><strong>{{ t('storage.deletePreview') }}</strong><p><code>{{ deletePreview.path }}</code></p><p>{{ bytes(deletePreview.size_bytes) }} · {{ deletePreview.file_count }} {{ t('storage.files') }} · {{ formatTime(deletePreview.expires_at) }}</p><UiButton variant="destructive" :disabled="working" @click="deleteProjectStorage">{{ t('storage.deleteThis') }}</UiButton><UiButton variant="ghost" :disabled="working" @click="deletePreview = null">{{ t('common.cancel') }}</UiButton></div>
       <h3>{{ t('storage.documentTitle') }}</h3>
-      <label class="storage-field">{{ t('storage.module') }}<UiSelectField :value="documentId" :disabled="busy" :aria-label="t('storage.module')" :options="modules.map((module) => ({ value: module, label: `${module}.toml` }))" @change="selectDocument" /></label>
+      <label class="storage-field">{{ t('storage.module') }}<UiSelectField :value="documentId" :disabled="working" :aria-label="t('storage.module')" :options="modules.map((module) => ({ value: module, label: `${module}.toml` }))" @change="selectDocument" /></label>
       <p v-if="document" class="quiet"><code>{{ document.path }}</code> · v{{ document.version }} · {{ document.content_hash }}</p>
-      <textarea v-model="text" class="storage-editor" :readonly="busy" spellcheck="false" :aria-label="t('storage.documentText')" />
+      <textarea v-model="text" class="storage-editor" :readonly="working" spellcheck="false" :aria-label="t('storage.documentText')" />
       <div v-if="diagnostics.length" class="tools-validation" role="status"><p v-for="(item, index) in diagnostics" :key="index" :title="diagnosticTitle(item)">{{ diagnosticText(item) }}</p></div>
-      <div class="storage-actions"><UiButton variant="outline" :disabled="busy || !document" @click="validate">{{ t('storage.validate') }}</UiButton><UiButton :disabled="busy || !dirty || !document" @click="save">{{ t('storage.save') }}</UiButton><span v-if="dirty" class="quiet">{{ t('storage.unsavedDraft') }}</span></div>
+      <div class="storage-actions"><UiButton variant="outline" :disabled="working || !document" @click="validate">{{ t('storage.validate') }}</UiButton><UiButton :disabled="working || !dirty || !document" @click="save">{{ t('storage.save') }}</UiButton><span v-if="dirty" class="quiet">{{ t('storage.unsavedDraft') }}</span></div>
       </fieldset>
     </template>
   </section>

@@ -61,6 +61,15 @@ describe('backend read recovery', () => {
     expect((await request()).response.status).toBe(400)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+  // Measuring must not become the cost it measures: this build has the switch off, so a
+  // read must not build a sample. Asserted through the only observable a sample has.
+  it('pays nothing for round-trip timing when the switch is off', async () => {
+    const logged = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    fetchMock.mockResolvedValue(new Response('[]', { headers: { 'server-timing': 'total;dur=1' } }))
+    await request()
+    expect(logged.mock.calls.filter(([message]) => String(message).includes('[desktop-timing]'))).toHaveLength(0)
+    logged.mockRestore()
+  })
   it('cancels the retry delay and preserves cancellation identity', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     const controller = new AbortController()

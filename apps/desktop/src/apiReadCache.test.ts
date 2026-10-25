@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './api'
-import { READ_CACHE_TTL_MS, invalidateReadCache } from './lib/readCache'
+import { READ_CACHE_TTL_MS, CATALOG_READ_CACHE_TTL_MS, invalidateReadCache } from './lib/readCache'
 import { setHostAccessStatus } from './lib/hostAccess'
 import { setSelectedStorage } from './lib/storageScope'
 
@@ -80,10 +80,55 @@ describe('shared read cache', () => {
     expect(callsFor('/api/v1/model-routes')).toBe(2)
   })
 
-  it('keeps the readiness receipts uncached', async () => {
+  // Readiness is a live health receipt: the seconds tier, not the catalog window. Caching it
+  // at all is what stops the settings cold start from asking three times for one answer.
+  it('keeps the readiness receipts on the short tier', async () => {
     await api.getModelReadiness()
     await api.getModelReadiness()
+    expect(callsFor('/api/v1/model-readiness')).toBe(1)
+    const realNow = Date.now
+    Date.now = () => realNow() + READ_CACHE_TTL_MS + 1
+    try {
+      await api.getModelReadiness()
+    } finally {
+      Date.now = realNow
+    }
     expect(callsFor('/api/v1/model-readiness')).toBe(2)
+  })
+
+  // The cold-start surface: templates, adapters and the catalog receipt are configuration
+  // directories, so a second mount inside one interaction must not re-ask Core.
+  it('serves the catalog endpoints from the long tier', async () => {
+    await api.listModelProviderTemplates()
+    await api.listAcpAdapters()
+    await api.getModelCatalogReadiness()
+    const realNow = Date.now
+    // Well past the short tier, well inside the catalog window: asserting at window-1 ms
+    // would race the few milliseconds the awaits themselves take.
+    Date.now = () => realNow() + CATALOG_READ_CACHE_TTL_MS / 2
+    try {
+      await api.listModelProviderTemplates()
+      await api.listAcpAdapters()
+      await api.getModelCatalogReadiness()
+    } finally {
+      Date.now = realNow
+    }
+    expect(callsFor('/api/v1/model-provider-templates')).toBe(1)
+    expect(callsFor('/api/v1/acp/adapters')).toBe(1)
+    expect(callsFor('/api/v1/model-catalog-readiness')).toBe(1)
+  })
+
+  it('still drops the catalog tier as soon as a write lands', async () => {
+    await api.listModelProviderTemplates()
+    await api.saveModelRoute('chat', { candidates: [{ provider_instance_id: 'provider-1', model: 'gpt-5' }] })
+    await api.listModelProviderTemplates()
+    expect(callsFor('/api/v1/model-provider-templates')).toBe(2)
+  })
+
+  it('reads the model center cold-start snapshot once and shares it', async () => {
+    const [first, second] = await Promise.all([api.getModelCenterSnapshot(), api.getModelCenterSnapshot()])
+    expect(callsFor('/api/v1/model-center/snapshot')).toBe(1)
+    expect(second).toEqual(first)
   })
 
   // The cache never re-validates per request on a hit; the host event is what retires it.

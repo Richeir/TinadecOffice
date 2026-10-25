@@ -7,7 +7,7 @@ import type { MessageAttachmentDto, MessageDto, SseChunk } from '@/generated/cli
 import { createRunStream, runStreamDelta, type RunStreamHandle } from '@/lib/runStream'
 import { ApiError } from '@/lib/apiError'
 import { captureStorageId, rememberStorageResult, normalizeStorageRequest, storageHeaders, storageFetch, sessionStorageId, selectionIdentity, selectedStorageId, type StorageRequestOptions } from '@/lib/storageScope'
-import { cachedRead, invalidateReadCache } from '@/lib/readCache'
+import { cachedRead, invalidateReadCache, CATALOG_READ_CACHE_TTL_MS } from '@/lib/readCache'
 import type { StorageScopeDto, StorageStatsDto, StorageCleanupPreviewDto, StorageContentPreviewDto, StorageDeletePreviewDto, SessionTransferDto, ConfigurationDocumentDto, StorageConfigureInput } from '@/settings/storage'
 import { ScopedEventSource } from '@/lib/scopedEventSource'
 type StorageDiagnosticResult = { storage_id: string; scope: StorageScopeDto; diagnostics: Array<Record<string, unknown>>; configuration: { content_hash: string; documents: Record<string, string> } }
@@ -1175,6 +1175,29 @@ export interface ModelCenterOverviewDto {
     catalog?: ModelCatalogReadinessReceiptDto | null;
   };
   diagnostics: CenterDiagnosticDto[];
+}
+
+/**
+ * One partition of the cold-start snapshot. `ok: false` is a section-level degradation, not
+ * a failed screen: the caller keeps what it already had for that section only.
+ */
+export interface ModelCenterSnapshotPartDto<T> {
+  ok: boolean;
+  status: number;
+  data?: T;
+  error?: unknown;
+}
+
+export interface ModelCenterSnapshotDto {
+  parts: {
+    providers: ModelCenterSnapshotPartDto<ModelProviderInstanceDto[]>;
+    templates: ModelCenterSnapshotPartDto<ModelProviderTemplateDto[]>;
+    routes: ModelCenterSnapshotPartDto<ModelRouteDto[]>;
+    acp_adapters: ModelCenterSnapshotPartDto<AcpAdapterDto[]>;
+    model_readiness: ModelCenterSnapshotPartDto<ModelReadinessReceiptDto>;
+    catalog_readiness: ModelCenterSnapshotPartDto<ModelCatalogReadinessReceiptDto>;
+    readiness: ModelCenterSnapshotPartDto<RuntimeReadinessReceiptDto>;
+  };
 }
 
 export type AgentRuntimeSelectionKind = 'inherit' | 'route' | 'fixed_model';
@@ -3275,7 +3298,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(input)
   }),
-  listModelProviderTemplates: (options?: { signal?: AbortSignal }) => request<ModelProviderTemplateDto[]>('/api/v1/model-provider-templates', options),
+  listModelProviderTemplates: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-provider-templates'), () => request<ModelProviderTemplateDto[]>('/api/v1/model-provider-templates'), options?.signal, CATALOG_READ_CACHE_TTL_MS),
   listModelProviders: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-providers'), () => request<ModelProviderInstanceDto[]>('/api/v1/model-providers'), options?.signal),
   discoverHarnesses: () => request<CliDiscoveryResultDto>('/api/v1/model-providers/harnesses/discover'),
   connectHarness: (input: ConnectHarnessInput) => request<ModelProviderInstanceDto>('/api/v1/model-providers/harnesses/connect', {
@@ -3285,8 +3308,17 @@ export const api = {
   refreshProviderModels: (providerInstanceId: string) => request<ModelDiscoveryResultDto>(`/api/v1/model-providers/${encodeURIComponent(providerInstanceId)}/models/refresh`, {
     method: 'POST'
   }),
-  getModelReadiness: (options?: { signal?: AbortSignal }) => request<ModelReadinessReceiptDto>('/api/v1/model-readiness', options),
-  getModelCatalogReadiness: (options?: { signal?: AbortSignal }) => request<ModelCatalogReadinessReceiptDto>('/api/v1/model-catalog-readiness', options),
+  // Readiness answers how the runtime behaves right now, not what is configured, so it stays
+  // on the seconds tier even though the model center reads it beside the catalogs.
+  getModelReadiness: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-readiness'), () => request<ModelReadinessReceiptDto>('/api/v1/model-readiness'), options?.signal),
+  // A catalog receipt describes what is configured, not how a runtime behaves: it rides the
+  // catalog window with the templates and adapters it belongs to.
+  getModelCatalogReadiness: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-catalog-readiness'), () => request<ModelCatalogReadinessReceiptDto>('/api/v1/model-catalog-readiness'), options?.signal, CATALOG_READ_CACHE_TTL_MS),
+  /**
+   * The model center's cold-start reads in one round trip. Rides the short tier: readiness
+   * rides inside it, so it must not be held for the catalog window.
+   */
+  getModelCenterSnapshot: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('model-center-snapshot'), () => request<ModelCenterSnapshotDto>('/api/v1/model-center/snapshot'), options?.signal),
   createModelProvider: (provider: SaveModelProviderInstanceInput) => request<ModelProviderInstanceDto>('/api/v1/model-providers', {
     method: 'POST',
     body: JSON.stringify(provider)
@@ -3381,7 +3413,7 @@ export const api = {
   listMcpServers: () => request<McpInventoryDto>('/api/v1/mcp/servers'),
   listMcpServerTools: (serverId: string) =>
     request<McpServerToolsDto>(`/api/v1/mcp/servers/${encodeURIComponent(serverId)}/tools`),
-  listAcpAdapters: (options?: { signal?: AbortSignal }) => request<AcpAdapterDto[]>('/api/v1/acp/adapters', options),
+  listAcpAdapters: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('acp-adapters'), () => request<AcpAdapterDto[]>('/api/v1/acp/adapters'), options?.signal, CATALOG_READ_CACHE_TTL_MS),
   listAgentModes: (options?: { signal?: AbortSignal }) => request<AgentModeDto[]>('/api/v1/agent-modes', options),
   listAgents: (options?: { signal?: AbortSignal }) => cachedRead(catalogKey('agents'), () => request<AgentDirectoryItemDto[]>('/api/v1/agents'), options?.signal),
   getAgent: (id: string, options?: { signal?: AbortSignal }) => request<AgentDefinitionDto>(`/api/v1/agents/${encodeURIComponent(id)}`, options),

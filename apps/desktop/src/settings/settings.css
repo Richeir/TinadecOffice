@@ -3402,6 +3402,19 @@ box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 72%, transparent)
   gap: 8px;
 }
 .center-loading-line { height: 56px; }
+.agent-version-loading-line { height: 40px; }
+/* A refresh that keeps readable data on screen: the row states the progress instead of
+   replacing the content with skeletons that would hide it. */
+.center-stale-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.center-stale-spinner { animation: center-stale-spin 900ms linear infinite; }
+@keyframes center-stale-spin { to { transform: rotate(360deg); } }
 .agent-card-main small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
 .agent-card-main span,
@@ -4410,6 +4423,11 @@ box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 72%, transparent)
   }
 
   .spinning {
+    animation: none !important;
+  }
+
+  /* The model/agent center refresh spinner is the same class of decoration. */
+  .center-stale-spinner {
     animation: none !important;
   }
 }

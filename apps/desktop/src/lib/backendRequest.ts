@@ -2,6 +2,7 @@ import i18n from '@/i18n'
 import { ApiError } from './apiError'
 import { assertHostAccess } from './hostAccess'
 import { isAbortError } from './isAbortError'
+import { observeRoundTrip, roundTripTimingEnabled } from './requestTiming'
 
 const READ_RETRY_DELAYS = [250, 750] as const
 
@@ -28,12 +29,16 @@ export async function readBackendResponse(
     // Host authorization and the captured scope apply to every attempt. A retry
     // cannot turn a rejected/old host into a public-health fallback.
     await assertHostAccess(path, request.signal ?? undefined)
+    const startedAt = roundTripTimingEnabled ? performance.now() : 0
     try {
       const response = await fetch(url, request)
       // A connection can fail after headers arrive. Include body transport in
       // the same budget, before JSON parsing and application error handling.
       const text = await response.text()
       request.signal?.throwIfAborted()
+      // One sample per attempt, after the body has landed: this is the wait the user saw.
+      // Guarded so the instrumented build is the only one paying to build a sample.
+      if (roundTripTimingEnabled) observeRoundTrip(path, response, startedAt)
       return { response, text }
     } catch (error) {
       request.signal?.throwIfAborted()

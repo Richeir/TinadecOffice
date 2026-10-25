@@ -7,8 +7,16 @@ import { hostAccessState, onHostAccessChanged } from './hostAccess'
  */
 export const READ_CACHE_TTL_MS = 3000
 
+/**
+ * Directory-shaped projections: provider templates, ACP adapters, model catalogs. They only
+ * change when someone edits configuration, and every completed mutation bumps the cache
+ * generation, so a long window cannot serve data that our own writes made stale. Kept well
+ * under a working session so an edit made by another client still appears without a restart.
+ */
+export const CATALOG_READ_CACHE_TTL_MS = 5 * 60 * 1000
+
 interface CacheEntry {
-  at: number
+  expiresAt: number
   hostState: string | null
   value: unknown
 }
@@ -32,27 +40,38 @@ export function invalidateReadCache(): void {
 function cachedValue<T>(key: string): T | undefined {
   const entry = entries.get(key)
   if (!entry) return undefined
-  if (Date.now() - entry.at >= READ_CACHE_TTL_MS) return undefined
+  if (Date.now() >= entry.expiresAt) return undefined
   if (entry.hostState !== hostAccessState()) return undefined
   return entry.value as T
 }
 
 /**
- * Single flight plus a short TTL for the catalogs several mounted surfaces read on the
- * same turn (composer, command panel, model center, agent center). One key is one request:
- * whoever mounts second joins the first instead of issuing its own.
+ * Single flight plus a per-endpoint TTL for the catalogs several mounted surfaces read on
+ * the same turn (composer, command panel, model center, agent center). One key is one
+ * request: whoever mounts second joins the first instead of issuing its own.
+ *
+ * The tier is a property of what the endpoint describes, not a knob to paper over a slow
+ * backend: receipts whose answer changes with runtime health keep the short default, while
+ * configuration directories opt into the catalog window.
  *
  * The shared read deliberately takes no caller signal — one caller leaving must not cancel
  * data another caller is waiting for — while that caller's own await still rejects on abort.
  */
-export function cachedRead<T>(key: string, read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+export function cachedRead<T>(
+  key: string,
+  read: () => Promise<T>,
+  signal?: AbortSignal,
+  ttlMs: number = READ_CACHE_TTL_MS,
+): Promise<T> {
   const hit = cachedValue<T>(key)
   if (hit !== undefined) return Promise.resolve(hit)
   let request = inFlight.get(key) as Promise<T> | undefined
   if (!request) {
     const startedIn = generation
     const created = read().then((value) => {
-      if (startedIn === generation) entries.set(key, { at: Date.now(), hostState: hostAccessState(), value })
+      if (startedIn === generation) {
+        entries.set(key, { expiresAt: Date.now() + ttlMs, hostState: hostAccessState(), value })
+      }
       return value
     }).finally(() => {
       if (inFlight.get(key) === created) inFlight.delete(key)

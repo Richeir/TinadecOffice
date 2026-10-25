@@ -259,7 +259,10 @@ describe('search navigation through the shipping pages', () => {
     complete(['agent-a', 'agent-b', 'new-agent-c'])
     await flushPromises()
     expect(wrapper.get('.agent-card.active').text()).toContain('new-agent-c')
-    expect(mocks.listAgents).toHaveBeenCalledTimes(3) // Initial catalog, search catalog, one consumer refresh.
+    // Mounting settings reads nothing (the centers are lazy), so the two reads here are the
+    // spotlight's own catalog and the one refresh the navigation consumer needs: the agent it
+    // was asked for was not in the directory the page already had.
+    expect(mocks.listAgents).toHaveBeenCalledTimes(2)
     mocks.listAgents.mockImplementationOnce(() => new Promise(resolve => {
       complete = ids => resolve(directory(ids))
     }))
@@ -271,7 +274,7 @@ describe('search navigation through the shipping pages', () => {
     await flushPromises()
     expect(wrapper.get('.agent-card.active').text()).toContain('agent-b')
     expect(wrapper.get('.agent-detail-panel').text()).toContain('agent-b')
-    expect(mocks.listAgents).toHaveBeenCalledTimes(4)
+    expect(mocks.listAgents).toHaveBeenCalledTimes(3)
     expect(mocks.error).not.toHaveBeenCalled()
   })
 })

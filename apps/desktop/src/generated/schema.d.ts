@@ -443,6 +443,13 @@ export interface paths {
     /** Model catalog readiness */
     get: operations["getApiV1Model-catalog-readiness"];
   };
+  "/api/v1/model-center/snapshot": {
+    /**
+     * Model center cold-start snapshot (optional fast path)
+     * @description Reads the seven independent settings projections in one round trip. Each part carries its own status, so a single failing upstream degrades only its own section. The per-endpoint routes remain the default path.
+     */
+    get: operations["getApiV1Model-centerSnapshot"];
+  };
   "/api/v1/model-invocations": {
     /** Page model invocation audit records */
     get: operations["getApiV1Model-invocations"];
@@ -1092,6 +1099,34 @@ export interface paths {
   "/api/v1/workspace-snapshots/{snapshotId}/restore": {
     /** Restore workspace snapshot */
     post: operations["postApiV1Workspace-snapshotsBySnapshotIdRestore"];
+  };
+  "/auth/begin": {
+    /** Begin Logto login */
+    get: operations["getAuthBegin"];
+  };
+  "/auth/callback": {
+    /** OIDC callback */
+    get: operations["getAuthCallback"];
+  };
+  "/auth/check": {
+    /** Poll login result */
+    get: operations["getAuthCheck"];
+  };
+  "/auth/login": {
+    /** Start Logto login */
+    get: operations["getAuthLogin"];
+  };
+  "/auth/logout": {
+    /** Revoke a login session */
+    post: operations["postAuthLogout"];
+  };
+  "/auth/me": {
+    /** Current identity */
+    get: operations["getAuthMe"];
+  };
+  "/auth/profile": {
+    /** Update the Logto account profile */
+    patch: operations["patchAuthProfile"];
   };
 }
 
@@ -4419,6 +4454,17 @@ export interface operations {
       };
     };
   };
+  /**
+   * Model center cold-start snapshot (optional fast path)
+   * @description Reads the seven independent settings projections in one round trip. Each part carries its own status, so a single failing upstream degrades only its own section. The per-endpoint routes remain the default path.
+   */
+  "getApiV1Model-centerSnapshot": {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
   /** Page model invocation audit records */
   "getApiV1Model-invocations": {
     responses: {
@@ -7293,6 +7339,62 @@ export interface operations {
         };
       };
     };
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Begin Logto login */
+  getAuthBegin: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** OIDC callback */
+  getAuthCallback: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Poll login result */
+  getAuthCheck: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Start Logto login */
+  getAuthLogin: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Revoke a login session */
+  postAuthLogout: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Current identity */
+  getAuthMe: {
+    responses: {
+      200: {
+        content: never;
+      };
+    };
+  };
+  /** Update the Logto account profile */
+  patchAuthProfile: {
     responses: {
       200: {
         content: never;

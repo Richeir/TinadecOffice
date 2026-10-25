@@ -81,6 +81,8 @@ import {
   type ModelProviderReadinessDto,
   type ModelProviderInstanceDto,
   type ModelProviderTemplateDto,
+  type ModelCenterSnapshotDto,
+  type ModelCenterSnapshotPartDto,
   type ModelReadinessReceiptDto,
   type RuntimeReadinessReceiptDto,
   type ModelReferenceDto,
@@ -299,6 +301,10 @@ const modelReadiness = ref<ModelReadinessReceiptDto | null>(null)
 const modelCatalogReadiness = ref<ModelCatalogReadinessReceiptDto | null>(null)
 const readinessReceipt = ref<RuntimeReadinessReceiptDto | null>(null)
 const routes = ref<ModelRouteDto[]>([])
+/** Last raw provider rows; the section degrades to these, not to the derived rows. */
+const modelCenterRawProviders = ref<ModelProviderInstanceDto[]>([])
+/** Sections whose last read failed; each one degrades alone instead of failing the center. */
+const modelCenterPartialFailures = ref<Record<string, ErrorState>>({})
 const agentModes = ref<AgentModeDto[]>([])
 const agentDirectory = ref<AgentDirectoryItemDto[]>([])
 const agents = ref<AgentViewDto[]>([])
@@ -927,7 +933,12 @@ function closeModal() {
   showModal.value = false
 }
 
+// Opening settings lands on the personal section, so neither center is read until its own
+// section is entered. Mounting the page used to fire sixteen reads for two sections the user
+// had not asked for; `lazy` moves the first read to the section that needs it (see the
+// section watcher below).
 const modelCenterRead = useRecoverableRead(loadModelCenterData, {
+  lazy: true,
   onSuccess: () => dismissByKey('model-center'),
   onFailure: error => status.error(error, { key: 'model-center', source: 'models', action: { label: t('settings.retry'), run: loadModelCenter } }),
 })
@@ -938,16 +949,103 @@ function loadModelCenter(): Promise<void> {
 }
 async function loadModelCenterData({ signal, isCurrent }: ReadContext) {
     // model-center/overview BFF was deleted; derive the same projection from versioned APIs.
+    // One round trip first; the per-endpoint reads below stay the fallback for a gateway that
+    // predates the snapshot, and for the case where the snapshot itself is unusable.
+    modelCenterPartialFailures.value = {}
+    const snapshot = await api.getModelCenterSnapshot({ signal }).catch(() => null)
+    if (!isCurrent()) return
+    // A snapshot that cannot be read as a snapshot is not a degraded section — it is no
+    // snapshot at all, so the per-endpoint path below answers instead of a broken shape.
+    if (isModelCenterSnapshot(snapshot)) {
+      applyModelCenterSnapshot(snapshot)
+      reportModelCenterPartialFailures()
+      return
+    }
+    // No read here may reject the whole exchange: before this, a failing providers or routes
+    // read rejected the Promise.all and the page reported "failed to load" while six other
+    // sections had in fact answered. Each section keeps its own data and names itself.
     const [providerRows, providerTemplates, routeRows, acpAdapters, modelReadinessReceipt, catalogReadinessReceipt, unifiedReceipt] = await Promise.all([
-      api.listModelProviders({ signal }),
-      api.listModelProviderTemplates({ signal }).catch(() => [] as ModelProviderTemplateDto[]),
-      api.listModelRoutes({ signal }),
-      api.listAcpAdapters({ signal }).catch(() => [] as AcpAdapterDto[]),
-      api.getModelReadiness({ signal }).catch(() => modelReadiness.value),
-      api.getModelCatalogReadiness({ signal }).catch(() => modelCatalogReadiness.value),
-      api.readiness({ signal }).catch(() => readinessReceipt.value)
+      api.listModelProviders({ signal }).catch(preserveSection('model-providers', modelCenterRawProviders.value)),
+      api.listModelProviderTemplates({ signal }).catch(preserveSection('model-provider-templates', [] as ModelProviderTemplateDto[])),
+      api.listModelRoutes({ signal }).catch(preserveSection('model-routes', routes.value)),
+      api.listAcpAdapters({ signal }).catch(preserveSection('acp-adapters', [] as AcpAdapterDto[])),
+      api.getModelReadiness({ signal }).catch(preserveSection('model-readiness', modelReadiness.value)),
+      api.getModelCatalogReadiness({ signal }).catch(preserveSection('model-catalog-readiness', modelCatalogReadiness.value)),
+      api.readiness({ signal }).catch(preserveSection('readiness', readinessReceipt.value))
     ])
     if (!isCurrent()) return
+    applyModelCenterRead(
+      providerRows, providerTemplates, routeRows, acpAdapters,
+      modelReadinessReceipt, catalogReadinessReceipt, unifiedReceipt,
+    )
+    reportModelCenterPartialFailures()
+}
+
+/**
+ * One failed section keeps the value it already had, so the rest of the center keeps working.
+ */
+function preserveSection<T>(source: string, fallback: T) {
+  return (error: unknown): T => {
+    modelCenterPartialFailures.value = { ...modelCenterPartialFailures.value, [source]: toErrorState(error) }
+    return fallback
+  }
+}
+
+/**
+ * A degraded section is still a failure the user must be able to see and retry — otherwise
+ * the read looks successful while one source silently kept stale data. Throwing here runs the
+ * read's normal failure path (the banner and the status notice) after the data was applied.
+ */
+function reportModelCenterPartialFailures() {
+  const sources = Object.keys(modelCenterPartialFailures.value)
+  if (sources.length === 0) return
+  throw new Error(`model center sections failed: ${sources.join(', ')}`)
+}
+
+function isModelCenterSnapshot(value: unknown): value is ModelCenterSnapshotDto {
+  const parts = (value as ModelCenterSnapshotDto | null)?.parts
+  return !!parts
+    && typeof parts.providers?.ok === 'boolean'
+    && typeof parts.templates?.ok === 'boolean'
+    && typeof parts.routes?.ok === 'boolean'
+    && typeof parts.acp_adapters?.ok === 'boolean'
+    && typeof parts.model_readiness?.ok === 'boolean'
+    && typeof parts.catalog_readiness?.ok === 'boolean'
+    && typeof parts.readiness?.ok === 'boolean'
+}
+
+/** A part that failed keeps the value the section already had, exactly like the fallback path. */
+function applyModelCenterSnapshot(snapshot: ModelCenterSnapshotDto) {
+  const failed: Record<string, ErrorState> = {}
+  const part = <T>(name: string, current: T, read: ModelCenterSnapshotPartDto<T>): T => {
+    if (read.ok && read.data !== undefined) return read.data
+    failed[name] = toErrorState(read.error ?? new Error(`model-center snapshot part ${name} failed`))
+    return current
+  }
+  const parts = snapshot.parts
+  const providerRows = part('model-providers', modelCenterRawProviders.value, parts.providers)
+  const providerTemplates = part('model-provider-templates', [] as ModelProviderTemplateDto[], parts.templates)
+  const routeRows = part('model-routes', routes.value, parts.routes)
+  const acpAdapters = part('acp-adapters', [] as AcpAdapterDto[], parts.acp_adapters)
+  const modelReadinessReceipt = part('model-readiness', modelReadiness.value, parts.model_readiness)
+  const catalogReadinessReceipt = part('model-catalog-readiness', modelCatalogReadiness.value, parts.catalog_readiness)
+  const unifiedReceipt = part('readiness', readinessReceipt.value, parts.readiness)
+  modelCenterPartialFailures.value = failed
+  applyModelCenterRead(
+    providerRows, providerTemplates, routeRows, acpAdapters,
+    modelReadinessReceipt, catalogReadinessReceipt, unifiedReceipt,
+  )
+}
+
+function applyModelCenterRead(
+  providerRows: ModelProviderInstanceDto[],
+  providerTemplates: ModelProviderTemplateDto[],
+  routeRows: ModelRouteDto[],
+  acpAdapters: AcpAdapterDto[],
+  modelReadinessReceipt: ModelReadinessReceiptDto | null,
+  catalogReadinessReceipt: ModelCatalogReadinessReceiptDto | null,
+  unifiedReceipt: RuntimeReadinessReceiptDto | null,
+) {
     const overview = aggregateModelCenterOverview({
       providers: providerRows,
       templates: providerTemplates,
@@ -957,6 +1055,7 @@ async function loadModelCenterData({ signal, isCurrent }: ReadContext) {
       catalog_readiness: catalogReadinessReceipt
     })
     modelCenterOverview.value = overview
+    modelCenterRawProviders.value = providerRows
     // The routes ref feeds the Routes tab, the route editor, and the
     // "set default model" If-Match token; leaving it unassigned made every
     // route write send no precondition (Core 428).
@@ -1230,6 +1329,7 @@ function probeNote(candidate: CliDiscoveryCandidateDto): string | null {
 }
 
 const agentCenterRead = useRecoverableRead(loadAgentCenterData, {
+  lazy: true,
   onSuccess: () => dismissByKey('agent-center'),
   onFailure: error => status.error(error, { key: 'agent-center', source: 'agents', action: { label: t('settings.retry'), run: loadAgentCenter } }),
 })
@@ -1239,6 +1339,15 @@ const agentCenterFailure = agentCenterRead.failure.error
 function loadAgentCenter(): Promise<void> {
   return agentCenterRead.refresh()
 }
+// The centers read lazily (see their `useRecoverableRead` options): entering a section is what
+// asks for its data the first time. `loaded` keeps this to once per mount — later section
+// switches must not re-fetch, and explicit refresh paths still go through load*/refresh.
+watch(activeSection, section => {
+  if (section === 'model' && !modelCenterRead.loaded.value) void loadModelCenter()
+  else if (section === 'agentCenter' && !agentCenterRead.loaded.value) void loadAgentCenter()
+}, { flush: 'post' })
+/** Sources that failed on the last read; each one kept its section's previous data. */
+const modelCenterPartialFailureSources = computed(() => Object.keys(modelCenterPartialFailures.value))
 async function loadAgentCenterData(context: ReadContext) {
   const { signal, isCurrent } = context
   // getAgentCenterOverview is a deleted 404 route (docs/app-core-ui.md §4.8).
@@ -2204,6 +2313,8 @@ import '../settings/settings.css'
           :key="activeSection"
           :class="['settings-section-wrapper', { 'settings-section-wrapper--centered': isCenteredSection }]"
         >
+        <!-- Each center section owns its own first-load skeleton, so a page-level one here
+             would stack a second set on top of it. -->
         <template v-if="activeSection === 'personal'">
           <PersonalSection />
         </template>
@@ -2234,7 +2345,10 @@ import '../settings/settings.css'
             </div>
           </div>
 
-          <div v-if="modelCenterFailure" class="center-message" role="alert" data-testid="model-center-read-failure">
+          <!-- A partial failure keeps the data it could read and reports itself further down;
+               this banner is only for a read that produced nothing at all. Saying "the center
+               failed to load" beside readable rows would be false. -->
+          <div v-if="modelCenterFailure && !modelCenterOverview" class="center-message" role="alert" data-testid="model-center-read-failure">
             <Info :size="16" aria-hidden="true" />
             <div class="center-message-content">
               <strong>{{ t('settings.centerLoadFailed') }}</strong>
@@ -2276,9 +2390,16 @@ import '../settings/settings.css'
             </div>
           </section>
 
-          <div v-if="modelCenterLoading && !modelCenterOverview" class="center-loading-state" aria-live="polite">
+        <div v-if="modelCenterLoading && !modelCenterOverview" class="center-loading-state" aria-live="polite">
             <UiSkeleton v-for="index in 3" :key="index" class="center-loading-line" />
           </div>
+
+          <!-- Same data already on screen and a refresh in flight: the skeleton above would
+               throw away readable rows, so the progress is a line that says so. -->
+          <p v-if="modelCenterLoading && modelCenterOverview" class="center-stale-status" role="status">
+            <RefreshCw :size="13" class="center-stale-spinner" aria-hidden="true" />
+            {{ t('settings.refreshing') }}
+          </p>
 
           <div v-if="modelCenterDiagnostics.length > 0" class="center-message warning center-diagnostics-message">
             <Info :size="16" />
@@ -2291,6 +2412,18 @@ import '../settings/settings.css'
               </ul>
             </div>
             <UiButton variant="outline" size="sm" :disabled="modelCenterLoading" @click="loadModelCenter">{{ t('settings.retry') }}</UiButton>
+          </div>
+
+          <!-- A single read that failed keeps its section's previous data. Saying so is the
+               difference between "still loading" and "this one source is stale". -->
+          <div v-if="modelCenterPartialFailureSources.length > 0" class="center-message warning">
+            <Info :size="16" />
+            <div class="center-message-content">
+              <strong>{{ t('settings.centerPartialLoadFailed') }}</strong>
+              <ul>
+                <li v-for="source in modelCenterPartialFailureSources" :key="source">{{ source }}</li>
+              </ul>
+            </div>
           </div>
 
           <div class="center-workbench model-workbench">
@@ -3158,6 +3291,11 @@ import '../settings/settings.css'
             <UiSkeleton v-for="index in 3" :key="index" class="center-loading-line" />
           </div>
 
+          <p v-else-if="agentCenterLoading" class="center-stale-status" role="status">
+            <RefreshCw :size="13" class="center-stale-spinner" aria-hidden="true" />
+            {{ t('settings.refreshing') }}
+          </p>
+
           <div v-if="agentCenterFailure" class="center-message" role="alert" data-testid="agent-center-read-failure">
             <Info :size="16" aria-hidden="true" />
             <div class="center-message-content">
@@ -3656,8 +3794,8 @@ import '../settings/settings.css'
                   <UiBadge variant="outline">{{ agentVersionHistory.length }}</UiBadge>
                 </div>
                 <p class="agent-config-hint">{{ t('settings.agentVersionHistoryHint') }}</p>
-                <div v-if="agentVersionsLoading" class="center-loading-state">
-                  <span>{{ t('common.loading') }}</span>
+                <div v-if="agentVersionsLoading" class="center-loading-state" aria-live="polite">
+                  <UiSkeleton v-for="index in 2" :key="index" class="center-loading-line agent-version-loading-line" />
                 </div>
                 <div v-else-if="agentVersionHistory.length > 0" class="agent-version-list">
                   <div v-for="version in [...agentVersionHistory].reverse()" :key="version.id" class="center-list-row agent-version-row" :class="{ latest: version.version === configuringAgent.version }">

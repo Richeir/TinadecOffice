@@ -8,10 +8,26 @@ export interface ReadContext {
   isCurrent: () => boolean
 }
 
-/** A mounted screen owns its read, cancellation and host-recovery subscription. */
+export interface RecoverableReadOptions {
+  onFailure?: (error: unknown) => void
+  onSuccess?: () => void
+  /**
+   * Read only once something actually asks for it. Use this for a screen that is mounted as
+   * part of a larger page but is not the section the user is looking at: mounting it must not
+   * spend the round trips, and the caller drives the first read with `refresh()`.
+   */
+  lazy?: boolean
+}
+
+/**
+ * A mounted screen owns its read, cancellation and host-recovery subscription.
+ *
+ * Read on mount by default. `lazy` moves the first read to whoever calls `refresh()` — that
+ * is the difference between "the page is open" and "the user is looking at this".
+ */
 export function useRecoverableRead(
   read: (context: ReadContext) => Promise<void>,
-  options: { onFailure?: (error: unknown) => void; onSuccess?: () => void } = {},
+  options: RecoverableReadOptions = {},
 ) {
   const { canAccessBackend } = useHostAccess()
   const loading = ref(false)
@@ -21,6 +37,12 @@ export function useRecoverableRead(
   let disposed = false
   let controller: AbortController | null = null
   let pending: Promise<void> | null = null
+  /**
+   * Set by the first `refresh()`, including one that could not run because the host was not
+   * verified yet. A lazy read must not wake on mount, but it must still recover a first read
+   * that was asked for while the host was down.
+   */
+  let requested = false
 
   function cancel() {
     ++generation
@@ -31,6 +53,7 @@ export function useRecoverableRead(
   }
 
   function refresh(): Promise<void> {
+    requested = true
     if (disposed || !canAccessBackend.value) return Promise.resolve()
     if (pending) return pending
     const current = ++generation
@@ -53,8 +76,13 @@ export function useRecoverableRead(
     return pending
   }
 
-  watch(canAccessBackend, ready => { if (ready) void refresh(); else cancel() }, { flush: 'sync' })
-  onMounted(() => { void refresh() })
+  // A lazy read still has to survive a reconnection *after* it was first asked for; before
+  // that, host recovery has nothing to recover and must not wake it.
+  watch(canAccessBackend, ready => {
+    if (!ready) { cancel(); return }
+    if (requested || !options.lazy) void refresh()
+  }, { flush: 'sync' })
+  if (!options.lazy) onMounted(() => { void refresh() })
   onBeforeUnmount(() => { disposed = true; cancel() })
   return { refresh, loading, loaded, failure }
 }

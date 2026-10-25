@@ -70,4 +70,34 @@ describe('screen read lifecycle', () => {
     await flushPromises()
     expect(read).toHaveBeenCalledTimes(1)
   })
+  // A page mounts many sections; only the one on screen should cost anything. A lazy read
+  // must stay asleep through mount *and* through host recovery until something asks for it.
+  it('reads nothing on mount when lazy, until the caller asks', async () => {
+    const read = vi.fn(async () => {})
+    let result!: ReturnType<typeof useRecoverableRead>
+    const wrapper = mount(defineComponent({ setup() { result = useRecoverableRead(read, { lazy: true }); return () => null } }))
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(read).not.toHaveBeenCalled()
+    setHostAccessStatus({ ...ready, state: 'unavailable' })
+    setHostAccessStatus(ready)
+    await flushPromises()
+    expect(read).not.toHaveBeenCalled()
+    await result.refresh()
+    expect(read).toHaveBeenCalledTimes(1)
+  })
+  // The other half of the contract: once a lazy read was asked for, a reconnection must still
+  // recover it. A lazy read that stayed asleep forever would be a silent gap, not a saving.
+  it('recovers a lazy read that was requested while the host was unavailable', async () => {
+    const read = vi.fn(async () => {})
+    let result!: ReturnType<typeof useRecoverableRead>
+    const wrapper = mount(defineComponent({ setup() { result = useRecoverableRead(read, { lazy: true }); return () => null } }))
+    wrappers.push(wrapper)
+    setHostAccessStatus({ ...ready, state: 'checking' })
+    await result.refresh()
+    expect(read).not.toHaveBeenCalled()
+    setHostAccessStatus(ready)
+    await flushPromises()
+    expect(read).toHaveBeenCalledTimes(1)
+  })
 })

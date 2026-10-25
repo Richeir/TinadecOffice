@@ -1,5 +1,54 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-26 存储页不再用一次慢读拦住整个应用
+
+**症状**：打开「存储」选项卡后，内容全部加载完之前应用不响应。**根因是设计，不是慢**：
+
+1. `loadContext()` 把 `busy = true` 一直持到 `stats` + `diagnostics` + **配置文件全文**三件事全部返回；
+2. `canLeave()` 第一行 `if (busy.value) return false`；
+3. `canLeave` 被**离开设置页**（`createSettingsLeaveGuard`）、**切换分区**（`selectSettingsSection`）、**关闭窗口**（`closeWindow`）三处调用。
+
+于是字节统计在途时，用户切不走、关不掉、窗口关闭也被拦。用一个慢读否决整个应用的交互，这不是性能问题，是语义错误。
+
+**慢是真慢**（实测本机 `~/.tinadec/cache`）：**27,221 个文件 / 663 MiB**，全量递归遍历 **冷 152 秒、热 20 秒**（Windows 实时扫描叠加）。Core 原来对 9 个类别逐个全量遍历只为算字节。
+
+**修法两层**：
+
+- **前端分离两个语义**：`loading`（读）与 `busy`（用户主动发起的写）。`canLeave()` 只认 `busy` —— 读在途不持有任何未保存状态，其结果由 generation 检查丢弃，没有理由拦人。模板的 `:disabled` 用 `working = busy || loading`（依赖已读状态的控件确实该等），但**导航与关闭不再被拦**；读取期间显示 `storage.readingScope` 一行，而不是静默冻结。
+- **Core 给统计加时间预算**：`StorageMaintenanceService.MeasureDirectory` 每类别 400ms、可取消，超预算即停并返回 `truncated = true`，诊断写 `storage_statistics_partial`；UI 显示 `文件数+` 与 `storage.statsPartial`（「已提前结束统计，实际更大」）。**清理预览仍枚举真实全集** —— 它要删的就是那批文件，不能抽样。
+
+**别把 `truncated` 当成装饰**：任何消费统计的地方都必须区分「至少这么多」和「正好这么多」。`StorageStatisticsBudgetTests` 钉住预算内全量、超预算报告截断且快速返回、缺失目录读作 0 而非抛错、链接被拒绝而不是被跟随。
+
+## 2026-10-26 打开设置页只读用户点开的分区（惰性读）
+
+**症状**：打开设置页明显卡顿。**实测根因**（探针，不是推测）：页面停在默认的「个人」分区时，挂载就发出 **16 个后端请求** —— `getModelCenterSnapshot`、`listAgents`、`listAgentModes`、`listAgentCandidates`、`getToolLayerReadiness`、`getAgentPack`、`listModelProviders`、`listModelProviderTemplates`、`listModelRoutes`、`listAcpAdapters`、`getModelReadiness`、`getModelCatalogReadiness`、`readiness`、`getHarnessManifest`、`executeCodeTool`、`searchTools`。它们全部属于「模型」与「智能体中心」两个用户没打开的分区。
+
+机制：`useRecoverableRead` 在 `onMounted` 里无条件 `refresh()`，而两处 `useRecoverableRead(...)` 都在 `SettingsPage` 的 setup 顶层创建，于是挂载即读。另有一层打包成本：`SettingsPage.vue` 静态 import 全部 16 个分区组件，`SettingsPage-*.js` 单块 355 KB 全部在进入设置页时解析。
+
+**规则：挂载 ≠ 用户在看这个分区。** `useRecoverableRead` 新增 `lazy` 选项：惰性时不 `onMounted` 读，也不被宿主恢复唤醒，直到有人调 `refresh()`。设置页用 `watch(activeSection)` 在**真正进入** model / agentCenter 时才首次读，`loaded` 保证只读一次（切走再回来不复读，显式刷新仍走 `loadModelCenter` / `loadAgentCenter`）。
+
+**别把「惰性」实现成「永不再恢复」**：`refresh()` 会置 `requested`，因此「宿主还没就绪时就被请求过」的读在重连后仍会恢复（`useRecoverableRead.test.ts` 有专例）。只按 `loaded` 判断会留下一个静默的空分区。
+
+新增/改造分区时：如果它的读不属于默认分区，就用 `lazy: true` 并确保有一条进入该分区的路径触发首次读；`SettingsPage.lazySections.test.ts` 按请求名钉住「个人分区下两个中心都零读」「进入一个分区不唤醒另一个」「二次进入不重读」。
+
+## 2026-10-25 设置页冷启动：一次往返 + 分档缓存 + 往返计时
+
+模型中心/智能体中心冷启动原本一次挂载打七次独立的读。现在 `api.getModelCenterSnapshot()` 一次拿回全部；`SettingsPage.loadModelCenterData` 先试快照，**形状不合法才回落**到七个端点（旧网关、结构损坏都走这条路）。`isModelCenterSnapshot` 逐个 part 校验 `ok` 是布尔值——半截形状比没有快照更糟，所以它判假就整份不用。
+
+**逐分区降级不是整页失败。** 每个 part 自带 `ok/status/data|error`；失败的 part 保留该分区上一次的值并登记到 `modelCenterPartialFailures`，页面用 `settings.centerPartialLoadFailed` 列出失败的来源名。`reportModelCenterPartialFailures()` 在**数据已应用之后**抛错，用来驱动 `status.error` + 重试动作；所以整页横幅 `model-center-read-failure` 的条件必须是 `modelCenterFailure && !modelCenterOverview`——否则「中心数据加载失败」会和「部分详情读取失败，已保留可用内容」同屏，前者是假话。
+
+**缓存分两档，档位是端点的性质，不是调优旋钮。** `READ_CACHE_TTL_MS = 3s` 留给「运行时现在怎么样」的 receipt（`model-readiness`）；`CATALOG_READ_CACHE_TTL_MS = 5min` 给描述「配置目录」的投影（provider templates、ACP adapters、catalog readiness）。任何写操作完成都会 `invalidateReadCache()`（bump generation + 清空），长档因此读不到自家写入前的旧值；被撤销的宿主由 `hostState` 参与命中判定来拦。
+
+**`server-timing` 必须留在 Gateway 的 `access-control-expose-headers` 里。** 渲染层与 `127.0.0.1:48730` 跨源，未暴露的响应头浏览器会藏起来——漏了它，真实应用里 `serverMs` 永远是 `undefined`，而 Node 测试全绿（不强制 CORS）。这是本轮修掉的最重一条。
+
+**往返计时默认关。** `lib/requestTiming.ts` 的开关是构建期 `VITE_TINADEC_DESKTOP_TIMING`（Vite 只把 `VITE_` 前缀暴露给渲染层，写 `TINADEC_DESKTOP_TIMING` 永远打不开）。`readBackendResponse` 在关闭时**不调用** `observeRoundTrip`——测量不能变成它要测的成本，所以关闭路径只剩一次布尔判断，由 `backendRequest.test.ts` 的 "pays nothing for round-trip timing when the switch is off" 钉住。
+
+**首屏骨架归分区所有。** 曾有一个页面级 `centerFirstLoadPending` 骨架，而 model/agentCenter 分区各自也有同条件骨架，于是首载叠出两套；已删页面级那块。新增分区/中心时不要再在 `settings-section-wrapper` 上加页面级加载态。
+
+**`settings.css` 只能有一个 `@media (prefers-reduced-motion: reduce)` 块。** `settingsCssContract.test.ts` 用 `split(...)[1]` 取「那一个块」，多开一个（哪怕只有一条 spinner 规则）会让它的断言取到短块并变红。新增 reduced-motion 规则要并进末尾既有块。
+
+验证：Gateway `bun test src` 109/109（含新增 CORS 断言）、Desktop 定向 33/33 + `SettingsPage.modelSnapshot` 2/2 + 设置页 5 套件 24/24 + `settingsCssContract` 10/10、`vue-tsc` 0、生产 `vite build` 退出 0（25m34s，并用「改后该出现/该消失的符号」核对产物来自当前源码）、`schema.d.ts` 重新生成（顺带补回 `main` 上缺失的 7 条 `/auth/*`，生成幂等，262 路径 / 304 操作零缺失）。**未做**：真实冷启动毫秒数（本机无运行中的 Core/Gateway 与 CDP，全部证据是调用次数）、SSE/字节代理的 `Server-Timing`、RC4/RC5。报告 `.tinadec_dev/reports/2026-10-25-settings-cold-start.zh-CN.md`。
+
 ## 2026-10-23 登录态在启动时恢复
 
 `electron/auth.cjs` 里的 `sessionToken`/`identity` 原来只活在主进程内存，重启即丢；Core 又随应用重启，所以每次启动都等于未登录。现在会话用 Electron `safeStorage` 加密写到 `userData/auth/session.bin`（Windows DPAPI / macOS Keychain / Linux libsecret），登录成功、资料更新、恢复复核后各写一次，登出删除。**没有密钥环时不落盘**，宁可下次重新登录，也不在磁盘上留明文 token。

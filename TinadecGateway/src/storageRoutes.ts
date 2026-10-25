@@ -23,6 +23,8 @@ export const storageSchemas = {
   StorageScopeList: { type: 'array', items: ref('StorageScope') },
   StorageStatistics: { type: 'object', properties: { storage_id: string, categories: { type: 'array', items: { type: 'object', properties: {
     category: string, path: string, size_bytes: { type: 'integer' }, file_count: { type: 'integer' }, clearable: { type: 'boolean' },
+    // A category whose walk hit the reading's time budget: the numbers are a floor.
+    truncated: { type: 'boolean' },
   }, required: ['category', 'path', 'size_bytes', 'file_count', 'clearable'] } }, diagnostics: { type: 'array', items: diagnostic } }, required: ['storage_id', 'categories', 'diagnostics'] },
   StorageCleanupPreview: { type: 'object', properties: { preview_id: string, storage_id: string, category: string, path: string, file_count: { type: 'integer' }, size_bytes: { type: 'integer' }, expires_at: { type: 'string', format: 'date-time' } }, required: ['preview_id', 'storage_id', 'category', 'path', 'file_count', 'size_bytes', 'expires_at'] },
   StorageContentPreview: { type: 'object', properties: { preview_id: string, storage_id: string, file_count: { type: 'integer' }, size_bytes: { type: 'integer' }, references: { type: 'array', items: string }, expires_at: { type: 'string', format: 'date-time' } }, required: ['preview_id', 'storage_id', 'file_count', 'size_bytes', 'references', 'expires_at'] },

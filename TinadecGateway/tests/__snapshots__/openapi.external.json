@@ -4292,6 +4292,9 @@
                 },
                 "size_bytes": {
                   "type": "integer"
+                },
+                "truncated": {
+                  "type": "boolean"
                 }
               },
               "required": [

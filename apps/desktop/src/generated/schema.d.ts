@@ -2174,6 +2174,7 @@ export interface components {
           file_count: number;
           path: string;
           size_bytes: number;
+          truncated?: boolean;
         }[];
       diagnostics: {
           [key: string]: unknown;

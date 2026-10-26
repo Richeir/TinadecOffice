@@ -25,7 +25,7 @@ const previewRequests = new Map();
 let petsDirOverride = null;
 
 function petsRoot() {
-  return petsDirOverride || path.join(app.getPath('userData'), 'pets');
+  return petsDirOverride || path.join(app.getPath('userData'), 'companion-avatar');
 }
 
 /** Test seam: point the store at a temporary directory instead of Electron's userData. */

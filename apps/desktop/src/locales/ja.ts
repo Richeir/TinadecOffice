@@ -1733,7 +1733,7 @@ export default {
     runtimeInstancesMigrated: "実行インスタンスの監視は準備中です。インスタンス一覧と実行の制御はここで提供されます。",
     toolLayer: "ツール",
     appearance: "外観",
-    pets: "ペット",
+    pets: "コンパニオンアバター",
     petdexCatalog: "Petdex カタログ",
     downloadedPets: "ダウンロード済み",
     searchPets: "ペットを検索",

@@ -1733,7 +1733,7 @@ export default {
     runtimeInstancesMigrated: "Мониторинг работающих экземпляров в разработке: здесь появятся список экземпляров и управление запусками.",
     toolLayer: "Инструменты",
     appearance: "Внешний вид",
-    pets: "Питомцы",
+    pets: "Образ компаньона",
     petdexCatalog: "Каталог Petdex",
     downloadedPets: "Загруженные",
     searchPets: "Поиск питомцев",

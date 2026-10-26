@@ -89,7 +89,7 @@ export const settingsSections: readonly SettingsSectionEntry[] = [
   { key: 'tinachat', labelKey: 'tinaChat.manage', keywordKeys: ['palette.kwTinaChat'] },
   { key: 'archive', labelKey: 'settings.archiveTrash', keywordKeys: ['palette.kwArchive'] },
   { key: 'appearance', labelKey: 'settings.appearance', keywordKeys: ['palette.kwAppearance'] },
-  { key: 'pets', labelKey: 'settings.pets', keywordKeys: ['palette.kwPets'] },
+  { key: 'companionAvatar', labelKey: 'settings.pets', keywordKeys: ['palette.kwPets'] },
   { key: 'apiDocs', labelKey: 'settings.apiDocs', keywordKeys: ['palette.kwApiDocs'] },
   { key: 'about', labelKey: 'settings.about', keywordKeys: ['palette.kwAbout'] },
 ]

@@ -19,7 +19,7 @@ let instanceLimit = MAX_INSTANCES;
 function stateDirectory() {
   if (stateDirOverride) return stateDirOverride;
   const { app } = require('electron');
-  return path.join(app.getPath('userData'), 'pets');
+  return path.join(app.getPath('userData'), 'companion-avatar');
 }
 
 function statePath() {

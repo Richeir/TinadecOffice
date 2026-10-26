@@ -1733,7 +1733,7 @@ export default {
     runtimeInstancesMigrated: "執行例項監控構建中：艦隊清單與執行控制將在本標籤內提供。",
     toolLayer: "工具",
     appearance: "外觀",
-    pets: "寵物",
+    pets: "夥伴形象",
     petdexCatalog: "Petdex 目錄",
     downloadedPets: "已下載",
     searchPets: "搜尋寵物",

@@ -159,7 +159,7 @@ import { toErrorState, type ErrorState } from '@/composables/useErrorState'
 import { isAbortError } from '@/lib/isAbortError'
 import { graphSeedPackManifest } from '@/agentPacks/GraphSeedPack'
 
-type SettingsSection = 'personal' | 'general' | 'storage' | 'model' | 'agentCenter' | 'tools' | 'tinachat' | 'archive' | 'appearance' | 'pets' | 'apiDocs' | 'about'
+type SettingsSection = 'personal' | 'general' | 'storage' | 'model' | 'agentCenter' | 'tools' | 'tinachat' | 'archive' | 'appearance' | 'companionAvatar' | 'apiDocs' | 'about'
 
 type AgentCenterTab = 'agents' | 'modes' | 'prompts' | 'evolution' | 'runtime'
 
@@ -445,7 +445,7 @@ const navItems = computed(() => [
   { key: 'tinachat' as const, icon: MessagesSquare, label: t('tinaChat.manage') },
   { key: 'archive' as const, icon: Archive, label: t('settings.archiveTrash') },
   { key: 'appearance' as const, icon: Palette, label: t('settings.appearance') },
-  { key: 'pets' as const, icon: PawPrint, label: t('settings.pets') },
+  { key: 'companionAvatar' as const, icon: PawPrint, label: t('settings.pets') },
   { key: 'apiDocs' as const, icon: FileText, label: t('settings.apiDocs') },
   { key: 'about' as const, icon: Info, label: t('settings.about') },
 ])
@@ -3877,7 +3877,7 @@ import '../settings/settings.css'
           <AppearanceSection />
         </template>
 
-        <template v-if="activeSection === 'pets'">
+        <template v-if="activeSection === 'companionAvatar'">
           <PetsSection />
         </template>
 

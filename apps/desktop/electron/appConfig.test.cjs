@@ -12,6 +12,7 @@ const {
   resetGatewayUrl,
   saveGatewayUrl,
   saveCloseToTray,
+  saveCompanionMode,
   saveDebugStudioEnabled,
 } = require('./appConfig.cjs');
 
@@ -176,10 +177,73 @@ test('saving close-to-tray keeps comments, the developer table, and the rest of 
   });
 });
 
+test('companion mode defaults off and rejects a non-boolean or non-table preference', () => {
+  temporaryConfig((file) => {
+    assert.equal(loadAppConfig(file, {}).companion_mode_enabled, false);
+    // A managed Gateway decides transport, not whether this machine shows a companion.
+    assert.equal(loadAppConfig(file, { TINADEC_GATEWAY_URL: 'https://managed.example.com' }).companion_mode_enabled, false);
+    fs.writeFileSync(file, '[companion]\nenabled = true\n');
+    assert.equal(loadAppConfig(file, {}).companion_mode_enabled, true);
+    fs.writeFileSync(file, 'companion.enabled = true\n');
+    assert.equal(loadAppConfig(file, {}).companion_mode_enabled, true);
+
+    for (const value of ['"true"', '1', '[true]', '{ value = true }']) {
+      fs.writeFileSync(file, `[companion]\nenabled = ${value}\n`);
+      assert.throws(() => loadAppConfig(file, {}), /companion\.enabled must be a boolean/);
+    }
+    fs.writeFileSync(file, 'companion = "on"\n');
+    assert.throws(() => loadAppConfig(file, {}), /companion must be a table/);
+  });
+});
+
+test('saving companion mode keeps comments and the other tables intact', () => {
+  temporaryConfig((file) => {
+    const original = '# connection\r\ngateway_url = "https://stored.example.com"\r\n'
+      + '[window]\r\nclose_to_tray = true\r\n'
+      + '[companion] # docked companion\r\n# enabled = false is only an example\r\n';
+    fs.writeFileSync(file, original);
+
+    const saved = saveCompanionMode(file, true, {});
+    assert.equal(saved.companion_mode_enabled, true);
+    const after = fs.readFileSync(file, 'utf8');
+    assert.ok(after.includes('# connection') && after.includes('[companion] # docked companion'), 'comments survive');
+    assert.ok(after.includes('# enabled = false is only an example'), 'the example comment is untouched');
+    const document = parse(after);
+    assert.equal(document.companion.enabled, true);
+    assert.equal(document.window.close_to_tray, true);
+    assert.equal(document.gateway_url, 'https://stored.example.com');
+
+    // Saving again flips the stored value in place rather than appending a second key.
+    saveCompanionMode(file, false, {});
+    const flipped = fs.readFileSync(file, 'utf8');
+    assert.equal(parse(flipped).companion.enabled, false);
+    const settings = flipped.split('\n').map((line) => line.trim()).filter((line) => line.startsWith('enabled'));
+    assert.deepEqual(settings, ['enabled = false']);
+    assert.equal(parse(flipped).window.close_to_tray, true);
+
+    // A file with no [companion] table gains one, and a non-boolean is refused without touching it.
+    fs.writeFileSync(file, 'gateway_url = "https://stored.example.com"\n');
+    saveCompanionMode(file, true, {});
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).companion.enabled, true);
+    const intact = fs.readFileSync(file, 'utf8');
+    assert.throws(() => saveCompanionMode(file, 'yes', {}), /must be a boolean/);
+    assert.equal(fs.readFileSync(file, 'utf8'), intact);
+  });
+});
+
 /** Run the actual main IPC registration without Electron startup or user-root access. */
 function mainConfigFixture(configFile) {
   const handlers = new Map();
-  const state = { trusted: true, opened: 0, debug: null, messages: [], closed: 0 };
+  const state = {
+    trusted: true,
+    opened: 0,
+    debug: null,
+    messages: [],
+    closed: 0,
+    // The companion module is a stub here: these records are what the IPC handlers forwarded to it.
+    companionSenderId: null,
+    companion: { applied: [], moved: [], sides: [], expanded: 0, collapsed: 0, closed: 0, checks: 0, applyError: null },
+  };
   const makeWindow = (id, destroyed = false) => ({
     id,
     isDestroyed: () => destroyed,
@@ -210,6 +274,25 @@ function mainConfigFixture(configFile) {
       loadAppConfig: (file) => loadAppConfig(file, env),
       saveDebugStudioEnabled: (file, enabled) => saveDebugStudioEnabled(file, enabled, env),
       saveCloseToTray: (file, enabled) => saveCloseToTray(file, enabled, env),
+      saveCompanionMode: (file, enabled) => saveCompanionMode(file, enabled, env),
+    },
+    // Real geometry/window work belongs to companionWindow.test.cjs; here the module only has to
+    // answer main.cjs's destructuring and record which calls the IPC handlers forwarded.
+    './companionWindow.cjs': {
+      applyCompanionMode: async (enabled) => {
+        if (state.companion.applyError) throw state.companion.applyError;
+        state.companion.applied.push(enabled);
+        return { open: enabled, expanded: false, side: 'right' };
+      },
+      closeCompanionWindow: () => { state.companion.closed++; },
+      collapseCompanionWindow: () => { state.companion.collapsed++; return { open: true, expanded: false, side: 'right' }; },
+      createCompanionWindow: async () => ({ open: true, expanded: false, side: 'right' }),
+      expandCompanionWindow: () => { state.companion.expanded++; return { open: true, expanded: true, side: 'right' }; },
+      isCompanionWindowSender: (sender) => state.companionSenderId !== null && sender?.id === state.companionSenderId,
+      moveTo: (top) => { state.companion.moved.push(top); return { open: true, expanded: false, side: 'right' }; },
+      scheduleCollapseCheck: () => { state.companion.checks++; },
+      setSide: (side) => { state.companion.sides.push(side); return { open: true, expanded: false, side }; },
+      snapshot: () => ({ open: true, expanded: false, side: 'right' }),
     },
     './serviceDiscovery.cjs': {},
     './serviceManager.cjs': { canonicalLocalGatewayUrl: (url) => url === DEFAULT_GATEWAY_URL ? url : null },
@@ -231,6 +314,14 @@ function mainConfigFixture(configFile) {
     './terminalManager.cjs': { registerTerminalIpc() {} },
     './petWindow.cjs': {},
     './petStore.cjs': {},
+    // Committed after this fixture: the destructuring at main.cjs load time only needs the names.
+    './agentAvatars.cjs': {
+      clearPet: async () => {},
+      loadState: async () => ({ preference: null, instances: {} }),
+      setPreference: async (_agentId, preference) => ({ preference }),
+      saveInstance: async (input) => input,
+      releaseInstances: () => {},
+    },
     './appBundle.cjs': {},
     './localMedia.cjs': {},
     './externalLinks.cjs': {},
@@ -256,6 +347,8 @@ function mainConfigFixture(configFile) {
     state, handlers,
     event: { sender: main.webContents, mainFrame: true },
     panelEvent: { sender: panel.webContents, mainFrame: true },
+    // A sender the stub only recognises while a test claims it via `state.companionSenderId`.
+    companionEvent: { sender: { id: 5, isDestroyed: () => false }, mainFrame: true },
   };
 }
 
@@ -351,6 +444,75 @@ test('actual main IPC stores close-to-tray only for the trusted main page and re
     assert.deepEqual(fixture.state.messages.map((message) => JSON.stringify(message.args[1])),
       ['{"close_to_tray":false}', '{"close_to_tray":false}']);
     assert.equal(parse(fs.readFileSync(file, 'utf8')).developer.debug_studio_enabled, true);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('actual main IPC stores companion mode only for the trusted main page and keeps the flag on window failure', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinadec-companion-mode-'));
+  try {
+    const file = path.join(root, 'desktop.toml');
+    const original = '# preferences\n[developer]\ndebug_studio_enabled = true\n';
+    fs.writeFileSync(file, original);
+    const fixture = mainConfigFixture(file);
+    const save = fixture.handlers.get('tinadec:companion-mode-save');
+
+    // The handler is async, so the trust refusal arrives as a rejected promise, not a throw.
+    await assert.rejects(save(fixture.panelEvent, true), /trusted main host page/);
+    fixture.state.trusted = false;
+    await assert.rejects(save(fixture.event, true), /trusted main host page/);
+    fixture.state.trusted = true;
+    await assert.rejects(save({ ...fixture.event, mainFrame: false }, true), /trusted main host page/);
+    await assert.rejects(save(fixture.event, 'true'), /Companion mode enabled must be a boolean/);
+    assert.equal(fs.readFileSync(file, 'utf8'), original);
+    assert.deepEqual(fixture.state.companion.applied, []);
+
+    const enabled = await save(fixture.event, true);
+    assert.equal(enabled.companion_mode_enabled, true);
+    // The answer is the same snapshot `tinadec:app-config` serves.
+    assert.deepEqual(enabled, fixture.handlers.get('tinadec:app-config')());
+    assert.deepEqual(fixture.state.companion.applied, [true]);
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).companion.enabled, true);
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).developer.debug_studio_enabled, true);
+
+    // A window that cannot be shown fails the call but does not roll the stored preference back:
+    // the user asked for it, and the next start has to retry from the same answer.
+    fixture.state.companion.applyError = new Error('companion window unavailable');
+    await assert.rejects(save(fixture.event, false), /companion window unavailable/);
+    assert.deepEqual(fixture.state.companion.applied, [true]);
+    assert.equal(parse(fs.readFileSync(file, 'utf8')).companion.enabled, false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('actual main IPC trusts only the companion window for its five geometry channels', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tinadec-companion-ipc-'));
+  try {
+    const fixture = mainConfigFixture(path.join(root, 'desktop.toml'));
+    const state = fixture.handlers.get('tinadec:companion-state');
+    const expand = fixture.handlers.get('tinadec:companion-expand');
+    const collapse = fixture.handlers.get('tinadec:companion-collapse');
+    const move = fixture.handlers.get('tinadec:companion-move');
+    const side = fixture.handlers.get('tinadec:companion-side');
+
+    // Neither the main page nor a detached panel may drive the companion's shape.
+    for (const handler of [state, expand, collapse, move, side]) {
+      assert.throws(() => handler(fixture.event), /only available to the companion window/);
+      assert.throws(() => handler(fixture.panelEvent), /only available to the companion window/);
+    }
+    assert.deepEqual(fixture.state.companion.moved, []);
+    assert.equal(fixture.state.companion.expanded, 0);
+
+    fixture.state.companionSenderId = 5;
+    // The companion is not a trusted host page; its own channels must not depend on that flag.
+    fixture.state.trusted = false;
+    assert.equal(state(fixture.companionEvent).open, true);
+    assert.equal(expand(fixture.companionEvent).expanded, true);
+    assert.equal(collapse(fixture.companionEvent).expanded, false);
+    assert.deepEqual(move(fixture.companionEvent, 240), { open: true, expanded: false, side: 'right' });
+    assert.equal(side(fixture.companionEvent, 'left').side, 'left');
+    assert.deepEqual(fixture.state.companion.moved, [240]);
+    assert.deepEqual(fixture.state.companion.sides, ['left']);
+    assert.equal(fixture.state.companion.expanded, 1);
+    assert.equal(fixture.state.companion.collapsed, 1);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

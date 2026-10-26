@@ -38,7 +38,7 @@ for (const level of ['log', 'info', 'warn', 'error']) {
     try { hostLogSink.write('electron', `${new Date().toISOString()} ${level} ${require('node:util').format(...values)}\n`); } catch { /* stderr remains available if disk writes fail */ }
   };
 }
-const { loadAppConfig, resetGatewayUrl, saveGatewayUrl, saveUserStorageRoot, saveDebugStudioEnabled, saveCloseToTray } = require('./appConfig.cjs');
+const { loadAppConfig, resetGatewayUrl, saveGatewayUrl, saveUserStorageRoot, saveDebugStudioEnabled, saveCompanionMode, saveCloseToTray } = require('./appConfig.cjs');
 const { discoverServices } = require('./serviceDiscovery.cjs');
 const { ensureLocalServices, stopLocalServices, canonicalLocalGatewayUrl } = require('./serviceManager.cjs');
 const { createHostControl } = require('./hostControl.cjs');
@@ -93,6 +93,7 @@ const {
   setCurrentPetWindowBounds,
   setCurrentPetWindowClickThrough,
 } = require('./petWindow.cjs');
+const companionWindow = require('./companionWindow.cjs');
 const {
   downloadPet,
   ensureBuiltinPets,
@@ -247,7 +248,12 @@ async function createWindow() {
   // When the tray could not be created `keepRunningInTray()` is false and closing quits as before —
   // a hidden window with no icon would be unreachable.
   win.on('close', (event) => {
-    if (!keepRunningInTray()) return;
+    if (!keepRunningInTray()) {
+      // The companion is a satellite, not a reason to stay alive: with the tray off, closing the
+      // main window must take it down too, or `window-all-closed` never fires.
+      companionWindow.closeCompanionWindow();
+      return;
+    }
     event.preventDefault();
     win.hide();
     trayController?.notifyHidden();
@@ -402,6 +408,53 @@ ipcMain.handle('tinadec:close-to-tray-save', (event, enabled) => {
   applyCloseToTray(enabled);
   // Answer with the same shape `tinadec:app-config` returns, so one snapshot type covers both.
   return appConfigSnapshot();
+});
+
+// --- Companion mode (docked capsule / panel) ---
+// The Settings switch owns the stored flag; the companion window draws and moves itself, so it gets
+// these five channels and nothing else. Every handler below refuses any other sender, which keeps a
+// detached panel or the main page from driving the companion's geometry.
+ipcMain.handle('tinadec:companion-mode-save', async (event, enabled) => {
+  if (getMainWindow()?.webContents !== event.sender || !isTrustedHostSender(event)) {
+    throw new Error('Companion mode requires the trusted main host page.');
+  }
+  // saveCompanionMode validates the value before anything is persisted or shown.
+  saveCompanionMode(appConfigFile(), enabled);
+  try {
+    await companionWindow.applyCompanionMode(enabled);
+  } catch (error) {
+    // The flag is already stored; report so Settings can show the failure instead of a silent no-op.
+    console.error('[tinadec] companion window failed:', error?.message ?? error);
+    throw error;
+  }
+  return appConfigSnapshot();
+});
+
+function requireCompanionSender(event) {
+  if (!companionWindow.isCompanionWindowSender(event.sender)) {
+    throw new Error('Companion window IPC is only available to the companion window.');
+  }
+}
+
+ipcMain.handle('tinadec:companion-state', (event) => {
+  requireCompanionSender(event);
+  return companionWindow.snapshot();
+});
+ipcMain.handle('tinadec:companion-expand', (event) => {
+  requireCompanionSender(event);
+  return companionWindow.expandCompanionWindow();
+});
+ipcMain.handle('tinadec:companion-collapse', (event) => {
+  requireCompanionSender(event);
+  return companionWindow.collapseCompanionWindow();
+});
+ipcMain.handle('tinadec:companion-move', (event, top) => {
+  requireCompanionSender(event);
+  return companionWindow.moveTo(top);
+});
+ipcMain.handle('tinadec:companion-side', (event, nextSide) => {
+  requireCompanionSender(event);
+  return companionWindow.setSide(nextSide);
 });
 
 // The interface language lives in the renderer (localStorage + lazily loaded bundles), so the tray
@@ -689,6 +742,7 @@ app.on('before-quit', () => {
   destroyAllTerminals();
   persistPanelStatesForQuit();
   closeAllPetWindows();
+  companionWindow.closeCompanionWindow();
 });
 
 app.whenReady().then(async () => {
@@ -696,10 +750,12 @@ app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
   let gatewayUrl;
   let storedCloseToTray;
+  let storedCompanionMode;
   try {
     const config = readDesktopConfig();
     gatewayUrl = config.gateway_url;
     storedCloseToTray = config.close_to_tray;
+    storedCompanionMode = config.companion_mode_enabled;
   }
   catch (error) {
     dialog.showErrorBox('TinadecOffice', `无法读取 TOML 配置 / Cannot read the TOML configuration\n${appConfigFile()}\n${error.message}`);
@@ -827,6 +883,9 @@ app.whenReady().then(async () => {
   refreshTray();
   // Closing a detached panel changes the panel submenu, and nothing else announces window churn.
   app.on('browser-window-created', refreshTray);
+  // The companion only sees its own blur, so focus moving companion → main window → another app
+  // would leave the panel open. The app-level blur covers the leaving hop.
+  app.on('browser-window-blur', () => companionWindow.scheduleCollapseCheck());
 
   // Report the settled result after the page is on screen; startup failures stay recoverable
   // through the banner's retry, exactly as they were when this await came before the window.
@@ -835,6 +894,14 @@ app.whenReady().then(async () => {
   }, (error) => console.error('[tinadec] local host verification failed:', error?.message ?? error));
   const downloadedPets = await listDownloaded().catch(() => []);
   await Promise.all(downloadedPets.filter((pet) => pet.enabled).map((pet) => createPetWindow(pet.slug).catch(() => undefined)));
+
+  // The companion is restored last: it must not delay the main window, and its failure is a
+  // cosmetic loss rather than a startup failure, so the error is logged and startup continues.
+  if (storedCompanionMode) {
+    await companionWindow.createCompanionWindow().catch((error) => {
+      console.error('[tinadec] companion window failed to open:', error?.message ?? error);
+    });
+  }
 
   app.on('activate', async () => {
     // On macOS this also covers a window that exists but was hidden into the tray.
@@ -845,6 +912,7 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   closeAllPanelWindows();
   closeAllPetWindows();
+  companionWindow.closeCompanionWindow();
   // A hidden main window is still an open window, so this only runs once the window really closed:
   // the preference is off, the tray could not be created, or the user is quitting.
   if (process.platform !== 'darwin' && !keepRunningInTray()) {

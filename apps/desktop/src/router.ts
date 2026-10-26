@@ -80,6 +80,11 @@ const router = createRouter({
       name: 'desktop-pet',
       component: () => import('./pages/DesktopPetPage.vue'),
     },
+    {
+      path: '/companion',
+      name: 'companion',
+      component: () => import('./pages/CompanionPage.vue'),
+    },
   ],
 })
 

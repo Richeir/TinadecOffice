@@ -49,6 +49,7 @@ interface DesktopAppConfig {
   source: string
   managed: boolean
   close_to_tray?: boolean
+  companion_mode_enabled?: boolean
 }
 
 const appConfig = ref<DesktopAppConfig>({ gateway_url: api.gatewayUrl, source: 'default', managed: false })
@@ -61,10 +62,15 @@ const enterPrefDraft = ref<DispatchPref>(getDispatchPref())
 const closeToTray = ref(false)
 const closeToTrayBusy = ref(false)
 
+/** desktop.toml `[companion] enabled`: the docked capsule that expands into a panel. */
+const companionMode = ref(false)
+const companionModeBusy = ref(false)
+
 async function loadAppConfig(): Promise<void> {
   appConfig.value = await window.tinadec.getAppConfig()
   gatewayUrlDraft.value = appConfig.value.gateway_url
   closeToTray.value = appConfig.value.close_to_tray === true
+  companionMode.value = appConfig.value.companion_mode_enabled === true
 }
 
 /**
@@ -83,6 +89,25 @@ async function setCloseToTray(enabled: boolean): Promise<void> {
     notify.error(error, { title: t('settings.closeToTraySaveFailed') })
   } finally {
     closeToTrayBusy.value = false
+  }
+}
+
+/**
+ * The flag is stored first and the window is created from it, so a failure to show the window
+ * arrives as a rejected call instead of a stored preference that silently does nothing.
+ */
+async function setCompanionMode(enabled: boolean): Promise<void> {
+  if (companionModeBusy.value) return
+  const previous = companionMode.value
+  companionMode.value = enabled
+  companionModeBusy.value = true
+  try {
+    companionMode.value = (await window.tinadec.saveCompanionMode(enabled)).companion_mode_enabled === true
+  } catch (error) {
+    companionMode.value = previous
+    notify.error(error, { title: t('settings.companionModeSaveFailed') })
+  } finally {
+    companionModeBusy.value = false
   }
 }
 
@@ -459,6 +484,34 @@ void dismissConfirm
             :aria-label="t('settings.closeToTray')"
             data-testid="close-to-tray-switch"
             @update:model-value="setCloseToTray"
+          />
+        </div>
+      </div>
+    </section>
+
+    <section class="general-settings-group" aria-labelledby="companion-settings-title">
+      <div class="general-settings-group-heading">
+        <div>
+          <h3 id="companion-settings-title">{{ t('settings.companionMode') }}</h3>
+          <p>{{ t('settings.companionModeHint') }}</p>
+        </div>
+      </div>
+
+      <div class="gateway-config-field">
+        <div class="setting-switch-row">
+          <div>
+            <UiLabel>{{ t('settings.companionModeEnable') }}</UiLabel>
+            <div class="gateway-config-meta">
+              <span>{{ t('settings.companionModeEnableHint') }}</span>
+            </div>
+          </div>
+          <UiSwitch
+            id="companion-mode"
+            :model-value="companionMode"
+            :disabled="companionModeBusy"
+            :aria-label="t('settings.companionModeEnable')"
+            data-testid="companion-mode-switch"
+            @update:model-value="setCompanionMode"
           />
         </div>
       </div>

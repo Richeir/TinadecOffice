@@ -202,6 +202,23 @@ declare global {
     onAvatarsChanged: (callback: () => void) => () => void;
   }
 
+  /** Collapsed or expanded, the companion window's own view of itself; the main process owns it. */
+  interface CompanionState {
+    open: boolean;
+    expanded: boolean;
+    side: 'left' | 'right';
+  }
+
+  interface CompanionApi {
+    getState: () => Promise<CompanionState>;
+    expand: () => Promise<CompanionState>;
+    collapse: () => Promise<CompanionState>;
+    /** Move the window so its top edge sits at `top` in screen coordinates (clamped to the work area). */
+    moveTo: (top: number) => Promise<CompanionState>;
+    setSide: (side: 'left' | 'right') => Promise<CompanionState>;
+    onStateChanged: (callback: (state: CompanionState) => void) => () => void;
+  }
+
   interface DiscoveredService {
     url: string;
     service: 'gateway' | 'core';
@@ -217,7 +234,7 @@ declare global {
       getHostStatus: () => Promise<import('./lib/hostConnection').HostConnectionStatus>;
       retryHostConnection: () => Promise<import('./lib/hostConnection').HostConnectionStatus>;
       onHostStatusChanged: (callback: (status: import('./lib/hostConnection').HostConnectionStatus) => void) => () => void;
-      getAppConfig: () => Promise<{ gateway_url: string; source: 'default' | 'user' | 'environment'; managed: boolean; debug_studio_enabled?: boolean; close_to_tray?: boolean; path?: string; storage?: { root: string; source: 'default' | 'desktop' | 'environment'; bootstrap_config: string; managed: boolean; local_services: boolean } }>;
+      getAppConfig: () => Promise<{ gateway_url: string; source: 'default' | 'user' | 'environment'; managed: boolean; debug_studio_enabled?: boolean; close_to_tray?: boolean; companion_mode_enabled?: boolean; path?: string; storage?: { root: string; source: 'default' | 'desktop' | 'environment'; bootstrap_config: string; managed: boolean; local_services: boolean } }>;
       saveDebugStudioEnabled: (enabled: boolean) => Promise<{ debug_studio_enabled: boolean }>;
       onDebugStudioEnabledChanged: (callback: () => void) => () => void;
       /** Keep the app running in the tray after the main window is closed. */
@@ -225,6 +242,10 @@ declare global {
       onCloseToTrayChanged: (callback: (value: { close_to_tray: boolean }) => void) => () => void;
       /** Report the interface language so the main process can draw its tray menu in it. */
       setInterfaceLocale: (locale: string) => void;
+      /** Show or hide the docked companion capsule (desktop.toml `[companion] enabled`). */
+      saveCompanionMode: (enabled: boolean) => Promise<{ companion_mode_enabled: boolean }>;
+      /** The companion window's own geometry gestures; other windows are rejected by the main process. */
+      companion: CompanionApi;
       saveGatewayUrl: (gatewayUrl: string) => Promise<{ gateway_url: string; source: 'user'; managed: false }>;
       resetGatewayUrl: () => Promise<{ gateway_url: string; source: 'default' | 'environment'; managed: boolean }>;
       discoverServices: () => Promise<DiscoveredService[]>;

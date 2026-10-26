@@ -36,7 +36,8 @@ function loadAppConfig(configFile, env = process.env, options = {}) {
   const stored = readDocument(configFile);
   const debugStudioEnabled = readDebugStudioEnabled(stored);
   const preferences = { debug_studio_enabled: debugStudioEnabled,
-    close_to_tray: readCloseToTray(stored) ?? options.defaultCloseToTray ?? false };
+    close_to_tray: readCloseToTray(stored) ?? options.defaultCloseToTray ?? false,
+    companion_mode_enabled: readCompanionModeEnabled(stored) };
   const managedUrl = env.TINADEC_GATEWAY_URL?.trim();
   if (managedUrl) {
     return { gateway_url: normalizeGatewayUrl(managedUrl), source: 'environment', managed: true, path: configFile,
@@ -82,6 +83,20 @@ function readCloseToTray(document) {
     throw new Error('desktop.toml window.close_to_tray must be a boolean.');
   }
   return value;
+}
+
+/** The companion-mode flag; a missing table or key means the panel stays off. */
+function readCompanionModeEnabled(document) {
+  const companionTable = document.companion;
+  if (companionTable !== undefined && (!companionTable || typeof companionTable !== 'object'
+      || Array.isArray(companionTable) || companionTable instanceof Date)) {
+    throw new Error('desktop.toml companion must be a table.');
+  }
+  const value = companionTable?.enabled;
+  if (value !== undefined && typeof value !== 'boolean') {
+    throw new Error('desktop.toml companion.enabled must be a boolean.');
+  }
+  return value ?? false;
 }
 
 function writeDocumentSource(configFile, source) {
@@ -168,6 +183,18 @@ function saveCloseToTray(configFile, enabled, env = process.env) {
   return loadAppConfig(configFile, env);
 }
 
+/** Turning this on shows the companion capsule docked to a screen edge. */
+function saveCompanionMode(configFile, enabled, env = process.env) {
+  if (typeof enabled !== 'boolean') throw new Error('Companion mode enabled must be a boolean.');
+  const source = readDocumentSource(configFile);
+  const document = parse(source);
+  readCompanionModeEnabled(document);
+  document.companion ??= Object.create(null);
+  document.companion.enabled = enabled;
+  writeDocumentSource(configFile, tableScalarDocumentSource(source, document, 'companion', 'enabled'));
+  return loadAppConfig(configFile, env);
+}
+
 function saveGatewayUrl(configFile, value, env = process.env) {
   if (env.TINADEC_GATEWAY_URL?.trim()) {
     throw new Error('Gateway URL is managed by TINADEC_GATEWAY_URL.');
@@ -206,6 +233,7 @@ module.exports = {
   resetGatewayUrl,
   saveGatewayUrl,
   saveCloseToTray,
+  saveCompanionMode,
   saveDebugStudioEnabled,
   saveUserStorageRoot,
 };

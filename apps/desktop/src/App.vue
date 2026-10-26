@@ -45,6 +45,10 @@ watch(backgroundSettings, () => applyBackground(), { deep: true, immediate: true
 // 它们复用主窗口已建立的后端连接，不应重播首次启动序列。
 const isChildWindow = new URLSearchParams(window.location.search).get('splash') === '0'
 const isPetWindow = window.location.hash.startsWith('#/pet')
+// The companion capsule/panel is its own always-on-top window: transparent, no splash, no
+// backend coupling of its own. It shares this bundle only, so it gets the bare RouterView.
+const isCompanionWindow = window.location.hash.startsWith('#/companion')
+const isStandaloneWindow = isPetWindow || isCompanionWindow
 const { t } = useI18n()
 setGraphSeedPackTranslator((key, params) => String(t(key, params ?? {})))
 const { connectionState, start: startConnection } = useConnection()
@@ -62,7 +66,7 @@ const entryReady = ref(isChildWindow)
 // state, and it is what makes HostAvailabilityBanner visible during startup. A preview renderer
 // already published "preview" before mount, so it keeps its own reason.
 const { status: hostAccessStatus } = useHostAccess()
-if (!isPetWindow && hostAccessStatus.value === null) setHostAccessStatus({ state: 'checking', managed: true })
+if (!isStandaloneWindow && hostAccessStatus.value === null) setHostAccessStatus({ state: 'checking', managed: true })
 
 function onPageReady() {
   entryReady.value = true
@@ -75,7 +79,7 @@ function onRouteMounted() {
 }
 
 watch(connectionState, (state) => {
-  if (isPetWindow || isChildWindow) return
+  if (isStandaloneWindow || isChildWindow) return
   if (state === 'connected') {
     dismissByKey(CONNECTION_BANNER_KEY)
     if (!graphSeedBootstrapped) {
@@ -108,8 +112,8 @@ watch(connectionState, (state) => {
 })
 
 onMounted(() => {
-  if (!isPetWindow) void startConnection()
-  if (!isPetWindow) {
+  if (!isStandaloneWindow) void startConnection()
+  if (!isStandaloneWindow) {
     unsubscribeStatusSync = startStatusSync()
     // The palette is the window's command surface, and a pet has no commands to run.
     uninstallPaletteKeys = installPaletteKeybinding()
@@ -123,7 +127,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <RouterView v-if="isPetWindow" />
+  <RouterView v-if="isStandaloneWindow" />
 
   <template v-else>
   <!-- Keep one Vue splash node through route preparation and CSS departure.

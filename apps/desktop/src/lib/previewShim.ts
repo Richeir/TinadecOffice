@@ -24,8 +24,20 @@ export function installPreviewShimIfNeeded(): void {
   // Preview-only UI state never writes the real user's desktop.toml.
   const previewDebugKey = 'tinadec.preview.debug-studio-enabled'
   const previewCloseToTrayKey = 'tinadec.preview.close-to-tray'
+  const previewCompanionModeKey = 'tinadec.preview.companion-mode-enabled'
   function previewDebugEnabled(): boolean { return localStorage.getItem(previewDebugKey) === 'true' }
   function previewCloseToTray(): boolean { return localStorage.getItem(previewCloseToTrayKey) === 'true' }
+  function previewCompanionMode(): boolean { return localStorage.getItem(previewCompanionModeKey) === 'true' }
+
+  // A browser tab cannot move or resize an OS window, but the page still needs a consistent
+  // shape/state to exercise: keep it in memory and notify the same way the main process does.
+  let companionState = { open: true, expanded: false, side: 'right' as 'left' | 'right' }
+  const companionListeners = new Set<(state: typeof companionState) => void>()
+  function updateCompanion(next: Partial<typeof companionState>): typeof companionState {
+    companionState = { ...companionState, ...next }
+    for (const listener of companionListeners) listener({ ...companionState })
+    return { ...companionState }
+  }
 
   const hostStatus = { state: 'preview' as const, managed: false, error: { code: 'desktop_host_required', message: i18n.global.t('host.previewShim') } }
   setHostAccessStatus(hostStatus)
@@ -35,7 +47,7 @@ export function installPreviewShimIfNeeded(): void {
     retryHostConnection: () => Promise.resolve(hostStatus),
     storageAction: () => rejectNotAvailable(hostStatus.error.message),
     gatewayUrl: () => 'http://127.0.0.1:48730',
-    getAppConfig: () => Promise.resolve({ gateway_url: 'http://127.0.0.1:48730', source: 'environment', managed: true, debug_studio_enabled: previewDebugEnabled(), close_to_tray: previewCloseToTray() }),
+    getAppConfig: () => Promise.resolve({ gateway_url: 'http://127.0.0.1:48730', source: 'environment', managed: true, debug_studio_enabled: previewDebugEnabled(), close_to_tray: previewCloseToTray(), companion_mode_enabled: previewCompanionMode() }),
     saveDebugStudioEnabled: (enabled: boolean) => {
       localStorage.setItem(previewDebugKey, String(enabled))
       return Promise.resolve({ debug_studio_enabled: enabled })
@@ -51,6 +63,21 @@ export function installPreviewShimIfNeeded(): void {
       return Promise.resolve({ close_to_tray: enabled })
     },
     onCloseToTrayChanged: () => noop,
+    saveCompanionMode: (enabled: boolean) => {
+      localStorage.setItem(previewCompanionModeKey, String(enabled))
+      return Promise.resolve({ companion_mode_enabled: enabled })
+    },
+    companion: {
+      getState: () => Promise.resolve({ ...companionState }),
+      expand: () => Promise.resolve(updateCompanion({ expanded: true })),
+      collapse: () => Promise.resolve(updateCompanion({ expanded: false })),
+      moveTo: () => Promise.resolve({ ...companionState }),
+      setSide: (side: 'left' | 'right') => Promise.resolve(updateCompanion({ side })),
+      onStateChanged: (callback: (state: typeof companionState) => void) => {
+        companionListeners.add(callback)
+        return () => { companionListeners.delete(callback) }
+      },
+    },
     setInterfaceLocale: noop,
     saveGatewayUrl: () => rejectNotAvailable('preview'),
     resetGatewayUrl: () => rejectNotAvailable('preview'),

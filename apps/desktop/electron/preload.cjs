@@ -44,6 +44,22 @@ contextBridge.exposeInMainWorld('tinadec', {
   /** Lets the main process draw the tray menu in the interface language this window is showing. */
   setInterfaceLocale: (locale) => ipcRenderer.send('tinadec:interface-locale', locale),
 
+  // --- Companion mode (docked capsule / panel) ---
+  saveCompanionMode: (enabled) => ipcRenderer.invoke('tinadec:companion-mode-save', enabled),
+  // The companion page is the only caller that succeeds here; the main process checks the sender.
+  companion: {
+    getState: () => ipcRenderer.invoke('tinadec:companion-state'),
+    expand: () => ipcRenderer.invoke('tinadec:companion-expand'),
+    collapse: () => ipcRenderer.invoke('tinadec:companion-collapse'),
+    moveTo: (top) => ipcRenderer.invoke('tinadec:companion-move', top),
+    setSide: (side) => ipcRenderer.invoke('tinadec:companion-side', side),
+    onStateChanged: (callback) => {
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on('tinadec:companion-state-changed', handler);
+      return () => ipcRenderer.removeListener('tinadec:companion-state-changed', handler);
+    },
+  },
+
   // --- TinadecUIE layout persistence ---
   layout: {
     load: () => ipcRenderer.invoke('tinadec:layout-load'),

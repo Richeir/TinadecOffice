@@ -55,6 +55,7 @@ let trayListener: ((value: { close_to_tray: boolean }) => void) | undefined
 const bridge = {
   getAppConfig: vi.fn(),
   saveCloseToTray: vi.fn(),
+  saveCompanionMode: vi.fn(),
   onCloseToTrayChanged: vi.fn((callback: (value: { close_to_tray: boolean }) => void) => {
     trayListener = callback
     return () => { trayListener = undefined }
@@ -78,8 +79,9 @@ beforeEach(() => {
   trayListener = undefined
   localStorage.clear()
   resetConversationFlowStyleForTests()
-  bridge.getAppConfig.mockResolvedValue({ gateway_url: 'http://127.0.0.1:48730', source: 'default', managed: false, close_to_tray: false })
+  bridge.getAppConfig.mockResolvedValue({ gateway_url: 'http://127.0.0.1:48730', source: 'default', managed: false, close_to_tray: false, companion_mode_enabled: false })
   bridge.saveCloseToTray.mockImplementation(async (enabled: boolean) => ({ close_to_tray: enabled }))
+  bridge.saveCompanionMode.mockImplementation(async (enabled: boolean) => ({ companion_mode_enabled: enabled }))
   vi.stubGlobal('tinadec', bridge)
 })
 
@@ -125,6 +127,42 @@ describe('window and tray settings', () => {
     // Unmounting must drop the IPC listener so a hidden window does not keep a stale closure alive.
     expect(bridge.onCloseToTrayChanged).toHaveBeenCalledTimes(1)
     expect(trayListener).toBeUndefined()
+  })
+})
+
+/**
+ * `desktop.toml [companion] enabled` is the only switch for the docked capsule. The renderer half:
+ * read the stored flag, write it through IPC, and turn a window that cannot be shown into a visible
+ * failure instead of a switch that appears to stay on.
+ */
+describe('companion mode', () => {
+  it('shows the stored preference instead of a local default', async () => {
+    bridge.getAppConfig.mockResolvedValue({ gateway_url: 'http://127.0.0.1:48730', source: 'default', managed: false, companion_mode_enabled: true })
+    const wrapper = create()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="companion-mode-switch"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('writes the preference through IPC and keeps the stored answer', async () => {
+    const wrapper = create()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="companion-mode-switch"]').attributes('aria-checked')).toBe('false')
+
+    await wrapper.get('[data-testid="companion-mode-switch"]').trigger('click')
+    await flushPromises()
+    expect(bridge.saveCompanionMode).toHaveBeenCalledWith(true)
+    expect(wrapper.get('[data-testid="companion-mode-switch"]').attributes('aria-checked')).toBe('true')
+  })
+
+  it('rolls back and reports when the window cannot be shown', async () => {
+    bridge.saveCompanionMode.mockRejectedValue(new Error('companion window unavailable'))
+    const wrapper = create()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="companion-mode-switch"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="companion-mode-switch"]').attributes('aria-checked')).toBe('false')
+    expect(notifications.notify.error).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -1,5 +1,32 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-26 开发伙伴模式第一片：一个窗口两种形态（胶囊 / 面板）
+
+设置「常规 → 伙伴模式」开关（`desktop.toml [companion] enabled`）打开后，屏幕边缘出现 24×108 胶囊；点击、或在胶囊上向内拖动 ≥26px 展开成 340×520 面板。面板第一版**只是空壳**（标题、占位、收起按钮），不含聊天或快捷入口；Esc 收起；焦点离开所有 TinadecOffice 窗口时自动收起，但焦点落到主窗口/分离面板时保持打开。窗口跨应用始终置顶。
+
+**一个窗口，两种尺寸，不是两个窗口。** `companionWindow.cjs` 用 `setBounds` 在 `capsuleBounds` / `panelBounds` 之间切换，所以两形态不可能停在不同显示器上，收起只是一次 resize 而不是窗间交接。窗口参数为 `frame:false`、`transparent`、`hasShadow:false`、`thickFrame:false`、`resizable/maximizable/minimizable:false`、`skipTaskbar`、`alwaysOnTop`（macOS 用 `floating` 并 `setVisibleOnAllWorkspaces(..., {visibleOnFullScreen:true})`）、`show:false` + `ready-to-show` 里 `showInactive()`（启动与展开都不抢焦点）。`TINADEC_DISABLE_TRANSPARENCY=1` 时退化为不透明深色底，仅作兜底。**透明窗口没有系统阴影**：胶囊/面板的每条边都必须自己画，`CompanionPage.vue` 里 `:global(html/body/#app) { background: transparent !important }` 不是可选装饰——缺了它，24×108 的胶囊会变成一块不透明矩形。
+
+几何在 `companionGeometry.cjs`（纯函数、无 Electron import，`node --test` 直接跑）：两形态共用一个 `centerY`（相对显示器工作区）+ `displayId` 锚点，`EDGE_MARGIN=8`，窗口贴工作区左/右边缘，`panelSize` 在小屏上收窄。拖胶囊与拖面板都折算回同一个锚点，所以拖动后切换形态仍停在用户放的位置。显示器增删/分辨率变化时重投影，存的显示器不在了回主屏；位置写 `userData/companion-layout.json`。
+
+**形态权威在主进程。** 渲染层只读 `tinadec:companion-state` 并订阅 `tinadec:companion-state-changed`（`{open, expanded, side}`），**从不自行翻转 `expanded`**：失焦收起、显示器变化、设置开关都发生在渲染层看不见的地方，本地副本会和真实 bounds 打架。所有命令 `.then(applyState)`，失败只 `console.warn`，不假装成功。这一点由 `CompanionPage.test.ts` 的“命令只广播”替身钉住——改成本地 state 会让其中一个用例变红。
+
+手势全在 `CompanionPage.vue`：胶囊上按左键拖动，4px 轴锁分垂直/水平；垂直走 `moveTo(windowTop + dy)`，水平累计**内向**行程（左侧向右、右侧向左）≥26px 展开。拖动结束后 350ms 内抑制 `click`——拖动收尾仍会发 click，那不是“打开”——而键盘激活 `event.detail === 0` 永远直通。面板 header 的拖动同样走 `moveTo`，停靠按钮 `@pointerdown.stop` 不触发拖动。**「从屏幕外起手向内滑动」在 Electron 里做不到**：指针事件只存在于窗口内，屏幕外没有窗口就没有事件；当前实现是“在胶囊上向内拖”，同一意图在平台能力内的可达形式。
+
+收起判定：伙伴自己的 `blur` 与 `app.on('browser-window-blur')` 都只是**触发一次延迟检查**（`BLUR_SETTLE_MS=120`），120ms 后看 `BrowserWindow.getFocusedWindow()`——任何 TinadecOffice 窗口有焦点就保持，`null`（别的应用或桌面）才收起。延迟是必需的：blur 先于系统把焦点交给新主人，点主窗口时伙伴会先 blur；只监听伙伴自身 blur 还不够，焦点“伙伴 → 主窗口 → 别的应用”时伙伴不会再 blur 一次。
+
+**IPC 安全边界是两条不同的规则**，别合并：
+
+- `tinadec:companion-mode-save` 属于设置写入，要求 **主窗口 webContents + `isTrustedHostSender(event)`** 双校验（与托盘偏好一致）；
+- 五个几何/状态 channel（`companion-state/-expand/-collapse/-move/-side`）只接受 **`isCompanionWindowSender(event.sender)`**，**刻意不依赖 `state.trusted`**——伙伴窗不是 trusted host，不拿任何业务 IPC，它唯一能做的就是报告/改变自己的形态。分离面板或主页面拿不到这些 channel。
+
+持久化分两处，**不要合并**：开关在用户可编辑的 `desktop.toml` `[companion] enabled`（缺省 `false`；写走 `appConfig.cjs` 的窄编辑，保留注释与行序，temp/rename 原子落盘；读时类型不对直接报错）；位置在 `userData/companion-layout.json`（`{version:1, side, centerY, displayId}`，200ms 防抖，损坏或缺失回落右边缘垂直居中）。拖胶囊是高频写，不该让用户手编的配置文件跟着抖。开关关闭 = **销毁窗口**（不是 hide）；`applyCompanionMode` 抛错时开关已经落盘，所以设置页要显示失败而不是静默无操作。
+
+生命周期上伙伴是**卫星**：托盘关闭主窗口时顺带 `closeCompanionWindow()`——它不是一个让进程活着的理由，不关它 `window-all-closed` 永不触发；退出路径同样先收伙伴。`tray.test.cjs` 里 `win.on('close')` 的源码形状钉子因此从“是否 hide”扩到“是否连带关闭伙伴”，并保留了“托盘不存在就直接 return”的语义。
+
+渲染层入口：`App.vue` 用 `isCompanionWindow = location.hash.startsWith('#/companion')` 并入 `isStandaloneWindow`，与宠物窗一样**跳过**连接启动、宿主门禁、splash、banner 与命令面板，直接渲染裸 `RouterView`——否则宿主没就绪时伙伴窗会白屏。`previewShim.ts` 在浏览器预览里给了六个方法 + localStorage 开关，`npm run dev:web` 可以直接看两种形态。
+
+验证：`companionGeometry.test.cjs` 6 例、`companionLayoutStore.test.cjs` 5 例、`appConfig.test.cjs` 新增 4 例（TOML 读写两条 + 设置 IPC 双校验 + 五 geometry channel 只认伙伴 sender 且在 `state.trusted=false` 下仍成功）、`CompanionPage.test.ts` 12 例（含左右内向拖动数学、短拖动不展开并抑制随后的鼠标 click、键盘激活直通、Esc 只抑制展开态、卸载解绑）、`GeneralSection.test.ts` 3 例（乐观写 + 失败回滚）。未见项：本轮没有运行中的 Core/CDP，**未做真实 Electron 像素/观感走查**；`TINADEC_DISABLE_TRANSPARENCY` 只有兜底路径，没有视觉验收；面板是空壳。
+
 ## 2026-10-26 存储页不再用一次慢读拦住整个应用
 
 **症状**：打开「存储」选项卡后，内容全部加载完之前应用不响应。**根因是设计，不是慢**：

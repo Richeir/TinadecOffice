@@ -23,7 +23,7 @@ public static class StorageScopeEndpoints
         app.MapPost("/api/v1/storage/scopes/open", async (OpenScopeRequest request, IStorageScopeRegistry registry, CancellationToken ct) =>
             await HandleAsync(async () => Results.Ok(await ToDtoAsync(await registry.OpenAsync(new(request.ProjectPath,
                 request.Name, request.Backend, request.StorageRoot, request.PostgresConnectionReference,
-                request.Roots, request.PrimaryRootId, request.Icon, request.Color), ct).ConfigureAwait(false), registry, ct).ConfigureAwait(false))));
+                request.Roots, request.PrimaryRootId, request.Icon, request.Color, request.Files), ct).ConfigureAwait(false), registry, ct).ConfigureAwait(false))));
         app.MapPost("/api/v1/storage/scopes/preview", (WorkspacePreviewRequest request, IWorkspaceRegistry registry) =>
             HandleAsync(() => Task.FromResult<IResult>(Results.Ok(registry.PreviewWorkspace(request.ProjectPath)))));
         app.MapGet("/api/v1/storage/scopes/{storageId}/workspace", (string storageId, HttpResponse response, IWorkspaceRegistry registry) =>
@@ -168,7 +168,8 @@ public static class StorageScopeEndpoints
         extensions: new Dictionary<string, object?> { ["code"] = code });
 
     public sealed record OpenScopeRequest(string ProjectPath, string? Name = null, string? Backend = null, string? StorageRoot = null, string? PostgresConnectionReference = null,
-        IReadOnlyList<WorkspaceSourceRoot>? Roots = null, string? PrimaryRootId = null, string Icon = "folder", string Color = "default");
+        IReadOnlyList<WorkspaceSourceRoot>? Roots = null, string? PrimaryRootId = null, string Icon = "folder", string Color = "default",
+        IReadOnlyList<WorkspaceFileGrant>? Files = null);
     public sealed record WorkspacePreviewRequest(string ProjectPath);
     public sealed record ConfigureScopeRequest(string Backend, string? StorageRoot = null, string? PostgresConnectionReference = null);
     public sealed record CleanupRequest(string Category);

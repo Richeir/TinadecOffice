@@ -80,7 +80,10 @@ internal sealed class RecordingAcpSessionHost : IAcpSessionHost
 
         public Exception? Fault => null;
 
-        public Task<AcpTurnResult> PromptAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken)
+        public Task<AcpTurnResult> PromptAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken) =>
+            PromptAsync([new AcpContentBlock("text", prompt)], observer, cancellationToken);
+
+        public Task<AcpTurnResult> PromptAsync(IReadOnlyList<AcpContentBlock> prompt, IAcpTurnObserver observer, CancellationToken cancellationToken)
         {
             Prompts++;
             observer.TextDelta(Answer);

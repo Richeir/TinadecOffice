@@ -2595,6 +2595,9 @@ const app = new Elysia()
     const rawQuery = query as Record<string, unknown>;
     if (rawQuery.filename) search.set('filename', String(rawQuery.filename));
     if (rawQuery.media_type) search.set('media_type', String(rawQuery.media_type));
+    if (rawQuery.origin) search.set('origin', String(rawQuery.origin));
+    if (rawQuery.project_id) search.set('project_id', String(rawQuery.project_id));
+    if (rawQuery.source_path) search.set('source_path', String(rawQuery.source_path));
     const suffix = search.toString() ? `?${search.toString()}` : '';
     const path = `/api/v1/sessions/${encodeURIComponent(params.sessionId)}/attachments${suffix}`;
     const response = await proxyStream({
@@ -2624,6 +2627,14 @@ const app = new Elysia()
     if (result.status >= 400) { set.headers['content-type'] = 'application/json'; return result.data; }
     return result.data;
   }, { detail: { summary: 'List session attachments', tags: ['Attachments'], responses: { 200: externalJsonResponse('MessageAttachmentList', 'Attachments parked on the session.') } } })
+  .get('/api/v1/projects/:projectId/exposures', async ({ params, set, request }) => {
+    const headers = forwardHeaders(request);
+    const path = `/api/v1/projects/${encodeURIComponent(params.projectId)}/exposures`;
+    const result = await proxyJson(path, { headers });
+    setStatus(set, result.status);
+    if (result.status >= 400) { set.headers['content-type'] = 'application/json'; return result.data; }
+    return result.data;
+  }, { detail: { summary: 'List project attachment exposures', tags: ['Attachments'], responses: { 200: externalJsonResponse('MessageAttachmentList', 'Conversation attachments associated with the project.') } } })
   .get('/api/v1/attachments/:attachmentId', async ({ params, set, request }) => {
     const headers = forwardHeaders(request);
     const path = `/api/v1/attachments/${encodeURIComponent(params.attachmentId)}`;

@@ -3,6 +3,7 @@ import {
   Bot,
   FileCode,
   FileText,
+  FolderTree,
   GitBranch,
   Globe,
   Layers3,
@@ -16,7 +17,7 @@ import {
 // ---------------------------------------------------------------------------
 // featureCatalog — the shared catalog of feature-panel pages.
 //
-// Single source of truth for the ten openable feature pages of the feature
+// Single source of truth for every openable feature page of the feature
 // panel (right column). Consumed by:
 //   - HomePickerCard.vue — the Home grid of feature cards,
 //   - BrowserTabBar.vue — the "+" tab dropdown menu that lists every page,
@@ -55,6 +56,10 @@ export const FEATURE_CATALOG: FeatureCatalogEntry[] = [
   { descriptorId: 'browser', titleKey: 'context.homePreview', descKey: 'context.homePreviewDesc', icon: Globe, color: '#58a6ff' },
   { descriptorId: 'events', titleKey: 'context.homeEvents', descKey: 'context.homeEventsDesc', icon: Activity, color: '#7d8590' },
   { descriptorId: 'doctor', titleKey: 'context.homeDoctor', descKey: 'context.homeDoctorDesc', icon: Stethoscope, color: '#3fb950' },
+  // The workspace card is the second — and only visual — entry point to the source-folder set.
+  // It is appended rather than placed next to the document cards because it is the one tile
+  // that changes what the agent is authorized on, not another way to read the workspace.
+  { descriptorId: 'workspace', titleKey: 'context.homeWorkspace', descKey: 'context.homeWorkspaceDesc', icon: FolderTree, color: '#d29922' },
 ]
 
 /**

@@ -141,10 +141,12 @@ public sealed class ConnectAcpHandshakeTests : IAsyncLifetime
 
         public Exception? FailWith { get; set; }
 
-        public Task ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default)
+        public Task<AcpHarnessProbeResult> ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default)
         {
             Calls.Add(new ProbeCall(providerInstanceId, harnessId, binaryPath, homePath));
-            return FailWith is null ? Task.CompletedTask : Task.FromException(FailWith);
+            return FailWith is null
+                ? Task.FromResult(new AcpHarnessProbeResult(false, true, false))
+                : Task.FromException<AcpHarnessProbeResult>(FailWith);
         }
     }
 

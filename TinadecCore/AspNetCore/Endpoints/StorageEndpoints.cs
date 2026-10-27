@@ -642,6 +642,12 @@ public static class StorageEndpoints
             media_type = attachment.MediaType,
             content_length = attachment.ContentLength,
             content_hash = attachment.ContentHash,
+            origin = attachment.Origin,
+            project_id = attachment.ProjectId,
+            source_path = attachment.SourcePath,
+            delivered_to_model = attachment.DeliveredToModel,
+            delivered_run_id = attachment.DeliveredRunId,
+            delivered_at = attachment.DeliveredAt,
             created_at = attachment.CreatedAt,
             bound_at = attachment.BoundAt
         }).ToArray()

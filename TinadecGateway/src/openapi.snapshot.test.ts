@@ -110,7 +110,8 @@ test('openapi external snapshot — title contains Gateway, paths non-empty, fil
   );
   assert.deepEqual(
     Object.keys(objectAt(schemas, 'MessageAttachmentSummary', 'properties')).sort(),
-    ['bound_at', 'content_hash', 'content_length', 'created_at', 'file_name', 'id', 'media_type'],
+    ['bound_at', 'content_hash', 'content_length', 'created_at', 'delivered_at', 'delivered_run_id',
+      'delivered_to_model', 'file_name', 'id', 'media_type', 'origin', 'project_id', 'source_path'],
   );
   for (const name of ['Message', 'MessageAttachment', 'MessageAttachmentSummary']) {
     // content_reference is a path under the data root; bytes are addressed by id.

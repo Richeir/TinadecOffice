@@ -59,11 +59,21 @@ public sealed class AttachmentApiTests : IAsyncLifetime
     }
 
     private static async Task<HttpResponseMessage> UploadAsync(
-        HttpClient client, Guid sessionId, byte[] bytes, string? fileName, string? mediaType = null)
+        HttpClient client,
+        Guid sessionId,
+        byte[] bytes,
+        string? fileName,
+        string? mediaType = null,
+        string? origin = null,
+        Guid? projectId = null,
+        string? sourcePath = null)
     {
         var query = new List<string>();
         if (fileName is not null) query.Add($"filename={Uri.EscapeDataString(fileName)}");
         if (mediaType is not null) query.Add($"media_type={Uri.EscapeDataString(mediaType)}");
+        if (origin is not null) query.Add($"origin={Uri.EscapeDataString(origin)}");
+        if (projectId is not null) query.Add($"project_id={projectId.Value:D}");
+        if (sourcePath is not null) query.Add($"source_path={Uri.EscapeDataString(sourcePath)}");
         var suffix = query.Count == 0 ? string.Empty : "?" + string.Join('&', query);
         using var content = new ByteArrayContent(bytes);
         return await client.PostAsync($"/api/v1/sessions/{sessionId}/attachments{suffix}", content);
@@ -79,7 +89,7 @@ public sealed class AttachmentApiTests : IAsyncLifetime
         var payload = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("alpha-beta\n", 3)));
 
         var created = await UploadAsync(client, sessionId, payload, "notes.txt", "text/plain");
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.True(created.StatusCode == HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
         var dto = await BodyAsync(created);
         var id = dto.GetProperty("id").GetGuid();
 
@@ -739,6 +749,7 @@ public sealed class AttachmentApiTests : IAsyncLifetime
             builder.ConfigureServices(services =>
             {
                 services.AddSingleton<IToolManifestSnapshotResolver, NoProviderManifestResolver>();
+                services.AddSingleton<IWorkspaceDefinitionProvider>(new TestWorkspaceProvider(Path.Combine(_root, "authorized-workspace")));
             });
         }
     }
@@ -875,6 +886,81 @@ public sealed class AttachmentApiTests : IAsyncLifetime
         Assert.Contains("stack trace line one", section);
     }
 
+    [Fact]
+    public async Task ProjectExposures_KeepComposerAndWorkspaceOriginsDistinct()
+    {
+        var workspace = Path.Combine(_root, "exposure-workspace");
+        Directory.CreateDirectory(workspace);
+        var authorizedRoot = Path.Combine(_root, "authorized-workspace");
+        Directory.CreateDirectory(authorizedRoot);
+        var source = Path.Combine(authorizedRoot, "diagram.png");
+        await File.WriteAllBytesAsync(source, [1, 2, 3, 4]);
+
+        var client = _factory!.CreateClient();
+        var projectResponse = await client.PostAsJsonAsync("/api/v1/projects", new { name = "Exposures", path = workspace });
+        Assert.Equal(HttpStatusCode.Created, projectResponse.StatusCode);
+        var project = await projectResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var projectId = project.GetProperty("id").GetGuid();
+        var sessionResponse = await client.PostAsJsonAsync("/api/v1/sessions", new { project_id = projectId, title = "Exposure session" });
+        var session = await sessionResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetGuid();
+
+        var composer = await BodyAsync(await UploadAsync(client, sessionId, [9, 8], "notes.txt", "text/plain"));
+        Assert.Equal("composer", composer.GetProperty("origin").GetString());
+        Assert.Equal(projectId, composer.GetProperty("project_id").GetGuid());
+        Assert.False(composer.GetProperty("delivered_to_model").GetBoolean());
+
+        var workspaceUpload = await BodyAsync(await UploadAsync(
+            client, sessionId, [1, 2, 3, 4], "diagram.png", "image/png",
+            origin: "workspace", projectId: projectId, sourcePath: source));
+        Assert.Equal("workspace", workspaceUpload.GetProperty("origin").GetString());
+        Assert.Equal(source, workspaceUpload.GetProperty("source_path").GetString());
+
+        var exposures = await client.GetFromJsonAsync<JsonElement[]>($"/api/v1/projects/{projectId}/exposures");
+        Assert.Equal(2, exposures!.Length);
+        Assert.Contains(exposures, row => row.GetProperty("origin").GetString() == "composer");
+        Assert.Contains(exposures, row => row.GetProperty("origin").GetString() == "workspace"
+            && row.GetProperty("source_path").GetString() == source);
+    }
+
+    [Fact]
+    public async Task WorkspaceExposure_RejectsAnUngrantedSourcePath()
+    {
+        var (client, sessionId) = await OpenSessionAsync("invalid-exposure");
+        var outsider = Path.Combine(_root, "outside.png");
+        await File.WriteAllBytesAsync(outsider, [1, 2, 3]);
+
+        var response = await UploadAsync(
+            client, sessionId, [1, 2, 3], "outside.png", "image/png",
+            origin: "workspace", sourcePath: outsider);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("attachment_source_unauthorized", (await BodyAsync(response)).GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task DeliveryReceiptFlipsOnlyAfterThePipelineNamesTheRun()
+    {
+        var (client, sessionId) = await OpenSessionAsync("delivery-receipt");
+        var uploaded = await BodyAsync(await UploadAsync(client, sessionId, [1, 2, 3], "shot.png", "image/png"));
+        var attachmentId = uploaded.GetProperty("id").GetGuid();
+        Assert.False(uploaded.GetProperty("delivered_to_model").GetBoolean());
+
+        var runId = Guid.NewGuid();
+        var deliveredAt = DateTimeOffset.UtcNow;
+        await Store().MarkDeliveredAsync([attachmentId], runId, deliveredAt);
+
+        var stored = await client.GetFromJsonAsync<JsonElement>($"/api/v1/attachments/{attachmentId}");
+        Assert.True(stored.GetProperty("delivered_to_model").GetBoolean());
+        Assert.Equal(runId, stored.GetProperty("delivered_run_id").GetGuid());
+        Assert.Equal(deliveredAt, stored.GetProperty("delivered_at").GetDateTimeOffset());
+
+        var laterRun = Guid.NewGuid();
+        await Store().MarkDeliveredAsync([attachmentId], laterRun, deliveredAt.AddMinutes(1));
+        var idempotent = await client.GetFromJsonAsync<JsonElement>($"/api/v1/attachments/{attachmentId}");
+        Assert.Equal(runId, idempotent.GetProperty("delivered_run_id").GetGuid());
+    }
+
     private sealed class NoProviderManifestResolver : IToolManifestSnapshotResolver
     {
         private static readonly ToolManifestSnapshot Snapshot = new(
@@ -885,5 +971,14 @@ public sealed class AttachmentApiTests : IAsyncLifetime
         public Task<ToolManifestSnapshot> ResolveAsync(
             ToolManifestSnapshotRequest request,
             CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
+    }
+
+    private sealed class TestWorkspaceProvider(string root) : IWorkspaceDefinitionProvider
+    {
+        public WorkspaceDefinition Read(bool requireAvailable = false)
+        {
+            Directory.CreateDirectory(root);
+            return new WorkspaceDefinition("test", [new WorkspaceSourceRoot("primary", root)], "primary");
+        }
     }
 }

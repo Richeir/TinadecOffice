@@ -80,7 +80,7 @@ vi.mock('@/controllers/HomeController', () => ({
  */
 const attachMock = vi.hoisted(() => ({
   list: null as unknown as Ref<PendingAttachment[]>,
-  attachFiles: vi.fn(async (_files: readonly AttachableFile[], _sessionId: string | null) => {}),
+  attachFiles: vi.fn(async (_files: readonly AttachableFile[], _sessionId: string | null, _options?: { projectId?: string | null }) => {}),
   removePendingAttachment: vi.fn(async (_clientId: string) => {}),
   reconcileSession: vi.fn(),
   formatAttachmentBytes: vi.fn((bytes: number) => `${bytes}B`),
@@ -88,6 +88,9 @@ const attachMock = vi.hoisted(() => ({
     // The same rule the real module applies, re-expressed here so a composer case can put a
     // chip in either state. Whether the rule is the right one is lib/pendingAttachments.test.ts.
     (attachMock.list?.value ?? []).filter((item) => item.status === 'ready' && item.storedRow !== null).length,
+  ),
+  pendingAttachmentCount: vi.fn(() =>
+    (attachMock.list?.value ?? []).filter((item) => item.status === 'staged' || item.status === 'ready' && item.storedRow !== null).length,
   ),
   MAX_ATTACHMENT_BYTES: 33_554_432,
   TOO_LARGE_CODE: 'attachment_too_large',
@@ -107,6 +110,7 @@ vi.mock('@/lib/pendingAttachments', async (importOriginal) => {
     reconcileSession: attachMock.reconcileSession,
     formatAttachmentBytes: attachMock.formatAttachmentBytes,
     readyAttachmentCount: attachMock.readyAttachmentCount,
+    pendingAttachmentCount: attachMock.pendingAttachmentCount,
     MAX_ATTACHMENT_BYTES: attachMock.MAX_ATTACHMENT_BYTES,
     TOO_LARGE_CODE: attachMock.TOO_LARGE_CODE,
   }
@@ -1187,7 +1191,7 @@ describe('ComposerBar attachments', () => {
     wrapper.unmount()
   })
 
-  it('allows attachments before the first message and creates a draft session on selection', async () => {
+  it('stages attachments before the first message without creating a session', async () => {
     const wrapper = mountComposer()
     await flushPromises()
     const input = fileInput(wrapper)
@@ -1199,9 +1203,13 @@ describe('ComposerBar attachments', () => {
     Object.defineProperty(input, 'files', { value: [{ name: 'first.txt', type: 'text/plain', size: 3 }], configurable: true })
     await wrapper.find('[data-testid="composer-file-input"]').trigger('change')
     await flushPromises()
-    expect(homeMock.ensureComposerSession).toHaveBeenCalled()
-    expect(attachMock.attachFiles).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ name: 'first.txt' })]), 'draft-session')
-    expect(attachMock.reconcileSession).toHaveBeenCalledWith(null)
+    expect(homeMock.ensureComposerSession).not.toHaveBeenCalled()
+    expect(attachMock.attachFiles).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: 'first.txt' })]),
+      null,
+      { projectId: undefined },
+    )
+    expect(attachMock.reconcileSession).toHaveBeenCalledWith(null, null)
     wrapper.unmount()
   })
 
@@ -1225,7 +1233,7 @@ describe('ComposerBar attachments', () => {
     const wrapper = mountComposer({ sessionId: 'sess-1' })
     await flushPromises()
     await wrapper.setProps({ sessionId: 'sess-2' })
-    expect(attachMock.reconcileSession).toHaveBeenLastCalledWith('sess-2')
+    expect(attachMock.reconcileSession).toHaveBeenLastCalledWith('sess-2', null)
     wrapper.unmount()
   })
 
@@ -1270,22 +1278,19 @@ describe('ComposerBar attachments', () => {
     wrapper.unmount()
   })
 
-  it('shows picked files as idle while the draft session is being created', async () => {
-    let createSession!: (id: string) => void
-    homeMock.ensureComposerSession.mockImplementationOnce(() => new Promise((resolve) => { createSession = resolve }))
+  it('leaves picked files staged without creating a draft session', async () => {
     const wrapper = mountComposer()
     await flushPromises()
     const input = fileInput(wrapper)
     Object.defineProperty(input, 'files', { value: [{ name: 'first.txt', type: 'text/plain', size: 3 }], configurable: true })
     await wrapper.find('[data-testid="composer-file-input"]').trigger('change')
     await flushPromises()
-    const idle = wrapper.get('[data-testid="attachment-chip"]')
-    expect(idle.attributes('data-state')).toBe('idle')
-    expect(idle.text()).toContain('first.txt')
-    expect(idle.text()).toContain('composer.attachPreparing')
-    createSession('draft-session')
-    await flushPromises()
-    expect(wrapper.find('[data-state="idle"]').exists()).toBe(false)
+    expect(homeMock.ensureComposerSession).not.toHaveBeenCalled()
+    expect(attachMock.attachFiles).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: 'first.txt' })]),
+      null,
+      { projectId: undefined },
+    )
     wrapper.unmount()
   })
 

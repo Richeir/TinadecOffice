@@ -122,6 +122,7 @@ public sealed class ToolResourceDiagnosticDto
 public sealed class ToolExecutionContextDto
 {
     [JsonPropertyName("workspace_roots")] public IReadOnlyList<ToolWorkspaceRootDto> WorkspaceRoots { get; init; } = [];
+    [JsonPropertyName("workspace_files")] public IReadOnlyList<ToolWorkspaceFileDto> WorkspaceFiles { get; init; } = [];
     [JsonPropertyName("primary_root_id")] public string? PrimaryRootId { get; init; }
     [JsonPropertyName("schema_version")] public int SchemaVersion { get; init; } = 1;
     [JsonPropertyName("run_id")] public string? RunId { get; init; }
@@ -143,6 +144,12 @@ public sealed class ToolExecutionContextDto
 }
 
 public sealed class ToolWorkspaceRootDto
+{
+    [JsonPropertyName("id")] public string Id { get; init; } = string.Empty;
+    [JsonPropertyName("path")] public string Path { get; init; } = string.Empty;
+}
+
+public sealed class ToolWorkspaceFileDto
 {
     [JsonPropertyName("id")] public string Id { get; init; } = string.Empty;
     [JsonPropertyName("path")] public string Path { get; init; } = string.Empty;

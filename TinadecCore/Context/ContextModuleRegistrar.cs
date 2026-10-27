@@ -615,7 +615,9 @@ internal sealed class ContextProvider : IContextProvider
             var head = $"- {row.FileName} (id:{row.Id}, {row.MediaType}, {row.ContentLength} bytes, sha256:{Shorten(row.ContentHash)})";
             if (!AttachmentContentPolicy.InlineAsText(row.MediaType))
             {
-                lines.Add($"{head} attached, but this is not text and no binary content reaches a model here. Do not claim to have read it.");
+                lines.Add(row.MediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                    ? $"{head} attached as image data. It reaches the model as a visual part only when the resolved model supports image input; if it was not delivered, the turn carries an explicit delivery note. Do not infer unseen pixels."
+                    : $"{head} attached, but this is not text and its bytes are not quoted into text context. Do not claim to have read it.");
                 continue;
             }
             if (inlineCharsLeft <= 0)

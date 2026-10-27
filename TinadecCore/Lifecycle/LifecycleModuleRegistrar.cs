@@ -20,6 +20,7 @@ public sealed class LifecycleModuleRegistrar : IModuleRegistrar
         builder.Services.AddSingleton<StorageDiagnostics>();
         builder.Services.AddSingleton<StorageLifecycleService>();
         builder.Services.AddSingleton<IWorkspaceSnapshotProvider, GitWorkspaceSnapshotProvider>();
+        builder.Services.AddSingleton<IWorkspaceSnapshotProvider, FileWorkspaceSnapshotProvider>();
         builder.Services.AddSingleton<IWorkspaceSnapshotProvider, FileSystemWorkspaceSnapshotProvider>();
         builder.Services.AddSingleton<IWorkspaceSnapshotService, WorkspaceSnapshotService>();
         builder.Services.AddSingleton<IStorageMigrationParticipant>(sp => sp.GetRequiredService<StorageLifecycleService>());

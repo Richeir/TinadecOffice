@@ -9,6 +9,8 @@ import {
   attachmentDisplayState,
   attachmentsForSend,
   attachFiles,
+  clearPendingAttachments,
+  flushStagedAttachments,
   fileNameParts,
   formatAttachmentBytes,
   MAX_ATTACHMENT_BYTES,
@@ -41,6 +43,12 @@ function storedRow(id: string): MessageAttachmentDto {
     media_type: 'text/plain',
     content_hash: 'beef',
     content_length: 4,
+    origin: 'composer',
+    project_id: null,
+    source_path: null,
+    delivered_to_model: false,
+    delivered_run_id: null,
+    delivered_at: null,
     created_at: '2026-09-21T00:00:00Z',
     bound_at: null,
   }
@@ -77,7 +85,7 @@ function tick(): Promise<void> {
 beforeEach(async () => {
   upload.mockImplementation(async () => storedRow('row-1'))
   remove.mockImplementation(async () => undefined)
-  reconcileSession(null)
+  clearPendingAttachments()
   await tick()
   upload.mockClear()
   remove.mockClear()
@@ -111,10 +119,30 @@ describe('attachment ceiling parity with Core', () => {
 })
 
 describe('attachFiles', () => {
-  it('needs a session and never buffers bytes for one that does not exist', async () => {
+  it('stages bytes without a session and uploads none until send creates one', async () => {
     await attachFiles([file()], null)
     expect(upload).not.toHaveBeenCalled()
-    expect(pendingAttachments.value).toEqual([])
+    expect(pendingAttachments.value).toMatchObject([{ fileName: 'notes.txt', status: 'staged' }])
+  })
+
+  it('flushes staged workspace bytes with their provenance after send creates the session', async () => {
+    await attachFiles(
+      [file({ name: 'shot.png', type: 'image/png', origin: 'workspace', sourcePath: '/work/app/shot.png', projectId: 'project-1' })],
+      null,
+      { projectId: 'project-1' },
+    )
+    expect(pendingAttachments.value[0]?.status).toBe('staged')
+
+    await flushStagedAttachments('sess-1', 'project-1')
+
+    expect(upload).toHaveBeenCalledWith(
+      'sess-1',
+      new Uint8Array([1, 2, 3, 4]),
+      'shot.png',
+      'image/png',
+      { origin: 'workspace', projectId: 'project-1', sourcePath: '/work/app/shot.png' },
+    )
+    expect(pendingAttachments.value[0]?.status).toBe('ready')
   })
 
   it('shows an uploading chip immediately and a ready chip with the Core row id', async () => {
@@ -138,7 +166,13 @@ describe('attachFiles', () => {
 
   it('posts the picked bytes under the session being composed into', async () => {
     await attachFiles([file()], 'sess-1')
-    expect(upload).toHaveBeenCalledWith('sess-1', new Uint8Array([1, 2, 3, 4]), 'notes.txt', 'text/plain')
+    expect(upload).toHaveBeenCalledWith(
+      'sess-1',
+      new Uint8Array([1, 2, 3, 4]),
+      'notes.txt',
+      'text/plain',
+      { origin: 'composer', projectId: null, sourcePath: undefined },
+    )
   })
 
   it('lets Core pick the media type when the picker reports none', async () => {

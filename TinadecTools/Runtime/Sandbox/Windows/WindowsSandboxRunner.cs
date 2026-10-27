@@ -57,14 +57,27 @@ internal static class WindowsSandboxRunner
         if (args.Length < 1 || args[0] != RunnerModeArg || args.Length % 2 != 1)
             throw new InvalidDataException("Invalid sandbox runner authorization arguments.");
         var roots = new List<string>();
+        var files = new List<string>();
         for (var index = 1; index < args.Length; index += 2)
         {
-            if (args[index] != "--workspace-root" || !Path.IsPathFullyQualified(args[index + 1]))
-                throw new InvalidDataException("Sandbox runner source roots must be absolute host arguments.");
-            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args[index + 1]));
-            if (!Directory.Exists(root) || SandboxPaths.IsDiskRoot(root))
-                throw new InvalidDataException("Invalid sandbox runner source folder.");
-            roots.Add(root);
+            if (!Path.IsPathFullyQualified(args[index + 1]))
+                throw new InvalidDataException("Sandbox runner resource grants must be absolute host arguments.");
+            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args[index + 1]));
+            switch (args[index])
+            {
+                case "--workspace-root":
+                    if (!Directory.Exists(path) || SandboxPaths.IsDiskRoot(path))
+                        throw new InvalidDataException("Invalid sandbox runner source folder.");
+                    roots.Add(path);
+                    break;
+                case "--workspace-file":
+                    if (!File.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Invalid sandbox runner exact-file grant.");
+                    files.Add(path);
+                    break;
+                default:
+                    throw new InvalidDataException("Unknown sandbox runner resource grant.");
+            }
         }
         if (roots.Count == 0) roots.Add(WorkspacePathResolver.WorkspaceRoot);
         if (roots.Count > 32 || roots.Distinct(SandboxPaths.PathComparer).Count() != roots.Count)
@@ -84,7 +97,15 @@ internal static class WindowsSandboxRunner
                 writer.WriteStartObject(); writer.WriteString("id", "source-" + index);
                 writer.WriteString("path", roots[index]); writer.WriteEndObject();
             }
-            writer.WriteEndArray(); writer.WriteString("primary_root_id", "source-" + primary); writer.WriteEndObject();
+            writer.WriteEndArray(); writer.WriteString("primary_root_id", "source-" + primary);
+            writer.WriteStartArray("workspace_files");
+            for (var index = 0; index < files.Count; index++)
+            {
+                writer.WriteStartObject(); writer.WriteString("id", "file-" + index);
+                writer.WriteString("path", files[index]); writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
         }
         using var document = JsonDocument.Parse(buffer.ToArray());
         return ToolExecutionContext.Enter(document.RootElement);

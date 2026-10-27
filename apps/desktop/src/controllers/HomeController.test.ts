@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   readiness: vi.fn(async () => ({ items: [] })),
   listSessions: vi.fn(async (_project?: string, _signal?: AbortSignal, _storage?: string) => []),
   readWorkspace: vi.fn(),
+  saveWorkspace: vi.fn(),
   createSession: vi.fn(),
   listMessages: vi.fn(async () => []),
   revertSessionMessage: vi.fn(),
@@ -44,6 +45,9 @@ const attach = vi.hoisted(() => {
     // rows also moves the count: two independent stubs could disagree and hide a real
     // disagreement between the two rules inside the double.
     readyCount: vi.fn(() => forSend().attachmentIds.length),
+    pendingCount: vi.fn(() => forSend().attachmentIds.length),
+    attachFiles: vi.fn(async () => {}),
+    flushStaged: vi.fn(async () => {}),
     settle: vi.fn(),
   }
 })
@@ -52,6 +56,9 @@ vi.mock('@/lib/pendingAttachments', () => ({
   pendingAttachments: { value: [] },
   attachmentsForSend: attach.forSend,
   readyAttachmentCount: attach.readyCount,
+  pendingAttachmentCount: attach.pendingCount,
+  attachFiles: attach.attachFiles,
+  flushStagedAttachments: attach.flushStaged,
   settleSentAttachments: attach.settle,
 }))
 
@@ -61,6 +68,7 @@ vi.mock('@/api', () => ({
     readiness: h.readiness,
     listSessions: h.listSessions,
     readWorkspace: h.readWorkspace,
+    saveWorkspace: h.saveWorkspace,
     createSession: h.createSession,
     listMessages: h.listMessages,
     revertSessionMessage: h.revertSessionMessage,
@@ -1009,6 +1017,165 @@ describe('HomeController session event refresh', () => {
       await flushPromises()
     } finally {
       vi.useRealTimers()
+    }
+  })
+})
+
+describe('HomeController workspace source folders', () => {
+  /** A selected project whose workspace file already exists (so a hash is in hand). */
+  function seedWorkspaceRoots(roots: Array<{ id: string; path: string }>, primaryRootId: string, hash = 'hash-1') {
+    homeController.projects.value = [{
+      id: 'ws-project', storage_id: 'ws-scope', name: 'demo', path: roots[0]!.path,
+      roots, primary_root_id: primaryRootId, icon: 'folder', color: 'default', configuration_hash: hash,
+      lifecycle_status: 'active',
+    }] as never
+    homeController.setSelectedProject('ws-scope::ws-project')
+  }
+
+  /** What Core echoes back after a save: the same roots with a fresh ETag. */
+  function savedDefinition(roots: Array<{ id: string; path: string }>, primaryRootId: string, hash: string) {
+    return { name: 'demo', roots, primary_root_id: primaryRootId, icon: 'folder', color: 'default', content_hash: hash }
+  }
+
+  afterEach(() => {
+    // The outer cleanup only clears calls; a queued `mockImplementationOnce` would leak into
+    // the next case and hand it another case's saved roots.
+    h.saveWorkspace.mockReset()
+    h.readWorkspace.mockReset()
+    homeController.projects.value = []
+    homeController.setSelectedProject(null)
+  })
+
+  /** The rejected message the person actually saw, read off the notification call. */
+  function lastRefusal() {
+    const [input, options] = h.notifyError.mock.calls.at(-1) as [unknown, { title?: string }]
+    return { message: input instanceof Error ? input.message : (input as { message?: string }).message, title: options?.title }
+  }
+
+  it('adds picked folders through the one workspace write, not a new endpoint', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }], 'root-a')
+    h.saveWorkspace.mockImplementationOnce(async (_storage: string, input: never) => savedDefinition((input as { roots: never }).roots, 'root-a', 'hash-2'))
+    await homeController.addWorkspaceFolderPaths(['C:/work/b', 'C:/work/c'])
+
+    expect(h.saveWorkspace).toHaveBeenCalledTimes(1)
+    const [storageId, input, hash] = h.saveWorkspace.mock.calls[0]!
+    expect(storageId).toBe('ws-scope')
+    expect(hash).toBe('hash-1')
+    expect((input as { roots: Array<{ path: string }> }).roots.map(root => root.path)).toEqual(['C:/work/a', 'C:/work/b', 'C:/work/c'])
+    expect((input as { primary_root_id: string }).primary_root_id).toBe('root-a')
+    expect(homeController.projects.value[0]?.configuration_hash).toBe('hash-2')
+  })
+
+  it('refuses a folder that is already in the list instead of merging a duplicate', async () => {
+    // Windows paths differ only by case and separators; folderIdentity is what decides identity.
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/Work/A' }], 'root-a')
+    await homeController.addWorkspaceFolderPaths(['c:\\work\\a\\'])
+
+    expect(h.saveWorkspace).not.toHaveBeenCalled()
+    const refusal = lastRefusal()
+    expect(refusal.message).toBe(i18n.global.t('workspaceRoots.duplicate', { path: 'c:\\work\\a\\' }))
+    // The shared latch writes the title, so every refusal reads as "Workspace failed" with its
+    // own reason underneath — the same shape a refused write produces.
+    expect(refusal.title).toBe(i18n.global.t('home.actionFailed', { action: i18n.global.t('workspaceRoots.title') }))
+  })
+
+  it('refuses to remove the primary folder, and says why', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }, { id: 'root-b', path: 'C:/work/b' }], 'root-a')
+    await homeController.removeWorkspaceRoot('root-a')
+
+    expect(h.saveWorkspace).not.toHaveBeenCalled()
+    expect(lastRefusal().message).toBe(i18n.global.t('workspaceRoots.removeBlockedPrimary'))
+  })
+
+  it('refuses to remove the only folder', async () => {
+    // A single root whose recorded primary id no longer matches it: the last-folder guard is
+    // what has to answer, because the primary guard cannot fire on a stale id.
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }], 'root-gone')
+    await homeController.removeWorkspaceRoot('root-a')
+
+    expect(h.saveWorkspace).not.toHaveBeenCalled()
+    expect(lastRefusal().message).toBe(i18n.global.t('workspaceRoots.removeBlockedLast'))
+  })
+
+  it('removes a non-primary folder and keeps the primary unchanged', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }, { id: 'root-b', path: 'C:/work/b' }], 'root-a')
+    h.saveWorkspace.mockImplementationOnce(async (_storage: string, input: never) => savedDefinition((input as { roots: never }).roots, 'root-a', 'hash-2'))
+    await homeController.removeWorkspaceRoot('root-b')
+
+    const input = h.saveWorkspace.mock.calls[0]![1] as { roots: Array<{ id: string }>; primary_root_id: string }
+    expect(input.roots.map(root => root.id)).toEqual(['root-a'])
+    expect(input.primary_root_id).toBe('root-a')
+  })
+
+  it('removes the last folder only when a different one is primary', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }, { id: 'root-b', path: 'C:/work/b' }], 'root-b')
+    h.saveWorkspace.mockImplementationOnce(async (_storage: string, input: never) => savedDefinition((input as { roots: never }).roots, 'root-b', 'hash-2'))
+    await homeController.removeWorkspaceRoot('root-a')
+    expect(h.saveWorkspace).toHaveBeenCalledTimes(1)
+
+    // Now one folder is left and it is still not the primary: the guard refuses rather than
+    // leaving the workspace without a primary folder.
+    await homeController.removeWorkspaceRoot('root-b')
+    expect(h.saveWorkspace).toHaveBeenCalledTimes(1)
+    expect(lastRefusal().message).toBe(i18n.global.t('workspaceRoots.removeBlockedPrimary'))
+  })
+
+  it('moves the primary marker without moving data', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }, { id: 'root-b', path: 'C:/work/b' }], 'root-a')
+    h.saveWorkspace.mockImplementationOnce(async (_storage: string, input: never) => savedDefinition((input as { roots: never }).roots, 'root-b', 'hash-2'))
+    await homeController.setPrimaryWorkspaceRoot('root-b')
+
+    const input = h.saveWorkspace.mock.calls[0]![1] as { primary_root_id: string; roots: Array<{ path: string }> }
+    expect(input.primary_root_id).toBe('root-b')
+    expect(input.roots.map(root => root.path)).toEqual(['C:/work/a', 'C:/work/b'])
+    expect(homeController.projects.value[0]?.primary_root_id).toBe('root-b')
+    // The workspace data location follows the primary folder's path, unchanged by the marker move.
+    expect(homeController.projects.value[0]?.path).toBe('C:/work/b')
+  })
+
+  it('reads the hash first when the project row never carried one', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }], 'root-a', '')
+    h.readWorkspace.mockResolvedValueOnce({ content_hash: 'hash-from-file' })
+    h.saveWorkspace.mockImplementationOnce(async (_storage: string, input: never) => savedDefinition((input as { roots: never }).roots, 'root-a', 'hash-2'))
+    await homeController.setPrimaryWorkspaceRoot('root-a')
+
+    expect(h.readWorkspace).toHaveBeenCalledWith('ws-scope')
+    expect(h.saveWorkspace.mock.calls[0]![2]).toBe('hash-from-file')
+  })
+
+  it('says there is no workspace instead of silently doing nothing', async () => {
+    homeController.projects.value = []
+    homeController.setSelectedProject(null)
+    await homeController.addWorkspaceFolderPaths(['C:/work/a'])
+
+    expect(h.saveWorkspace).not.toHaveBeenCalled()
+    expect(lastRefusal().message).toBe(i18n.global.t('workspaceRoots.noWorkspaceBody'))
+  })
+
+  it('copies dropped files into the primary folder through the host bridge', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }, { id: 'root-b', path: 'C:/work/b' }], 'root-b')
+    const imported = { imported: [{ name: 'notes.txt', path: 'C:/work/b/notes.txt', bytes: 12 }], skipped: [{ path: 'C:/drop/big.bin', reason: 'too large' }] }
+    const importBridge = vi.fn(async () => imported)
+    vi.stubGlobal('tinadec', { ...(globalThis as { tinadec?: object }).tinadec, importWorkspaceFiles: importBridge })
+    try {
+      const result = await homeController.importWorkspaceFiles(['C:/drop/notes.txt', 'C:/drop/big.bin', '  '])
+
+      expect(importBridge).toHaveBeenCalledWith({ destDir: 'C:/work/b', files: ['C:/drop/notes.txt', 'C:/drop/big.bin'] })
+      expect(result).toEqual(imported)
+      expect(h.notifyError).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('reports a missing copy bridge rather than returning an empty success', async () => {
+    seedWorkspaceRoots([{ id: 'root-a', path: 'C:/work/a' }], 'root-a')
+    vi.stubGlobal('tinadec', {})
+    try {
+      await expect(homeController.importWorkspaceFiles(['C:/drop/notes.txt'])).rejects.toThrow(i18n.global.t('host.previewShim'))
+      expect(lastRefusal()).toEqual({ message: i18n.global.t('host.previewShim'), title: i18n.global.t('workspaceRoots.title') })
+    } finally {
+      vi.unstubAllGlobals()
     }
   })
 })

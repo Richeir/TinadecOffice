@@ -83,6 +83,13 @@ export function installPreviewShimIfNeeded(): void {
     resetGatewayUrl: () => rejectNotAvailable('preview'),
     restartApp: () => { window.location.reload(); return Promise.resolve() },
     selectWorkspaceFolders: () => rejectNotAvailable(hostStatus.error.message),
+    // A browser tab cannot read a dropped file's real path and has no main process to copy with.
+    // The shim mirrors the preload's declared surface so a preview never has to rely on every
+    // consumer remembering optional chaining: an unresolved path is the empty string (the drop
+    // resolves to nothing) and a copy request is refused with the same sentence the host gate
+    // uses, which is what a host without a main process means.
+    pathForFile: () => '',
+    importWorkspaceFiles: () => rejectNotAvailable(hostStatus.error.message),
     minimizeWindow: noop,
     maximizeWindow: noop,
     closeWindow: noop,

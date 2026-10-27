@@ -531,6 +531,10 @@ export interface paths {
     /** Archive project */
     post: operations["postApiV1ProjectsByProjectIdArchive"];
   };
+  "/api/v1/projects/{projectId}/exposures": {
+    /** List project attachment exposures */
+    get: operations["getApiV1ProjectsByProjectIdExposures"];
+  };
   "/api/v1/projects/{projectId}/overview": {
     /** Project overview rollup */
     get: operations["getApiV1ProjectsByProjectIdOverview"];
@@ -1698,11 +1702,17 @@ export interface components {
       content_hash: string;
       content_length: number;
       created_at: string | null;
+      delivered_at: string | null;
+      delivered_run_id: string | null;
+      delivered_to_model: boolean;
       file_name: string;
       id: string;
       media_type: string;
       message_id: string | null;
+      origin: string;
+      project_id: string | null;
       session_id: string;
+      source_path: string | null;
       [key: string]: unknown;
     };
     MessageAttachmentList: components["schemas"]["MessageAttachment"][];
@@ -1711,9 +1721,15 @@ export interface components {
       content_hash: string;
       content_length: number;
       created_at: string | null;
+      delivered_at: string | null;
+      delivered_run_id: string | null;
+      delivered_to_model: boolean;
       file_name: string;
       id: string;
       media_type: string;
+      origin: string;
+      project_id: string | null;
+      source_path: string | null;
       [key: string]: unknown;
     };
     MessageList: components["schemas"]["Message"][];
@@ -4723,6 +4739,22 @@ export interface operations {
     responses: {
       200: {
         content: never;
+      };
+    };
+  };
+  /** List project attachment exposures */
+  getApiV1ProjectsByProjectIdExposures: {
+    parameters: {
+      path: {
+        projectId: string;
+      };
+    };
+    responses: {
+      /** @description Conversation attachments associated with the project. */
+      200: {
+        content: {
+          "application/json": components["schemas"]["MessageAttachmentList"];
+        };
       };
     };
   };

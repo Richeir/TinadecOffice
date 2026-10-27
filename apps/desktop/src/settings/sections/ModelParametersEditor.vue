@@ -14,7 +14,15 @@ const { t } = useI18n()
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
-const form = reactive({ effort: '' as ReasoningEffortChoice, temperature: '', topP: '', maxTokens: '' })
+const form = reactive({
+  effort: '' as ReasoningEffortChoice,
+  temperature: '',
+  topP: '',
+  maxTokens: '',
+  imageEnabled: false,
+  imageMaxBytes: '',
+  imageMaxImages: '',
+})
 const supportsReasoning = computed(() => supportsReasoningEffort(props.provider.protocol))
 const temperatureMax = computed(() => props.provider.protocol === 'anthropic-messages' ? 1 : 2)
 const omitsSampling = computed(() => Boolean(form.effort && form.effort !== 'none' && /^(gpt-[56]|o[134])/i.test(props.model)))
@@ -29,16 +37,31 @@ const invalidFields = computed(() => new Set(numberFields.value.filter(field => 
   return !Number.isFinite(value) || value < field.min || (field.max !== undefined && value > field.max)
     || (field.key === 'maxTokens' && !Number.isSafeInteger(value))
 }).map(field => field.key)))
+const imageEditable = computed(() => props.provider.image_input?.editable === true)
+const imageInvalid = computed(() => {
+  if (!imageEditable.value) return false
+  const bytes = form.imageMaxBytes.trim() ? Number(form.imageMaxBytes) : props.provider.image_input?.base_max_image_bytes ?? 20 * 1024 * 1024
+  const images = form.imageMaxImages.trim() ? Number(form.imageMaxImages) : props.provider.image_input?.base_max_images_per_turn ?? 8
+  return !Number.isSafeInteger(bytes) || bytes <= 0 || bytes > 32 * 1024 * 1024
+    || !Number.isSafeInteger(images) || images <= 0 || images > 8
+})
 
 watch(() => [props.provider.id, props.provider.revision, props.model], () => {
   const settings = props.provider.model_parameters?.[props.model] ?? {}
   Object.assign(form, { effort: settings.reasoning_effort ?? '', temperature: String(settings.temperature ?? ''), topP: String(settings.top_p ?? ''), maxTokens: String(settings.max_output_tokens ?? '') })
+  const image = props.provider.image_input
+  const override = image?.model_overrides?.[props.model]
+  Object.assign(form, {
+    imageEnabled: override?.enabled ?? image?.base_enabled ?? image?.enabled ?? false,
+    imageMaxBytes: String(override?.max_image_bytes ?? image?.base_max_image_bytes ?? image?.max_image_bytes ?? ''),
+    imageMaxImages: String(override?.max_images_per_turn ?? image?.base_max_images_per_turn ?? image?.max_images_per_turn ?? ''),
+  })
   error.value = ''
   stale.value = false
 }, { immediate: true })
 
 async function save() {
-  if (busy.value || invalidFields.value.size > 0 || props.provider.revision == null) return
+  if (busy.value || invalidFields.value.size > 0 || imageInvalid.value || props.provider.revision == null) return
   busy.value = true
   error.value = ''
   const settings: ModelParametersDto = {}
@@ -49,10 +72,27 @@ async function save() {
   const parameters = { ...props.provider.model_parameters }
   if (Object.keys(settings).length > 0) parameters[props.model] = settings
   else delete parameters[props.model]
+  let imageInput = undefined
+  if (imageEditable.value && props.provider.image_input) {
+    const base = props.provider.image_input
+    const overrides = { ...(base.model_overrides ?? {}) }
+    const maxBytes = form.imageMaxBytes.trim() ? Number(form.imageMaxBytes) : base.base_max_image_bytes
+    const maxImages = form.imageMaxImages.trim() ? Number(form.imageMaxImages) : base.base_max_images_per_turn
+    if (form.imageEnabled === base.base_enabled
+      && maxBytes === base.base_max_image_bytes
+      && maxImages === base.base_max_images_per_turn) delete overrides[props.model]
+    else overrides[props.model] = { enabled: form.imageEnabled, max_image_bytes: maxBytes, max_images_per_turn: maxImages }
+    imageInput = {
+      enabled: base.base_enabled,
+      max_image_bytes: base.base_max_image_bytes,
+      max_images_per_turn: base.base_max_images_per_turn,
+      model_overrides: overrides,
+    }
+  }
   try {
     await api.saveModelProvider(props.provider.id, {
       driver: props.provider.driver, display_name: props.provider.display_name, connection_kind: props.provider.connection_kind,
-      enabled: props.provider.enabled, model_parameters: parameters,
+      enabled: props.provider.enabled, model_parameters: parameters, ...(imageInput ? { image_input: imageInput } : {}),
     }, { expected_revision: props.provider.revision })
     emit('saved')
   } catch (err) {
@@ -78,13 +118,37 @@ async function save() {
           <span v-if="invalidFields.has(field.key)" :id="`model-error-${field.key}`" class="model-parameter-error">{{ t(field.key === 'maxTokens' ? 'settings.modelIntegerRequired' : 'settings.modelRangeRequired', { max: field.max }) }}</span>
         </div>
       </div>
+      <section class="model-image-input" :data-disabled="!imageEditable || undefined">
+        <label class="model-image-toggle">
+          <input v-model="form.imageEnabled" type="checkbox" :disabled="!imageEditable">
+          <span>{{ t('settings.modelImageInput') }}</span>
+        </label>
+        <p class="quiet">
+          {{ provider.image_input?.source === 'acp_snapshot'
+            ? t('settings.modelImageAcpSnapshot')
+            : provider.image_input?.source === 'protocol_unsupported'
+              ? t('settings.modelImageUnsupported')
+              : t('settings.modelImageConfigured') }}
+        </p>
+        <div class="model-parameters-fields">
+          <div class="settings-field" :data-invalid="imageInvalid || undefined">
+            <label for="model-image-max-bytes">{{ t('settings.modelImageMaxBytes') }}</label>
+            <UiInput id="model-image-max-bytes" v-model="form.imageMaxBytes" type="number" min="1" :max="32 * 1024 * 1024" step="1" :disabled="!imageEditable" :aria-invalid="imageInvalid" />
+          </div>
+          <div class="settings-field" :data-invalid="imageInvalid || undefined">
+            <label for="model-image-max-count">{{ t('settings.modelImageMaxCount') }}</label>
+            <UiInput id="model-image-max-count" v-model="form.imageMaxImages" type="number" min="1" max="8" step="1" :disabled="!imageEditable" :aria-invalid="imageInvalid" />
+          </div>
+        </div>
+        <p v-if="imageInvalid" class="model-parameter-error" role="alert">{{ t('settings.modelImageBudgetInvalid') }}</p>
+      </section>
       <p v-if="omitsSampling" class="quiet" role="note">{{ t('settings.modelSamplingUnavailable') }}</p>
       <p v-if="error" class="model-parameter-error" role="alert">{{ error }}</p>
       <div class="model-parameters-actions">
         <UiButton type="button" variant="ghost" size="sm" @click="Object.assign(form, { effort: '', temperature: '', topP: '', maxTokens: '' })">{{ t('settings.modelResetParameters') }}</UiButton>
         <UiButton v-if="stale" type="button" variant="outline" size="sm" @click="emit('reload')">{{ t('settings.refresh') }}</UiButton>
         <UiButton type="button" variant="ghost" size="sm" @click="emit('cancel')">{{ t('settings.cancel') }}</UiButton>
-        <UiButton type="submit" size="sm" :disabled="busy || stale || invalidFields.size > 0 || provider.revision == null">{{ t(busy ? 'settings.modelParametersSaving' : 'settings.save') }}</UiButton>
+        <UiButton type="submit" size="sm" :disabled="busy || stale || invalidFields.size > 0 || imageInvalid || provider.revision == null">{{ t(busy ? 'settings.modelParametersSaving' : 'settings.save') }}</UiButton>
       </div>
     </fieldset>
   </form>
@@ -97,5 +161,9 @@ legend { font-weight: 600; margin-bottom: var(--spacing-2, 8px); overflow-wrap: 
 .model-parameters-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--spacing-3, 12px); margin-top: var(--spacing-3, 12px); }
 .model-parameters-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-2, 8px); margin-top: var(--spacing-4, 16px); }
 .model-reasoning-field { grid-column: 1 / -1; }
+.model-image-input { margin-top: var(--spacing-4, 16px); padding-top: var(--spacing-3, 12px); border-top: 1px solid var(--border-default); }
+.model-image-toggle { display: inline-flex; align-items: center; gap: var(--spacing-2, 8px); font-weight: 600; }
+.model-image-toggle input { width: 16px; height: 16px; margin: 0; }
+.model-image-input[data-disabled] .model-image-toggle { opacity: .7; }
 .model-parameter-error { color: var(--accent-danger); font-size: var(--font-size-sm, 12px); }
 </style>

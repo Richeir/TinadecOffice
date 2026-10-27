@@ -100,8 +100,11 @@ public sealed class MemoryDbContext : DbContext
             entity.Property(x => x.FileName).HasMaxLength(512).IsRequired();
             entity.Property(x => x.MediaType).HasMaxLength(256).IsRequired();
             entity.Property(x => x.ContentReference).HasMaxLength(1024).IsRequired(); entity.Property(x => x.ContentHash).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Origin).HasMaxLength(32).IsRequired().HasDefaultValue("composer");
+            entity.Property(x => x.SourcePath).HasMaxLength(4096);
             entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.SessionId, x.CreatedAt });
             entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.MessageId });
+            entity.HasIndex(x => new { x.TenantId, x.WorkspaceId, x.ProjectId, x.CreatedAt });
         });
         modelBuilder.Entity<TurnRecord>(entity =>
         {
@@ -249,6 +252,13 @@ public sealed class MessageAttachmentRecord
     public string ContentReference { get; set; } = string.Empty;
     public string ContentHash { get; set; } = string.Empty;
     public long ContentLength { get; set; }
+    /// <summary><c>composer</c> for a normal attachment, <c>workspace</c> when the UI also names an authorized source.</summary>
+    public string Origin { get; set; } = "composer";
+    public Guid? ProjectId { get; set; }
+    public string? SourcePath { get; set; }
+    public bool DeliveredToModel { get; set; }
+    public Guid? DeliveredRunId { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
     public Guid CreatedByPrincipalId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? BoundAt { get; set; }

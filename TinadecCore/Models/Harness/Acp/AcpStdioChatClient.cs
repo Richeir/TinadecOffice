@@ -15,9 +15,8 @@ namespace TinadecCore.Models.Harness.Acp;
 /// throw away the continuity the channel exists to provide.
 /// </para>
 /// <para>
-/// Round 1 carries text only. <see cref="IAcpAgentSession.Capabilities"/> reports whether the agent
-/// accepts image blocks, and <c>session/prompt</c> can carry them, but the session API takes a prompt
-/// string; images, tool-call journaling, and permission routing are the Round 2 executor's job.
+/// Text and local image data become ACP content blocks. Capability negotiation happens in the
+/// model resolver; this client only maps the already-authorized parts to the wire.
 /// </para>
 /// </summary>
 internal sealed class AcpStdioChatClient : IChatClient
@@ -36,7 +35,7 @@ internal sealed class AcpStdioChatClient : IChatClient
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await RunAsync(PromptText(messages), NullAcpTurnObserver.Instance, cancellationToken).ConfigureAwait(false);
+        var result = await RunAsync(PromptBlocks(messages), NullAcpTurnObserver.Instance, cancellationToken).ConfigureAwait(false);
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, result.Answer))
         {
             Usage = ToUsageDetails(result.Usage)
@@ -49,7 +48,7 @@ internal sealed class AcpStdioChatClient : IChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var deltas = Channel.CreateUnbounded<string>();
-        var turn = RunAsync(PromptText(messages), new ChannelAcpTurnObserver(deltas.Writer), cancellationToken);
+        var turn = RunAsync(PromptBlocks(messages), new ChannelAcpTurnObserver(deltas.Writer), cancellationToken);
 
         // The channel closes when the turn settles, which is the only thing that can end this loop.
         // Reading the exception here also marks it observed, so a faulted harness cannot surface later
@@ -95,7 +94,10 @@ internal sealed class AcpStdioChatClient : IChatClient
     /// ACP permits a single turn in flight, and without queuing the second run would fail with
     /// <c>already has a turn in flight</c> while the first was still thinking.
     /// </summary>
-    private async Task<AcpTurnResult> RunAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken)
+    private async Task<AcpTurnResult> RunAsync(
+        IReadOnlyList<AcpContentBlock> prompt,
+        IAcpTurnObserver observer,
+        CancellationToken cancellationToken)
     {
         using var lease = await _host.AcquireTurnLeaseAsync(_request.ProviderInstanceId, cancellationToken).ConfigureAwait(false);
         var session = await _host.AcquireAsync(_request, cancellationToken).ConfigureAwait(false);
@@ -137,8 +139,21 @@ internal sealed class AcpStdioChatClient : IChatClient
         ? null
         : new UsageDetails { TotalTokenCount = usage.Used };
 
-    private static string PromptText(IEnumerable<ChatMessage> messages) =>
-        string.Join("\n\n", messages.Select(TextOf).Where(text => text.Length > 0));
+    internal static IReadOnlyList<AcpContentBlock> PromptBlocks(IEnumerable<ChatMessage> messages)
+    {
+        var text = string.Join("\n\n", messages.Select(TextOf).Where(value => value.Length > 0));
+        var blocks = new List<AcpContentBlock>();
+        if (text.Length > 0) blocks.Add(new AcpContentBlock("text", text));
+        foreach (var data in messages.SelectMany(message => message.Contents).OfType<DataContent>())
+        {
+            if (!data.HasTopLevelMediaType("image") || data.Data.Length == 0) continue;
+            blocks.Add(new AcpContentBlock(
+                "image",
+                Data: Convert.ToBase64String(data.Data.Span),
+                MimeType: data.MediaType));
+        }
+        return blocks;
+    }
 
     private static string TextOf(ChatMessage message)
     {

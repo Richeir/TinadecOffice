@@ -135,6 +135,9 @@ const panelSources = import.meta.glob(
     './../composables/useAgentActivity.ts',
     './../components/HostAvailabilityBanner.vue',
     './../components/WorkspaceEditorDialog.vue',
+    // The workspace card's body: its refusal sentences, drop outcomes and access block all speak,
+    // and nothing else would notice a dead key there (the card shell translates nothing).
+    './../components/WorkspaceRootsPanel.vue',
     './../components/AppSidebar.vue',
     './../components/chat/TerminalCallBlock.vue',
     './../components/chat/AgentActivityBanner.vue',

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using TinadecCore.Abstractions.Ports;
 using TinadecCore.Contracts.Dtos;
+using TinadecCore.Memory;
 
 namespace TinadecCore.AspNetCore.Endpoints;
 
@@ -40,6 +42,8 @@ public static class AttachmentEndpoints
             Guid sessionId,
             HttpRequest request,
             IMessageAttachmentStore store,
+            [FromServices] ProjectSessionStore sessions,
+            [FromServices] IServiceProvider services,
             CancellationToken ct) =>
         {
             var fileName = SanitizeFileName(request.Query["filename"].FirstOrDefault());
@@ -61,10 +65,53 @@ public static class AttachmentEndpoints
             if (request.ContentLength == 0)
                 return Results.BadRequest(new { code = "attachment_empty", message = "The request body carried no bytes." });
 
+            var session = await sessions.GetSessionAsync(sessionId, ct).ConfigureAwait(false);
+            if (session is null)
+                return Results.NotFound(new { code = "session_not_found", message = "No session in the current workspace has that id." });
+            var origin = request.Query["origin"].FirstOrDefault()?.Trim() ?? AttachmentOrigins.Composer;
+            if (!AttachmentOrigins.IsKnown(origin))
+                return Results.BadRequest(new { code = "attachment_origin_invalid", message = "origin must be composer or workspace." });
+            Guid? projectId = session.ProjectId;
+            if (Guid.TryParse(request.Query["project_id"].FirstOrDefault(), out var requestedProjectId))
+            {
+                if (session.ProjectId != requestedProjectId)
+                    return Results.BadRequest(new { code = "attachment_project_mismatch", message = "project_id must match the session's project." });
+                projectId = requestedProjectId;
+            }
+            else if (!string.IsNullOrWhiteSpace(request.Query["project_id"].FirstOrDefault()))
+            {
+                return Results.BadRequest(new { code = "attachment_project_invalid", message = "project_id must be a guid." });
+            }
+
+            string? sourcePath = null;
+            if (origin == AttachmentOrigins.Workspace)
+            {
+                if (projectId is null)
+                    return Results.BadRequest(new { code = "attachment_workspace_project_required", message = "A workspace exposure requires a project-bound session." });
+                sourcePath = request.Query["source_path"].FirstOrDefault()?.Trim();
+                var sourceProblem = await ValidateWorkspaceSourceAsync(
+                    sourcePath,
+                    projectId.Value,
+                    sessions,
+                    services.GetService<IWorkspaceDefinitionProvider>(),
+                    ct).ConfigureAwait(false);
+                if (sourceProblem is not null) return sourceProblem;
+                sourcePath = Path.GetFullPath(sourcePath!);
+            }
+            else if (!string.IsNullOrWhiteSpace(request.Query["source_path"].FirstOrDefault()))
+            {
+                return Results.BadRequest(new { code = "attachment_source_not_allowed", message = "source_path is only valid for origin=workspace." });
+            }
+
             try
             {
                 var stored = await store.StoreAsync(
-                    new StoreAttachmentRequest(sessionId, fileName, mediaType, request.Body), ct).ConfigureAwait(false);
+                    new StoreAttachmentRequest(sessionId, fileName, mediaType, request.Body)
+                    {
+                        Origin = origin,
+                        ProjectId = projectId,
+                        SourcePath = sourcePath
+                    }, ct).ConfigureAwait(false);
                 return stored is null
                     ? Results.NotFound(new { code = "session_not_found", message = "No session in the current workspace has that id." })
                     : Results.Created($"/api/v1/attachments/{stored.Id}", ToDto(stored));
@@ -94,6 +141,22 @@ public static class AttachmentEndpoints
             return Results.Ok(rows.Select(ToDto).ToArray());
         })
         .Produces<MessageAttachmentDto[]>(StatusCodes.Status200OK);
+
+        app.MapGet("/api/v1/projects/{projectId:guid}/exposures", async (
+            Guid projectId,
+            IMessageAttachmentStore store,
+            [FromServices] ProjectSessionStore sessions,
+            CancellationToken ct) =>
+        {
+            var project = await sessions.FindProjectAsync(projectId, ct).ConfigureAwait(false);
+            if (project is null)
+                return Results.NotFound(new { code = "project_not_found", message = "No project in the current workspace has that id." });
+            var rows = await store.ListByProjectAsync(projectId, ct).ConfigureAwait(false);
+            return Results.Ok(rows.Select(ToDto).ToArray());
+        })
+        .WithTags("Attachments")
+        .Produces<MessageAttachmentDto[]>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         var group = app.MapGroup("/api/v1/attachments").WithTags("Attachments");
 
@@ -176,7 +239,51 @@ public static class AttachmentEndpoints
         MediaType = stored.MediaType,
         ContentHash = stored.ContentHash,
         ContentLength = stored.ContentLength,
+        Origin = stored.Origin,
+        ProjectId = stored.ProjectId,
+        SourcePath = stored.SourcePath,
+        DeliveredToModel = stored.DeliveredToModel,
+        DeliveredRunId = stored.DeliveredRunId,
+        DeliveredAt = stored.DeliveredAt,
         CreatedAt = stored.CreatedAt,
         BoundAt = stored.BoundAt,
     };
+
+    private static async Task<IResult?> ValidateWorkspaceSourceAsync(
+        string? rawPath,
+        Guid projectId,
+        ProjectSessionStore sessions,
+        IWorkspaceDefinitionProvider? workspace,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return Results.BadRequest(new { code = "attachment_source_required", message = "origin=workspace requires source_path." });
+        if (workspace is null)
+            return Results.BadRequest(new { code = "attachment_workspace_unavailable", message = "Workspace file authorization is not available in this host." });
+        if (!Path.IsPathFullyQualified(rawPath))
+            return Results.BadRequest(new { code = "attachment_source_invalid", message = "source_path must be absolute." });
+        var project = await sessions.FindProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        if (project is null)
+            return Results.NotFound(new { code = "project_not_found", message = "No project in the current workspace has that id." });
+        var path = WorkspacePathSpelling.Canonical(rawPath);
+        if (!File.Exists(path))
+            return Results.BadRequest(new { code = "attachment_source_missing", message = "source_path must name an existing file." });
+        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            return Results.BadRequest(new { code = "attachment_source_link", message = "source_path cannot be a symbolic link." });
+        var definition = workspace.Read();
+        var authorized = definition.Files.Any(file => IsWithin(file.Path, path))
+            || definition.Roots.Any(root => IsWithin(root.Path, path));
+        return authorized
+            ? null
+            : Results.BadRequest(new { code = "attachment_source_unauthorized", message = "source_path is not in the workspace's authorized folders or exact-file grants." });
+    }
+
+    private static bool IsWithin(string root, string path)
+    {
+        var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        var fullPath = Path.GetFullPath(path);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return string.Equals(fullRoot, fullPath, comparison)
+            || fullPath.StartsWith(fullRoot + Path.DirectorySeparatorChar, comparison);
+    }
 }

@@ -20,7 +20,7 @@ namespace TinadecCore.Runtime;
 public sealed record OpenStorageScopeRequest(string ProjectPath, string? Name = null, string? Backend = null,
     string? StorageRoot = null, string? PostgresConnectionReference = null,
     IReadOnlyList<WorkspaceSourceRoot>? Roots = null, string? PrimaryRootId = null,
-    string Icon = "folder", string Color = "default");
+    string Icon = "folder", string Color = "default", IReadOnlyList<WorkspaceFileGrant>? Files = null);
 
 public interface IStorageScopeRegistry
 {
@@ -89,10 +89,16 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
         var projectRoot = StorageScopePaths.NormalizeProjectRoot(request.ProjectPath);
         var requestedWorkspace = WorkspaceDefinitionFile.Validate(new WorkspaceDefinition(
             request.Name ?? Path.GetFileName(projectRoot), request.Roots ?? [new("primary", projectRoot)],
-            request.PrimaryRootId ?? "primary", request.Icon, request.Color));
+            request.PrimaryRootId ?? "primary", request.Icon, request.Color)
+        {
+            Files = request.Files ?? []
+        });
         foreach (var root in requestedWorkspace.Roots)
             if (List().Any(scope => IsWithinStorage(scope.Root, root.Path)))
                 throw new ArgumentException("A source folder cannot be inside product storage: " + root.Path);
+        foreach (var file in requestedWorkspace.Files)
+            if (List().Any(scope => IsWithinStorage(scope.Root, file.Path)))
+                throw new ArgumentException("An exact file cannot be inside product storage: " + file.Path);
         if (request.StorageRoot is not null) ValidateDistinctStorageRoot(request.StorageRoot, null);
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         StorageScopeDescriptor scope;
@@ -112,9 +118,11 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
                 if (request.Roots is not null)
                 {
                     var saved = WorkspaceDefinitionFile.Read(scope, existing.Name);
-                    RequireSameRoots(saved, requestedWorkspace);
-                    _registrations[scope.StorageId] = existing with { Roots = saved.Roots, PrimaryRootId = saved.PrimaryRootId,
-                        HistoricalRoots = MergeHistory(HistoricalRoots(existing), saved.Roots) };
+                    RequireSameWorkspace(saved, requestedWorkspace);
+                    _registrations[scope.StorageId] = existing with { Roots = saved.Roots, Files = saved.Files,
+                        PrimaryRootId = saved.PrimaryRootId,
+                        HistoricalRoots = MergeHistory(HistoricalRoots(existing), saved.Roots),
+                        HistoricalFiles = MergeFileHistory(HistoricalFiles(existing), saved.Files) };
                     await SaveRegistrationsAsync(ct).ConfigureAwait(false);
                 }
             }
@@ -129,9 +137,11 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
                     await CloseAsync(moved.Scope.StorageId, ct).ConfigureAwait(false);
                     scope = manifest! with { StorageId = moved.Scope.StorageId };
                     var definition = WorkspaceDefinitionFile.Read(scope, moved.Name);
-                    RequireSelectedRoots(definition, requestedWorkspace, request.Roots is not null, projectRoot);
-                    _registrations[scope.StorageId] = moved with { Scope = scope, Roots = definition.Roots, PrimaryRootId = definition.PrimaryRootId,
-                        HistoricalRoots = MergeHistory(HistoricalRoots(moved), definition.Roots) };
+                    RequireSelectedWorkspace(definition, requestedWorkspace, request.Roots is not null, projectRoot);
+                    _registrations[scope.StorageId] = moved with { Scope = scope, Roots = definition.Roots, Files = definition.Files,
+                        PrimaryRootId = definition.PrimaryRootId,
+                        HistoricalRoots = MergeHistory(HistoricalRoots(moved), definition.Roots),
+                        HistoricalFiles = MergeFileHistory(HistoricalFiles(moved), definition.Files) };
                 }
                 else
                 {
@@ -141,11 +151,11 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
                         request.Backend, request.StorageRoot, request.PostgresConnectionReference, ct,
                         workspace: requestedWorkspace).ConfigureAwait(false);
                     var definition = WorkspaceDefinitionFile.Read(scope, requestedWorkspace.Name);
-                    RequireSelectedRoots(definition, requestedWorkspace, request.Roots is not null, projectRoot);
+                    RequireSelectedWorkspace(definition, requestedWorkspace, request.Roots is not null, projectRoot);
                     // A workspace initialized here runs on the user's models; a project that arrives with
                     // its own .tinadec configuration keeps it until switched in the model center.
                     _registrations[scope.StorageId] = new(scope, _identity.PrincipalId, false, definition.Name,
-                        definition.Roots, definition.PrimaryRootId, FollowUserModels: manifest is null);
+                        definition.Roots, definition.Files, definition.PrimaryRootId, FollowUserModels: manifest is null);
                 }
                 await SaveRegistrationsAsync(ct).ConfigureAwait(false);
             }
@@ -528,11 +538,15 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
                 StorageScopeInitializer.Value(item, "postgres_connection_reference")?.ToString());
             var roots = StorageScopeInitializer.Value(item, "authorized_roots") is TomlTableArray rows
                 ? rows.Select(row => new WorkspaceSourceRoot(row["id"].ToString()!, Path.GetFullPath(row["path"].ToString()!))).ToArray() : null;
+            var files = StorageScopeInitializer.Value(item, "authorized_files") is TomlTableArray fileRows
+                ? fileRows.Select(row => new WorkspaceFileGrant(row["id"].ToString()!, Path.GetFullPath(row["path"].ToString()!))).ToArray() : null;
             _registrations[id] = new(scope, Guid.Parse(item["owner_principal_id"].ToString()!),
                 Convert.ToBoolean(StorageScopeInitializer.Value(item, "allow_storage_write") ?? false), item["name"].ToString()!,
-                roots, StorageScopeInitializer.Value(item, "primary_root_id")?.ToString(),
+                roots, files, StorageScopeInitializer.Value(item, "primary_root_id")?.ToString(),
                 StorageScopeInitializer.Value(item, "historical_roots") is TomlTableArray historical
                     ? historical.Select(row => new WorkspaceSourceRoot(row["id"].ToString()!, Path.GetFullPath(row["path"].ToString()!))).ToArray() : null,
+                StorageScopeInitializer.Value(item, "historical_files") is TomlTableArray historicalFiles
+                    ? historicalFiles.Select(row => new WorkspaceFileGrant(row["id"].ToString()!, Path.GetFullPath(row["path"].ToString()!))).ToArray() : null,
                 Convert.ToBoolean(StorageScopeInitializer.Value(item, "follow_user_models") ?? false));
         }
     }
@@ -559,9 +573,18 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
                 foreach (var root in roots) grants.Add(new TomlTable { ["id"] = root.Id, ["path"] = root.Path });
                 entry["authorized_roots"] = grants;
             }
+            if (registration.Files is { } files)
+            {
+                var grants = new TomlTableArray();
+                foreach (var file in files) grants.Add(new TomlTable { ["id"] = file.Id, ["path"] = file.Path });
+                entry["authorized_files"] = grants;
+            }
             var historical = new TomlTableArray();
             foreach (var root in HistoricalRoots(registration)) historical.Add(new TomlTable { ["id"] = root.Id, ["path"] = root.Path });
             entry["historical_roots"] = historical;
+            var historicalFiles = new TomlTableArray();
+            foreach (var file in HistoricalFiles(registration)) historicalFiles.Add(new TomlTable { ["id"] = file.Id, ["path"] = file.Path });
+            entry["historical_files"] = historicalFiles;
             entries.Add(entry);
         }
         return AtomicWriteAsync(_registryFile, TomlSerializer.Serialize(new TomlTable { ["schema_version"] = 1, ["projects"] = entries }), ct);
@@ -639,7 +662,9 @@ public sealed partial class StorageScopeRegistry : IStorageScopeRegistry, IWorks
     }
 
     private sealed record Registration(StorageScopeDescriptor Scope, Guid OwnerPrincipalId, bool AllowStorageWrite, string Name,
-        IReadOnlyList<WorkspaceSourceRoot>? Roots = null, string? PrimaryRootId = null, IReadOnlyList<WorkspaceSourceRoot>? HistoricalRoots = null,
+        IReadOnlyList<WorkspaceSourceRoot>? Roots = null, IReadOnlyList<WorkspaceFileGrant>? Files = null,
+        string? PrimaryRootId = null, IReadOnlyList<WorkspaceSourceRoot>? HistoricalRoots = null,
+        IReadOnlyList<WorkspaceFileGrant>? HistoricalFiles = null,
         bool FollowUserModels = false);
 
     /// <summary>The workspace's models.toml is the user scope's file (see <see cref="IConfigurationDocumentRedirects"/>).</summary>

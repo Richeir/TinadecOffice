@@ -77,6 +77,30 @@ public sealed class ToolResourcePathRegistryTests
         finally { Directory.Delete(testRoot, true); }
     }
 
+    [Fact]
+    public void ExactFileGrantProducesAnExactClaim_AndSiblingFallsOutOfScope()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "exact-file-claim");
+        var workspace = Path.Combine(root, "workspace");
+        var exact = Path.Combine(root, "outside", "selected.txt");
+        var context = new ToolExecutionContextDto
+        {
+            WorkingDirectory = workspace,
+            PrimaryRootId = "primary",
+            WorkspaceRoots = [new ToolWorkspaceRootDto { Id = "primary", Path = workspace }],
+            WorkspaceFiles = [new ToolWorkspaceFileDto { Id = "selected", Path = exact }]
+        };
+
+        var granted = ToolResourcePathRegistry.TryBuildResourceClaim(
+            "write_file", JsonSerializer.Serialize(new { filepath = exact }), workspace, true, context)!;
+        var sibling = ToolResourcePathRegistry.TryBuildResourceClaim(
+            "write_file", JsonSerializer.Serialize(new { filepath = Path.Combine(root, "outside", "sibling.txt") }), workspace, true, context)!;
+
+        Assert.Equal("file://selected", granted.Resource);
+        Assert.Equal("mutate", granted.Action);
+        Assert.StartsWith("denied-path://", sibling.Resource);
+    }
+
     [Theory]
     [InlineData("read_file")]
     [InlineData("write_file")]

@@ -1,9 +1,17 @@
 # TinadecUI — UI Engineering Suite
 
-**Last Updated:** 2026-10-21
-**Last Updated By:** 左右列的拖动把手跨缝（不得再被 `.uie-column` 裁切），见文首条目。
-**Last Verified Commit:** 9406f0c + `fix/i18n-ui-debug`
-**Branch:** fix/i18n-ui-debug
+**Last Updated:** 2026-10-26
+**Last Updated By:** 工作空间卡片（`workspace` descriptor + 目录项，不进预设页签），见文首条目。
+**Last Verified Commit:** a33b959d + 工作空间卡片本轮工作树
+**Branch:** main
+
+### 2026-10-26 工作空间卡片（`workspace`）
+
+`buildUieRegistry()` 的第 14 个 descriptor（共 19 个）：`cards/home/WorkspaceCard.vue` 是薄包装，主体是 Desktop 的 `@/components/WorkspaceRootsPanel.vue`——UIE 不认识源文件夹、授权或审批，它只提供页签与卡框。`featureCatalog.ts` 补一项（`FolderTree`、`context.homeWorkspace`，目录第 12 项），于是首页网格与页签「+」菜单同时得到入口，这是登记 descriptor + 目录项的直接结果，不需要动 `HomePickerCard`。
+
+**刻意不进 `engine/presets.ts` 的右栏页签数组**，理由与文档查看器 / 代码编辑器一致：预设只影响全新安装与「重置布局」，把这一项塞进去会让既有用户的页签排列无缘无故变化。三张「不需要先有上下文」的卡（文档查看器、代码编辑器、工作空间）都能靠自己的空态自给自足，所以它们是网格瓦片而不是藏在「+」菜单里。
+
+descriptor 是 `singleton`：一个工作区只有一份 `project.toml` 的目录列表，两张卡就是两个编辑器对同一份文件，后保存的会覆盖前一个的编辑。
 
 ### 2026-10-21 列拖动把手骑在缝上（`.uie-column-clip`）
 

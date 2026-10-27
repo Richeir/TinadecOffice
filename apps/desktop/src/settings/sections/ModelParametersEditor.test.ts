@@ -80,4 +80,29 @@ describe('model parameter editor', () => {
     expect(wrapper.get('#model-parameter-temperature').attributes('aria-invalid')).toBe('true')
     wrapper.unmount()
   })
+  it('writes a per-model image capability override for an HTTP provider', async () => {
+    const imageProvider: ModelProviderInstanceDto = {
+      ...provider,
+      image_input: {
+        enabled: false, max_image_bytes: 20 * 1024 * 1024, max_images_per_turn: 8,
+        base_enabled: false, base_max_image_bytes: 20 * 1024 * 1024, base_max_images_per_turn: 8,
+        editable: true, source: 'config', model_overrides: {},
+      },
+    }
+    const wrapper = mount(ModelParametersEditor, { props: { provider: imageProvider, model: 'test-model' }, global: { plugins: [i18n()] } })
+    await wrapper.get('.model-image-toggle input').setValue(true)
+    await wrapper.get('#model-image-max-bytes').setValue('1048576')
+    await wrapper.get('#model-image-max-count').setValue('2')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.save).toHaveBeenCalledWith('provider-a', expect.objectContaining({
+      image_input: {
+        enabled: false,
+        max_image_bytes: 20 * 1024 * 1024,
+        max_images_per_turn: 8,
+        model_overrides: { 'test-model': { enabled: true, max_image_bytes: 1048576, max_images_per_turn: 2 } },
+      },
+    }), { expected_revision: 7 })
+    wrapper.unmount()
+  })
 })

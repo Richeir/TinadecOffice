@@ -12,7 +12,7 @@ export const MAX_ATTACHMENT_BYTES = 32 * 1024 * 1024
 /** Same machine code Core answers with, so the UI needs one failure branch, not two. */
 export const TOO_LARGE_CODE = 'attachment_too_large'
 
-export type PendingAttachmentStatus = 'uploading' | 'ready' | 'failed'
+export type PendingAttachmentStatus = 'staged' | 'uploading' | 'ready' | 'failed'
 
 export interface PendingAttachment {
   readonly clientId: string
@@ -41,7 +41,7 @@ export type AttachmentDisplayState = 'idle' | 'uploading' | 'processing' | 'erro
 
 /** How a pending row reads on screen: in flight, attached, or refused. */
 export function attachmentDisplayState(status: PendingAttachmentStatus): AttachmentDisplayState {
-  return status === 'ready' ? 'done' : status === 'failed' ? 'error' : 'uploading'
+  return status === 'ready' ? 'done' : status === 'failed' ? 'error' : status === 'staged' ? 'idle' : 'uploading'
 }
 
 function previewFor(file: AttachableFile): string | null {
@@ -69,6 +69,10 @@ export interface AttachableFile {
   readonly name: string
   readonly type: string
   readonly size: number
+  /** Present when the file is also an exact workspace resource. */
+  readonly sourcePath?: string
+  readonly origin?: 'composer' | 'workspace'
+  readonly projectId?: string | null
   arrayBuffer(): Promise<ArrayBuffer>
 }
 
@@ -85,6 +89,8 @@ const pending = ref<PendingAttachment[]>([])
 // Plain let, not a ref: only reconcileSession reads it, and making it reactive would
 // invite a template to render an internal bookkeeping value.
 let ownerSessionId: string | null = null
+let ownerProjectId: string | null = null
+const stagedFiles = new Map<string, AttachableFile>()
 
 export const pendingAttachments = computed(() => pending.value)
 
@@ -104,14 +110,29 @@ function patch(clientId: string, changes: Partial<PendingAttachment>) {
  * the guard has to compare owners instead of trusting that a watcher saw the switch —
  * the session can change while nothing is mounted to observe it.
  */
-export function reconcileSession(sessionId: string | null) {
-  if (ownerSessionId === sessionId) return
+export function reconcileSession(sessionId: string | null, projectId: string | null = null) {
+  if (ownerSessionId === sessionId && ownerProjectId === projectId) return
   const uploaded = pending.value
     .filter((item) => item.attachmentId)
     .map((item) => item.attachmentId as string)
   ownerSessionId = sessionId
+  ownerProjectId = projectId
+  stagedFiles.clear()
   pending.value.forEach(releasePreview)
   pending.value = []
+  for (const id of uploaded) void deleteQuietly(id)
+}
+
+/** Explicit reset for callers that own the composer lifecycle (and tests). */
+export function clearPendingAttachments(): void {
+  const uploaded = pending.value
+    .filter((item) => item.attachmentId)
+    .map((item) => item.attachmentId as string)
+  pending.value.forEach(releasePreview)
+  pending.value = []
+  stagedFiles.clear()
+  ownerSessionId = null
+  ownerProjectId = null
   for (const id of uploaded) void deleteQuietly(id)
 }
 
@@ -128,11 +149,12 @@ export function reconcileSession(sessionId: string | null) {
 export function attachFiles(
   files: readonly AttachableFile[],
   sessionId: string | null,
+  options: { readonly projectId?: string | null } = {},
 ): Promise<void> {
-  if (!sessionId) return Promise.resolve()
-  reconcileSession(sessionId)
+  reconcileSession(sessionId, options.projectId ?? null)
   const uploads = files.map((file) => {
     const clientId = newClientId()
+    const status: PendingAttachmentStatus = sessionId ? 'uploading' : 'staged'
     pending.value = [
       ...pending.value,
       {
@@ -140,13 +162,17 @@ export function attachFiles(
         fileName: file.name,
         size: file.size,
         mediaType: file.type || 'application/octet-stream',
-        status: 'uploading',
+        status,
         attachmentId: null,
         errorCode: null,
         storedRow: null,
         previewUrl: previewFor(file),
       },
     ]
+    if (!sessionId) {
+      stagedFiles.set(clientId, { ...file, projectId: file.projectId ?? options.projectId ?? null })
+      return Promise.resolve()
+    }
     return uploadOne(clientId, file, sessionId)
   })
   return Promise.all(uploads).then(() => undefined)
@@ -166,6 +192,11 @@ async function uploadOne(clientId: string, file: AttachableFile, sessionId: stri
       new Uint8Array(await file.arrayBuffer()),
       file.name,
       file.type || undefined,
+      {
+        origin: file.origin ?? 'composer',
+        projectId: file.projectId ?? null,
+        sourcePath: file.sourcePath,
+      },
     )
   } catch (err) {
     patch(clientId, { status: 'failed', errorCode: machineCode(err) })
@@ -179,6 +210,25 @@ async function uploadOne(clientId: string, file: AttachableFile, sessionId: stri
     return
   }
   patch(clientId, { status: 'ready', attachmentId: stored.id, errorCode: null, storedRow: stored })
+  stagedFiles.delete(clientId)
+}
+
+/**
+ * Uploads files that were staged while no session existed. The session is created by
+ * the send path, never by attaching, so this is the one transition from local bytes
+ * to a Core row.
+ */
+export async function flushStagedAttachments(sessionId: string, projectId: string | null = null): Promise<void> {
+  if (!sessionId) throw new Error('A session is required to upload staged attachments.')
+  ownerSessionId = sessionId
+  ownerProjectId = projectId
+  const rows = pending.value.filter(item => item.status === 'staged' || item.status === 'failed')
+  await Promise.all(rows.map(async (item) => {
+    const file = stagedFiles.get(item.clientId)
+    if (!file) return
+    patch(item.clientId, { status: 'uploading', errorCode: null })
+    await uploadOne(item.clientId, { ...file, projectId: projectId ?? file.projectId ?? null }, sessionId)
+  }))
 }
 
 async function deleteQuietly(attachmentId: string) {
@@ -197,6 +247,7 @@ export function removePendingAttachment(clientId: string): Promise<void> {
   if (!target) return Promise.resolve()
   releasePreview(target)
   pending.value = pending.value.filter((item) => item.clientId !== clientId)
+  stagedFiles.delete(clientId)
   return target.attachmentId ? deleteQuietly(target.attachmentId) : Promise.resolve()
 }
 
@@ -222,6 +273,11 @@ export function readyAttachmentCount(): number {
   return pending.value.filter(isSendable).length
 }
 
+/** Files that will be sent now or uploaded once the send creates its session. */
+export function pendingAttachmentCount(): number {
+  return pending.value.filter(item => item.status === 'staged' || isSendable(item)).length
+}
+
 /**
  * The ready rows, as a snapshot taken before the request goes out. Deliberately not a
  * mutation: a send can fail, and a chip that quietly vanished would leave the user with
@@ -240,6 +296,12 @@ export function attachmentsForSend(): OutgoingAttachments {
         media_type: row.media_type,
         content_hash: row.content_hash,
         content_length: row.content_length,
+        origin: row.origin,
+        project_id: row.project_id,
+        source_path: row.source_path,
+        delivered_to_model: row.delivered_to_model,
+        delivered_run_id: row.delivered_run_id,
+        delivered_at: row.delivered_at,
         created_at: row.created_at,
         bound_at: row.bound_at,
       }
@@ -257,6 +319,7 @@ export function settleSentAttachments(outgoing: OutgoingAttachments): void {
   // The optimistic bubble shows these through the Gateway route; the local preview is done.
   pending.value.filter((item) => outgoing.clientIds.includes(item.clientId)).forEach(releasePreview)
   pending.value = pending.value.filter((item) => !outgoing.clientIds.includes(item.clientId))
+  for (const id of outgoing.clientIds) stagedFiles.delete(id)
 }
 
 /**

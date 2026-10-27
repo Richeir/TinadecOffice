@@ -58,7 +58,8 @@ public sealed class ExecutionAgent
         string? assembledInstructions,
         int maxHistoryMessages,
         CancellationToken ct,
-        IReadOnlyList<WorkerInterruption>? interruptions = null)
+        IReadOnlyList<WorkerInterruption>? interruptions = null,
+        IMessageAttachmentStore? attachments = null)
     {
         var resolved = await _chatClients.ResolveChatAsync(agent.ModelRoutePurpose ?? "chat", ct).ConfigureAwait(false);
         if (!resolved.IsAvailable)
@@ -100,10 +101,31 @@ public sealed class ExecutionAgent
                 .ToList();
         }
 
-        var conversation = await BuildConversationAsync(ctx.UserGoal, history, interruptions ?? [], maxHistoryMessages, ct).ConfigureAwait(false);
+        var imageInput = attachments is null
+            ? AttachmentImageInput.Empty
+            : await AttachmentImageParts.BuildAsync(attachments, ctx.SessionId, ctx.TriggerMessageId, resolved, ct).ConfigureAwait(false);
+        var conversation = await BuildConversationAsync(
+            ctx.UserGoal + imageInput.PromptSuffix,
+            history,
+            interruptions ?? [],
+            maxHistoryMessages,
+            ct,
+            imageInput.Parts).ConfigureAwait(false);
         var response = await (await _chatClients.CreateAsync(resolved, ct).ConfigureAwait(false))
             .GetResponseAsync(conversation, options, ct)
             .ConfigureAwait(false);
+        if (attachments is not null && imageInput.DeliveredAttachmentIds.Count > 0)
+        {
+            try
+            {
+                await attachments.MarkDeliveredAsync(imageInput.DeliveredAttachmentIds, ctx.RunId, DateTimeOffset.UtcNow, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                _logger?.LogWarning(ex, "Could not persist attachment delivery receipt for run {RunId}.", ctx.RunId);
+            }
+        }
         var messages = response.Messages.Count != 0
             ? response.Messages.ToList()
             : [new ChatMessage(ChatRole.Assistant, response.Text ?? string.Empty)];
@@ -154,7 +176,8 @@ public sealed class ExecutionAgent
         IReadOnlyList<WorkerToolTurn> history,
         IReadOnlyList<WorkerInterruption> interruptions,
         int maxHistoryMessages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<AIContent>? goalParts = null)
     {
         var messages = new List<ChatMessage>();
         // A round the user cut off sits in the transcript where it happened: what the worker had
@@ -189,8 +212,11 @@ public sealed class ExecutionAgent
             AddInterruptions(++index);
         }
         AddInterruptions(int.MaxValue);
+        var goalMessage = goalParts is { Count: > 0 }
+            ? new ChatMessage(ChatRole.User, [new TextContent(goal), .. goalParts])
+            : new ChatMessage(ChatRole.User, goal);
         return await Maf18RuntimeAdapter.CompactWorkerConversationAsync(
-            new ChatMessage(ChatRole.User, goal),
+            goalMessage,
             messages,
             maxHistoryMessages,
             cancellationToken).ConfigureAwait(false);

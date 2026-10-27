@@ -64,9 +64,16 @@ internal static partial class WorkspaceDefinitionFile
             return new(fallbackName, [new("primary", scope.ProjectRoot!)], "primary", ContentHash: Hash(text));
         if (StorageScopeInitializer.Value(workspace, "roots") is not TomlTableArray roots)
             throw new InvalidDataException("project.toml workspace.roots is required.");
+        var files = StorageScopeInitializer.Value(workspace, "files") is TomlTableArray fileRows
+            ? fileRows.Select(file => new WorkspaceFileGrant(Text(file, "id"),
+                System.IO.Path.GetFullPath(Text(file, "path"), scope.ProjectRoot!))).ToArray()
+            : [];
         var definition = new WorkspaceDefinition(Text(workspace, "name"), roots.Select(root =>
             new WorkspaceSourceRoot(Text(root, "id"), System.IO.Path.GetFullPath(Text(root, "path"), scope.ProjectRoot!))).ToArray(),
-            Text(workspace, "primary_root_id"), Text(workspace, "icon", "folder"), Text(workspace, "color", "default"), Hash(text));
+            Text(workspace, "primary_root_id"), Text(workspace, "icon", "folder"), Text(workspace, "color", "default"), Hash(text))
+        {
+            Files = files
+        };
         return Validate(definition, requireAvailable: false);
     }
 
@@ -75,6 +82,7 @@ internal static partial class WorkspaceDefinitionFile
         if (string.IsNullOrWhiteSpace(definition.Name) || definition.Name.Trim().Length > 128)
             throw new ArgumentException("Workspace name requires 1–128 characters.");
         if (definition.Roots.Count is < 1 or > 32) throw new ArgumentException("A workspace requires 1–32 source folders.");
+        if (definition.Files.Count > 64) throw new ArgumentException("A workspace allows at most 64 exact-file grants.");
         if (!Icons.Contains(definition.Icon) || !Colors.Contains(definition.Color)) throw new ArgumentException("Unknown workspace icon or color.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var paths = new List<string>();
@@ -89,8 +97,27 @@ internal static partial class WorkspaceDefinitionFile
             if (requireAvailable && !Directory.Exists(path)) throw new DirectoryNotFoundException("Source folder is unavailable: " + path);
             paths.Add(path); normalized.Add(root with { Path = path });
         }
+        var normalizedFiles = new List<WorkspaceFileGrant>();
+        var filePaths = new List<string>();
+        foreach (var file in definition.Files)
+        {
+            if (!RootId().IsMatch(file.Id) || !ids.Add(file.Id))
+                throw new ArgumentException("Workspace resource IDs must be unique and contain 1–64 letters, digits, '_' or '-'.");
+            if (!System.IO.Path.IsPathFullyQualified(file.Path))
+                throw new ArgumentException("Exact-file grants require absolute paths.");
+            var path = WorkspacePathSpelling.Canonical(file.Path);
+            if (filePaths.Any(previous => StorageScopeInitializer.SamePath(previous, path)))
+                throw new ArgumentException("The same exact file cannot be added twice: " + path);
+            if (requireAvailable)
+            {
+                if (!File.Exists(path)) throw new FileNotFoundException("Exact file is unavailable: " + path);
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                    throw new ArgumentException("Exact-file grants cannot follow symbolic links: " + path);
+            }
+            filePaths.Add(path); normalizedFiles.Add(file with { Path = path });
+        }
         if (!ids.Contains(definition.PrimaryRootId)) throw new ArgumentException("The primary folder must belong to this workspace.");
-        return definition with { Name = definition.Name.Trim(), Roots = normalized };
+        return definition with { Name = definition.Name.Trim(), Roots = normalized, Files = normalizedFiles };
     }
 
     // Edit owned values in place rather than serializing unrelated manifest fields and comments.
@@ -103,7 +130,15 @@ internal static partial class WorkspaceDefinitionFile
             if (table?["workspace"] is TomlTable workspace && workspace["roots"] is TomlTableArray rows
                 && rows.Count == 1) oldRoots[Text(rows[0], "id")] = match.Value;
         }
+        var oldFiles = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match match in FileSections().Matches(text))
+        {
+            var table = TomlSerializer.Deserialize<TomlTable>(match.Value);
+            if (table?["workspace"] is TomlTable workspace && workspace["files"] is TomlTableArray rows
+                && rows.Count == 1) oldFiles[Text(rows[0], "id")] = match.Value;
+        }
         text = RootSections().Replace(text, "");
+        text = FileSections().Replace(text, "");
         var section = WorkspaceSection().Match(text);
         var body = section.Success ? section.Value : "[workspace]\n";
         body = Set(body, "name", definition.Name);
@@ -116,6 +151,12 @@ internal static partial class WorkspaceDefinitionFile
         {
             var row = oldRoots.GetValueOrDefault(root.Id, "[[workspace.roots]]\n");
             row = Set(Set(row, "id", root.Id), "path", System.IO.Path.GetRelativePath(anchor, root.Path).Replace('\\', '/'));
+            text = text.TrimEnd() + "\n\n" + row;
+        }
+        foreach (var file in definition.Files)
+        {
+            var row = oldFiles.GetValueOrDefault(file.Id, "[[workspace.files]]\n");
+            row = Set(Set(row, "id", file.Id), "path", System.IO.Path.GetRelativePath(anchor, file.Path).Replace('\\', '/'));
             text = text.TrimEnd() + "\n\n" + row;
         }
         _ = TomlSerializer.Deserialize<TomlTable>(text);
@@ -133,4 +174,5 @@ internal static partial class WorkspaceDefinitionFile
     [GeneratedRegex(@"^[a-zA-Z0-9_-]{1,64}$")] private static partial Regex RootId();
     [GeneratedRegex(@"(?ms)^\[workspace\][^\r\n]*\r?\n.*?(?=^\[|\z)")] private static partial Regex WorkspaceSection();
     [GeneratedRegex(@"(?ms)^\[\[workspace\.roots\]\][^\r\n]*\r?\n.*?(?=^\[|\z)")] private static partial Regex RootSections();
+    [GeneratedRegex(@"(?ms)^\[\[workspace\.files\]\][^\r\n]*\r?\n.*?(?=^\[|\z)")] private static partial Regex FileSections();
 }

@@ -160,7 +160,7 @@ public sealed class TinadecToolsProcessManager : IToolProcessManager, IToolExecu
     {
         var root = ResolveRoot(workspaceRoot);
         var processKey = ownedProcessKey ?? (request.ExecutionContext is { } context
-            ? root + "|" + ToolSettingsSchema.Hash(JsonSerializer.SerializeToElement(new { context.StorageId, context.WorkspaceRoots, context.PrimaryRootId, context.ProjectStorageWrite })) : root);
+            ? root + "|" + ToolSettingsSchema.Hash(JsonSerializer.SerializeToElement(new { context.StorageId, context.WorkspaceRoots, context.WorkspaceFiles, context.PrimaryRootId, context.ProjectStorageWrite })) : root);
         if (!string.IsNullOrWhiteSpace(request.ExecutionContext?.RunId))
             lock (_stateLock)
             {

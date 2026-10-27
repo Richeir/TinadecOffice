@@ -82,10 +82,14 @@ internal static class Maf18RuntimeAdapter
         string description,
         ChatOptions chatOptions,
         string prompt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<AIContent>? userParts = null)
     {
         using var agent = CreateGovernanceAgent(chatClient, id, name, description, chatOptions);
-        var response = await agent.RunAsync(prompt, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var response = userParts is { Count: > 0 }
+            ? await agent.RunAsync(new ChatMessage(ChatRole.User,
+                [new TextContent(prompt), .. userParts]), cancellationToken: cancellationToken).ConfigureAwait(false)
+            : await agent.RunAsync(prompt, cancellationToken: cancellationToken).ConfigureAwait(false);
         return new GovernanceTurn(
             response.Text,
             ModelOutputText.AnswerText(response.Text),

@@ -23,7 +23,15 @@ import {
 } from '@/api'
 import { basenameFromPath } from '@/format'
 import { getDispatchPref } from '@/lib/dispatchPref'
-import { attachmentsForSend, pendingAttachments, readyAttachmentCount, settleSentAttachments } from '@/lib/pendingAttachments'
+import {
+  attachFiles,
+  attachmentsForSend,
+  flushStagedAttachments,
+  pendingAttachmentCount,
+  pendingAttachments,
+  settleSentAttachments,
+  type AttachableFile,
+} from '@/lib/pendingAttachments'
 import { followSession, subscribeToSessionEvents, suspendFollowingSession } from '@/lib/sessionEventBus'
 import { isAbortError } from '@/lib/isAbortError'
 import { interfaceLocale } from '@/lib/interfaceLocale'
@@ -42,7 +50,7 @@ import { useRunStore } from '@/stores/run'
 import { registerProjectStorage, projectStorageId, setSelectedStorage, selectedStorage, selectedStorageId, selectionIdentity, selectionKey, scopedApi } from '@/lib/storageScope'
 import type { SessionTransferDto } from '@/settings/storage'
 import type { TaskHandle } from '@/composables/useNotifications'
-import type { WorkspaceInput, WorkspaceDefinition, WorkspaceLoadState } from '@/lib/workspaces'
+import { folderIdentity, type WorkspaceDefinition, type WorkspaceFileGrant, type WorkspaceInput, type WorkspaceLoadState, type WorkspaceRoot } from '@/lib/workspaces'
 
 // ---------------------------------------------------------------------------
 // HomeController — the single domain controller for the Home page.
@@ -634,7 +642,9 @@ async function completeWorkspace(input: WorkspaceInput, projectKey: string | nul
   let definition: WorkspaceDefinition
   if (projectKey) {
     const identity = selectionIdentity(projectKey)
-    definition = await api.saveWorkspace(identity.storageId ?? projectStorageId(identity.id), input, hash!)
+    const existing = projects.value.find(project => selectionKey(project) === projectKey)
+    const payload: WorkspaceInput = { ...input, files: input.files ?? existing?.files ?? [] }
+    definition = await api.saveWorkspace(identity.storageId ?? projectStorageId(identity.id), payload, hash!)
     projects.value = projects.value.map(project => selectionKey(project) === projectKey ? { ...project, ...definition, path: definition.roots.find(root => root.id === definition.primary_root_id)!.path, configuration_hash: definition.content_hash } : project)
   } else {
     const path = anchor ?? input.roots.find(root => root.id === input.primary_root_id)!.path
@@ -650,6 +660,208 @@ async function completeWorkspace(input: WorkspaceInput, projectKey: string | nul
     void loadSessions()
   }
   workspaceEditor.value = { open: false, projectKey: null }
+}
+
+// ---------------------------------------------------------------------------
+// Workspace source folders (the Workspace card)
+//
+// A source folder *is* the authorization unit: `project.toml`'s `workspace.roots[]`.
+// Every action here rewrites that one file through `api.saveWorkspace`, which also
+// republishes the host grant and refreshes the projection — there is no extra Core
+// endpoint. The directory set is frozen when a run is admitted, so an edit here only
+// applies to the next run; nothing already running is re-pointed.
+// ---------------------------------------------------------------------------
+
+/** Same ceiling the workspace dialog enforces, so both entry points agree. */
+const MAX_WORKSPACE_ROOTS = 32
+const MAX_WORKSPACE_FILES = 64
+
+/**
+ * The shape the host bridge returns, derived from its own declaration so the card and the
+ * controller cannot drift from `env.d.ts`.
+ */
+type WorkspaceFileImportResult = Awaited<ReturnType<Window['tinadec']['importWorkspaceFiles']>>
+
+/** The workspace the card acts on, or null when no project is selected. */
+function workspaceRootsTarget() {
+  const project = currentProject.value
+  if (!project) return null
+  return {
+    key: selectionKey(project),
+    storageId: project.storage_id ?? projectStorageId(project.id),
+    roots: project.roots ?? [],
+    files: project.files ?? [],
+    primaryId: project.primary_root_id ?? null,
+    name: project.name,
+    icon: project.icon ?? 'folder',
+    color: project.color ?? 'default',
+    hash: project.configuration_hash ?? null,
+  }
+}
+
+/**
+ * Every refusal goes through the shared latch so the person gets the same notification a
+ * failed write produces; a bare rejection would leave the card silent about why nothing moved.
+ */
+async function refuseWorkspaceRoots(message: string) {
+  await run(t('workspaceRoots.title'), async () => { throw new Error(message) })
+}
+
+/**
+ * Writes one root list. `hash` is required by Core's If-Match, and a project row read
+ * before its workspace file existed has none, so an absent hash is filled by one read
+ * rather than by sending an empty If-Match (which Core answers 428).
+ */
+async function saveWorkspaceRoots(target: NonNullable<ReturnType<typeof workspaceRootsTarget>>, roots: WorkspaceRoot[], primaryRootId: string) {
+  // An empty string is as absent as null here: Core answers 428 for a blank If-Match.
+  const hash = target.hash || (await api.readWorkspace(target.storageId)).content_hash
+  const input: WorkspaceInput = { name: target.name, roots, files: target.files, primary_root_id: primaryRootId, icon: target.icon, color: target.color }
+  const definition = await api.saveWorkspace(target.storageId, input, hash)
+  projects.value = projects.value.map(project => selectionKey(project) === target.key
+    ? { ...project, ...definition, path: definition.roots.find(root => root.id === definition.primary_root_id)?.path ?? project.path, configuration_hash: definition.content_hash }
+    : project)
+}
+
+async function saveWorkspaceFiles(target: NonNullable<ReturnType<typeof workspaceRootsTarget>>, files: WorkspaceFileGrant[]) {
+  const hash = target.hash || (await api.readWorkspace(target.storageId)).content_hash
+  const input: WorkspaceInput = { name: target.name, roots: target.roots, files, primary_root_id: target.primaryId ?? target.roots[0]?.id ?? '', icon: target.icon, color: target.color }
+  const definition = await api.saveWorkspace(target.storageId, input, hash)
+  projects.value = projects.value.map(project => selectionKey(project) === target.key
+    ? { ...project, ...definition, path: definition.roots.find(root => root.id === definition.primary_root_id)?.path ?? project.path, configuration_hash: definition.content_hash }
+    : project)
+}
+
+/**
+ * The shared write path for every folder action. The guards are here rather than in each
+ * caller so no entry point can leave the workspace in a state the dialog would refuse:
+ * one folder minimum, no duplicate folder, no more than {@link MAX_WORKSPACE_ROOTS}.
+ * The primary root falls back to the first remaining folder when it is gone.
+ */
+async function applyWorkspaceRoots(next: WorkspaceRoot[], primaryId?: string | null) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  const seen = new Set<string>()
+  for (const root of next) {
+    const identity = folderIdentity(root.path)
+    if (seen.has(identity)) { await refuseWorkspaceRoots(t('workspaceRoots.duplicate', { path: root.path })); return }
+    seen.add(identity)
+  }
+  if (!next.length) { await refuseWorkspaceRoots(t('workspaceRoots.removeBlockedLast')); return }
+  if (next.length > MAX_WORKSPACE_ROOTS) { await refuseWorkspaceRoots(t('workspaceRoots.tooMany', { max: MAX_WORKSPACE_ROOTS })); return }
+  const requested = primaryId ?? target.primaryId
+  const primary = next.find(root => root.id === requested)?.id ?? next[0]!.id
+  await run(t('workspaceRoots.title'), async () => { await saveWorkspaceRoots(target, next, primary) })
+}
+
+/** Replace the whole root list of the selected workspace. */
+async function updateWorkspaceRoots(next: WorkspaceRoot[]) {
+  await applyWorkspaceRoots(next)
+}
+
+/** Append folders picked by the person. A folder already in the list is refused, not merged. */
+async function addWorkspaceFolderPaths(paths: string[]) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  const existing = new Set(target.roots.map(root => folderIdentity(root.path)))
+  const added: WorkspaceRoot[] = []
+  for (const raw of paths) {
+    const path = raw.trim()
+    if (!path) continue
+    const identity = folderIdentity(path)
+    if (existing.has(identity)) { await refuseWorkspaceRoots(t('workspaceRoots.duplicate', { path })); return }
+    existing.add(identity)
+    added.push({ id: newId(), path })
+  }
+  if (!added.length) return
+  if (target.roots.length + added.length > MAX_WORKSPACE_ROOTS) {
+    await refuseWorkspaceRoots(t('workspaceRoots.tooMany', { max: MAX_WORKSPACE_ROOTS }))
+    return
+  }
+  await applyWorkspaceRoots([...target.roots, ...added])
+}
+
+/**
+ * Add exact-file grants. The path is the original file, not a copy. The selected
+ * folder roots still provide broader directory authority; duplicate paths are refused
+ * so the resource list never claims two identities for one file.
+ */
+async function addWorkspaceFilePaths(paths: string[]) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  const existing = new Set(target.files.map(file => folderIdentity(file.path)))
+  const added: WorkspaceFileGrant[] = []
+  for (const raw of paths) {
+    const path = raw.trim()
+    if (!path) continue
+    const identity = folderIdentity(path)
+    if (existing.has(identity)) { await refuseWorkspaceRoots(t('workspaceRoots.duplicateFile', { path })); return }
+    existing.add(identity)
+    added.push({ id: newId(), path })
+  }
+  if (!added.length) return
+  if (target.files.length + added.length > MAX_WORKSPACE_FILES) {
+    await refuseWorkspaceRoots(t('workspaceRoots.tooManyFiles', { max: MAX_WORKSPACE_FILES }))
+    return
+  }
+  await run(t('workspaceRoots.title'), async () => { await saveWorkspaceFiles(target, [...target.files, ...added]) })
+}
+
+/** Drop one folder. The primary folder and the last folder are refused, matching the dialog. */
+async function removeWorkspaceRoot(id: string) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  if (id === target.primaryId) { await refuseWorkspaceRoots(t('workspaceRoots.removeBlockedPrimary')); return }
+  if (target.roots.length <= 1) { await refuseWorkspaceRoots(t('workspaceRoots.removeBlockedLast')); return }
+  const next = target.roots.filter(root => root.id !== id)
+  if (next.length === target.roots.length) return
+  await applyWorkspaceRoots(next)
+}
+
+/** Change which folder is primary. Data keeps living where it already lives; only the label changes. */
+async function setPrimaryWorkspaceRoot(id: string) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  if (!target.roots.some(root => root.id === id)) return
+  await applyWorkspaceRoots(target.roots, id)
+}
+
+async function removeWorkspaceFile(id: string) {
+  const target = workspaceRootsTarget()
+  if (!target) { await refuseWorkspaceRoots(t('workspaceRoots.noWorkspaceBody')); return }
+  const next = target.files.filter(file => file.id !== id)
+  if (next.length === target.files.length) return
+  await run(t('workspaceRoots.title'), async () => { await saveWorkspaceFiles(target, next) })
+}
+
+/**
+ * Copy dropped files into the workspace's primary folder through the main process.
+ * The renderer cannot read a dropped file's absolute path, so a caller first maps each
+ * `File` with `window.tinadec.pathForFile`; this method only moves paths. Failures are
+ * both notified and rethrown — an empty result must never read as "nothing to copy".
+ */
+async function importWorkspaceFiles(paths: string[]): Promise<WorkspaceFileImportResult> {
+  const target = workspaceRootsTarget()
+  if (!target) throw new Error(t('workspaceRoots.noWorkspaceBody'))
+  const destDir = target.roots.find(root => root.id === target.primaryId)?.path ?? target.roots[0]?.path
+  if (!destDir) throw new Error(t('workspaceRoots.noWorkspaceBody'))
+  const bridge = window.tinadec?.importWorkspaceFiles
+  busy.value = true
+  try {
+    // A browser preview has no main process to copy with; say so instead of reporting zero files.
+    if (typeof bridge !== 'function') throw new Error(t('host.previewShim'))
+    return await bridge({ destDir, files: paths.filter(path => path.trim()) })
+  } catch (error) {
+    notify.error(error, { title: t('workspaceRoots.title') })
+    throw error
+  } finally { busy.value = false }
+}
+
+/**
+ * Places exact workspace files in the composer's normal pending state. No session
+ * is created here; Send creates it and uploads these bytes with workspace provenance.
+ */
+async function prefillWorkspaceAttachments(files: readonly AttachableFile[]): Promise<void> {
+  await attachFiles(files, selectedSessionId.value, { projectId: selectedProjectId.value })
 }
 
 async function createSession(projectId: string | null) {
@@ -857,8 +1069,12 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
     invokeError.value = t('home.attachmentUploading')
     return
   }
+  if (pendingAttachments.value.some(attachment => attachment.status === 'failed')) {
+    invokeError.value = t('home.attachmentUploadFailed')
+    return
+  }
   const pendingSettings = requestedSession ? settingsWrites.get(sessionWriteKey(requestedSession, requestedStorage)) : null
-  const outgoing = attachmentsForSend()
+  let outgoing = attachmentsForSend()
   if (pendingSettings && !await pendingSettings) return
   if (pendingSettings && (selectedStorageId() !== requestedStorage || selectedSessionId.value !== requestedSession || viewMode.value !== requestedView || selectedProjectId.value !== requestedProject)) return
   const requestedRecord = sessions.value.find(s => sessionInScope(s, requestedSession ?? '', requestedStorage))
@@ -887,6 +1103,14 @@ async function handleSend(content: string, opts?: ComposerSubmitOptions) {
         selectedSessionId.value = session.id
         pendingSessionId.value = session.id
       }
+    }
+    await flushStagedAttachments(sessionId, requestedProject)
+    outgoing = attachmentsForSend()
+    if (pendingAttachments.value.some(attachment => attachment.status === 'failed')) {
+      throw new Error(t('home.attachmentUploadFailed'))
+    }
+    if (!content.trim() && outgoing.attachmentIds.length === 0) {
+      throw new Error(t('home.attachmentUploadFailed'))
     }
     const isCurrent = () => selectedStorageId() === requestedStorage && selectedSessionId.value === sessionId && viewMode.value === requestedView
     if (isCurrent() && draft.value.trim() === content.trim()) draft.value = ''
@@ -1418,6 +1642,15 @@ export const homeController = {
   workspaceEditor,
   workspaceLoadStates,
   completeWorkspace,
+  // Workspace card: the source-folder authorisation list.
+  updateWorkspaceRoots,
+  addWorkspaceFolderPaths,
+  addWorkspaceFilePaths,
+  removeWorkspaceRoot,
+  removeWorkspaceFile,
+  setPrimaryWorkspaceRoot,
+  importWorkspaceFiles,
+  prefillWorkspaceAttachments,
   startNewConversation,
   retryWorkspaces: retryWorkspace,
   unregisterWorkspace,
@@ -1442,7 +1675,7 @@ export const homeController = {
     const content = draft.value.trim()
     // Empty is sendable when a finished upload is there to speak for the turn; Core appends
     // it as a message and starts no run. Same rule the Send button reads, from the same owner.
-    if (!content && readyAttachmentCount() === 0) return
+  if (!content && pendingAttachmentCount() === 0) return
     await handleSend(content, opts)
   },
   handleWelcomeSend: (payload: ComposerSubmitOptions & { content: string }) => handleSend(payload.content, payload),

@@ -193,6 +193,11 @@ internal sealed class WindowsSandboxBackend : ISandboxBackend
             psi.ArgumentList.Add("--workspace-root");
             psi.ArgumentList.Add(source.Path);
         }
+        foreach (var file in ToolExecutionContext.Current?.WorkspaceFiles ?? [])
+        {
+            psi.ArgumentList.Add("--workspace-file");
+            psi.ArgumentList.Add(file.Path);
+        }
         psi.StandardInputEncoding = System.Text.Encoding.UTF8;
         psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
         psi.UserName = SandboxAccountManager.AccountName;

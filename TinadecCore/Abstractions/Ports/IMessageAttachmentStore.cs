@@ -24,6 +24,16 @@ public interface IMessageAttachmentStore
         Guid sessionId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every attachment associated with one project, including ordinary composer uploads.
+    /// This is the audit view; it does not widen workspace file authority, but it does answer
+    /// what the user showed the Agent.
+    /// </summary>
+    Task<IReadOnlyList<StoredAttachment>> ListByProjectAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This attachment store does not support project exposure queries.");
+
     Task<StoredAttachment?> FindAsync(
         Guid attachmentId,
         CancellationToken cancellationToken = default);
@@ -65,6 +75,17 @@ public interface IMessageAttachmentStore
         CancellationToken cancellationToken = default)
         => throw new NotSupportedException(
             "This attachment store does not support binding rows to messages.");
+
+    /// <summary>
+    /// Records the exact run in which these attachment bytes reached a multimodal model.
+    /// The operation is idempotent and only flips rows that actually travelled as DataContent.
+    /// </summary>
+    Task MarkDeliveredAsync(
+        IReadOnlyList<Guid> attachmentIds,
+        Guid runId,
+        DateTimeOffset deliveredAt,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException("This attachment store does not support delivery receipts.");
 }
 
 /// <summary>
@@ -81,7 +102,12 @@ public sealed record StoreAttachmentRequest(
     Guid SessionId,
     string FileName,
     string MediaType,
-    Stream Content);
+    Stream Content)
+{
+    public string Origin { get; init; } = AttachmentOrigins.Composer;
+    public Guid? ProjectId { get; init; }
+    public string? SourcePath { get; init; }
+}
 
 /// <summary>
 /// An attachment as Core sees it after the upload. <paramref name="ContentHash"/> is the
@@ -97,4 +123,19 @@ public sealed record StoredAttachment(
     string ContentHash,
     long ContentLength,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? BoundAt);
+    DateTimeOffset? BoundAt)
+{
+    public string Origin { get; init; } = AttachmentOrigins.Composer;
+    public Guid? ProjectId { get; init; }
+    public string? SourcePath { get; init; }
+    public bool DeliveredToModel { get; init; }
+    public Guid? DeliveredRunId { get; init; }
+    public DateTimeOffset? DeliveredAt { get; init; }
+}
+
+public static class AttachmentOrigins
+{
+    public const string Composer = "composer";
+    public const string Workspace = "workspace";
+    public static bool IsKnown(string? value) => value is Composer or Workspace;
+}

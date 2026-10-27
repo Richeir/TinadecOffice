@@ -49,7 +49,9 @@ internal static class CommandSandboxRuntime
     {
         var workingDir = WorkspacePathResolver.WorkspaceRoot;
 
-        var readPaths = WorkspacePathResolver.SourceRoots.Select(root => root.Path).Append(workingDir).Distinct(SandboxPaths.PathComparer).ToList();
+        var readPaths = WorkspacePathResolver.SourceRoots.Select(root => root.Path)
+            .Concat(ToolExecutionContext.Current?.WorkspaceFiles.Select(file => file.Path) ?? [])
+            .Append(workingDir).Distinct(SandboxPaths.PathComparer).ToList();
         if (ToolExecutionContext.Current is { } context) readPaths.AddRange(context.ReadRoots);
         if (additionalReadPaths is not null)
         {
@@ -60,7 +62,9 @@ internal static class CommandSandboxRuntime
             }
         }
 
-        var writePaths = WorkspacePathResolver.SourceRoots.Select(root => root.Path).Append(workingDir).Distinct(SandboxPaths.PathComparer).ToList();
+        var writePaths = WorkspacePathResolver.SourceRoots.Select(root => root.Path)
+            .Concat(ToolExecutionContext.Current?.WorkspaceFiles.Select(file => file.Path) ?? [])
+            .Append(workingDir).Distinct(SandboxPaths.PathComparer).ToList();
         if (ToolExecutionContext.Current?.StorageRoot is { } publicStorage)
             writePaths.AddRange(new[] { Path.Combine(publicStorage, "config"), Path.Combine(publicStorage, "skills") });
         if (ToolExecutionContext.Current is { ProjectStorageWrite: true, StorageRoot: { } storageRoot })

@@ -30,6 +30,19 @@ interface DetachResult {
   tabId: string;
 }
 
+/** One file the main process copied into a workspace source folder. */
+interface ImportedWorkspaceFile {
+  name: string;
+  path: string;
+  bytes: number;
+}
+
+/** One file the main process refused to copy. `reason` is a stable code, worded by the renderer. */
+interface SkippedWorkspaceFile {
+  path: string;
+  reason: 'too_many' | 'too_large' | 'relative_path' | 'missing' | 'link' | 'not_a_file' | 'duplicate' | 'exists' | 'copy_failed';
+}
+
 interface ReattachData {
   tabId: string;
   type: string;
@@ -251,6 +264,10 @@ declare global {
       discoverServices: () => Promise<DiscoveredService[]>;
       restartApp: () => Promise<void>;
       selectWorkspaceFolders: (title?: string) => Promise<string[]>;
+      /** Copies dropped files into a workspace source folder; never overwrites an existing file. */
+      importWorkspaceFiles: (input: { destDir: string; files: string[] }) => Promise<{ imported: ImportedWorkspaceFile[]; skipped: SkippedWorkspaceFile[] }>;
+      /** The absolute path behind a dropped `File`; empty when the host cannot resolve one. */
+      pathForFile: (file: File) => string;
       setStorageWritePolicy: (storageId: string, allow: boolean) => Promise<{ storage_id: string; allow_storage_write: boolean }>;
       storageAction: (storageId: string, action: 'configure' | 'cleanup' | 'content-collect' | 'storage-delete' | 'unregister', input?: Record<string, unknown>) => Promise<unknown>;
       saveUserStorageRoot: (root: string) => Promise<{ user_root: string; path: string; restart_required: boolean }>;

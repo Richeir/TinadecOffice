@@ -12,8 +12,11 @@ public sealed partial class StorageScopeRegistry
         var registration = GetRegistration(storageId);
         var definition = WorkspaceDefinitionFile.Read(registration.Scope, registration.Name);
         var granted = new WorkspaceDefinition(registration.Name,
-            registration.Roots ?? [new("primary", registration.Scope.ProjectRoot!)], registration.PrimaryRootId ?? "primary");
-        RequireSameRoots(definition, granted);
+            registration.Roots ?? [new("primary", registration.Scope.ProjectRoot!)], registration.PrimaryRootId ?? "primary")
+        {
+            Files = registration.Files ?? []
+        };
+        RequireSameWorkspace(definition, granted);
         return WorkspaceDefinitionFile.Validate(definition, requireAvailable);
     }
 
@@ -35,18 +38,28 @@ public sealed partial class StorageScopeRegistry
     public async Task<WorkspaceDefinition> EditWorkspaceAsync(string storageId, WorkspaceEditRequest request,
         string expectedHash, CancellationToken ct = default)
     {
-        var definition = WorkspaceDefinitionFile.Validate(new(request.Name, request.Roots, request.PrimaryRootId, request.Icon, request.Color));
+        var definition = WorkspaceDefinitionFile.Validate(new(request.Name, request.Roots, request.PrimaryRootId, request.Icon, request.Color)
+        {
+            Files = request.Files
+        });
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var registration = GetRegistration(storageId);
             var priorRoots = HistoricalRoots(registration);
+            var priorFiles = HistoricalFiles(registration);
             if (definition.Roots.Any(root => priorRoots.Any(previous => previous.Id == root.Id)
                 && !priorRoots.Any(previous => previous.Id == root.Id && StorageScopeInitializer.SamePath(previous.Path, root.Path))))
                 throw new ArgumentException("Changing a source folder path requires a new folder ID. Remove its reference and add the new folder.");
+            if (definition.Files.Any(file => priorFiles.Any(previous => previous.Id == file.Id)
+                && !priorFiles.Any(previous => previous.Id == file.Id && StorageScopeInitializer.SamePath(previous.Path, file.Path))))
+                throw new ArgumentException("Changing an exact-file path requires a new resource ID. Remove its reference and add the new file.");
             foreach (var root in definition.Roots)
                 if (List().Any(scope => IsWithinStorage(scope.Root, root.Path)))
                     throw new ArgumentException("A source folder cannot be inside product storage: " + root.Path);
+            foreach (var grant in definition.Files)
+                if (List().Any(scope => IsWithinStorage(scope.Root, grant.Path)))
+                    throw new ArgumentException("An exact file cannot be inside product storage: " + grant.Path);
             var file = WorkspaceDefinitionFile.FilePath(registration.Scope);
             StorageScopePaths.RejectLinks(registration.Scope.Root, file);
             await using var writeLease = await WorkspaceDefinitionFile.AcquireWriteLeaseAsync(registration.Scope, ct).ConfigureAwait(false);
@@ -60,8 +73,10 @@ public sealed partial class StorageScopeRegistry
             await WorkspaceDefinitionFile.WriteIfMatchAsync(registration.Scope, text, expectedHash, ct).ConfigureAwait(false);
             try
             {
-                _registrations[storageId] = registration with { Name = definition.Name, Roots = definition.Roots, PrimaryRootId = definition.PrimaryRootId,
-                    HistoricalRoots = MergeHistory(priorRoots, definition.Roots) };
+                _registrations[storageId] = registration with { Name = definition.Name, Roots = definition.Roots, Files = definition.Files,
+                    PrimaryRootId = definition.PrimaryRootId,
+                    HistoricalRoots = MergeHistory(priorRoots, definition.Roots),
+                    HistoricalFiles = MergeFileHistory(priorFiles, definition.Files) };
                 await SaveRegistrationsAsync(ct).ConfigureAwait(false);
             }
             catch
@@ -88,28 +103,36 @@ public sealed partial class StorageScopeRegistry
         || Path.GetFullPath(path).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(storage)) + Path.DirectorySeparatorChar,
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    private static void RequireSameRoots(WorkspaceDefinition definition, WorkspaceDefinition granted)
+    private static void RequireSameWorkspace(WorkspaceDefinition definition, WorkspaceDefinition granted)
     {
         if (definition.PrimaryRootId != granted.PrimaryRootId || definition.Roots.Count != granted.Roots.Count
             || definition.Roots.Any(root => !granted.Roots.Any(allowed => allowed.Id == root.Id
-                && StorageScopeInitializer.SamePath(allowed.Path, root.Path))))
+                && StorageScopeInitializer.SamePath(allowed.Path, root.Path)))
+            || definition.Files.Count != granted.Files.Count
+            || definition.Files.Any(file => !granted.Files.Any(allowed => allowed.Id == file.Id
+                && StorageScopeInitializer.SamePath(allowed.Path, file.Path))))
             throw new ConfigurationDocumentException("workspace_authorization_required",
-                "Workspace folders differ from the host authorization. Open or edit the workspace through the desktop to grant them.",
-                [new("workspace_roots", "project.toml: workspace.roots / workspace.primary_root_id")]);
+                "Workspace resources differ from the host authorization. Open or edit the workspace through the desktop to grant them.",
+                [new("workspace_resources", "project.toml: workspace.roots / workspace.files / workspace.primary_root_id")]);
     }
 
-    private static void RequireSelectedRoots(WorkspaceDefinition definition, WorkspaceDefinition selected, bool explicitRoots, string selectedPath)
+    private static void RequireSelectedWorkspace(WorkspaceDefinition definition, WorkspaceDefinition selected, bool explicitRoots, string selectedPath)
     {
         // Legacy single-folder callers grant the selected path, not an invented root ID.
         if (!explicitRoots && definition.Roots.Count == 1 && StorageScopeInitializer.SamePath(definition.PrimaryPath, selectedPath)) return;
-        RequireSameRoots(definition, selected);
+        RequireSameWorkspace(definition, selected);
     }
 
     private static IReadOnlyList<WorkspaceSourceRoot> HistoricalRoots(Registration registration) => registration.HistoricalRoots
         ?? registration.Roots ?? [new("primary", registration.Scope.ProjectRoot!)];
+    private static IReadOnlyList<WorkspaceFileGrant> HistoricalFiles(Registration registration) => registration.HistoricalFiles
+        ?? registration.Files ?? [];
 
     private static IReadOnlyList<WorkspaceSourceRoot> MergeHistory(IReadOnlyList<WorkspaceSourceRoot> history, IReadOnlyList<WorkspaceSourceRoot> roots)
         => history.Concat(roots).DistinctBy(root => (root.Id, WorkspacePathSpelling.Canonical(root.Path)), new RootHistoryComparer()).ToArray();
+
+    private static IReadOnlyList<WorkspaceFileGrant> MergeFileHistory(IReadOnlyList<WorkspaceFileGrant> history, IReadOnlyList<WorkspaceFileGrant> files)
+        => history.Concat(files).DistinctBy(file => (file.Id, WorkspacePathSpelling.Canonical(file.Path)), new RootHistoryComparer()).ToArray();
 
     private sealed class RootHistoryComparer : IEqualityComparer<(string Id, string Path)>
     {
@@ -122,5 +145,6 @@ public sealed partial class StorageScopeRegistry
     {
         public WorkspaceDefinition Read(bool requireAvailable = false) => registry.ReadWorkspace(storageId, requireAvailable);
         public IReadOnlyList<WorkspaceSourceRoot> ReadHistoricalRoots() => HistoricalRoots(registry.GetRegistration(storageId));
+        public IReadOnlyList<WorkspaceFileGrant> ReadHistoricalFiles() => HistoricalFiles(registry.GetRegistration(storageId));
     }
 }

@@ -72,7 +72,9 @@ internal sealed class WorkspaceSnapshotService : IWorkspaceSnapshotService
             project.RootPath,
             request.IncludeHidden,
             Math.Clamp(request.MaxFiles, 1, 100_000),
-            Math.Clamp(request.MaxBytes, 1, 1024L * 1024 * 1024), request.SourceRoots), cancellationToken).ConfigureAwait(false);
+            Math.Clamp(request.MaxBytes, 1, 1024L * 1024 * 1024),
+            request.SourceRoots,
+            request.SourceFiles), cancellationToken).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(request.ExpectedWorkspaceHash)
             && !FixedEquals(request.ExpectedWorkspaceHash, manifest.WorkspaceHash))
         {
@@ -152,8 +154,8 @@ internal sealed class WorkspaceSnapshotService : IWorkspaceSnapshotService
             throw new UnauthorizedAccessException("Project is outside the current tenant/workspace.");
         var manifest = await ReadManifestAsync(row, cancellationToken).ConfigureAwait(false);
         var provider = ResolveProvider(project.RootPath, manifest.ProviderKind);
-        var current = await provider.CaptureAsync(new WorkspaceSnapshotCaptureRequest(
-            project.RootPath, manifest.IncludeHidden, 100_000, 1024L * 1024 * 1024, SnapshotSources(manifest)), cancellationToken).ConfigureAwait(false);
+        var current = await provider.CaptureAsync(CaptureRequestForManifest(
+            project.RootPath, manifest, 100_000, 1024L * 1024 * 1024), cancellationToken).ConfigureAwait(false);
         var conflicts = new List<string>();
         if (!FixedEquals(row.WorkspaceHash, current.WorkspaceHash)) conflicts.Add("workspace_hash");
         if (manifest.Git is { } expectedGit && current.Git is { } actualGit)
@@ -445,8 +447,8 @@ internal sealed class WorkspaceSnapshotService : IWorkspaceSnapshotService
         // MaxBytes of one asks the provider for hashes only. A listing answers "which files moved
         // out of line with the snapshot", and copying every small file into memory to find out
         // would make the read side as expensive as taking another snapshot.
-        var current = await provider.CaptureAsync(new WorkspaceSnapshotCaptureRequest(
-            project.RootPath, manifest.IncludeHidden, 100_000, 1, SnapshotSources(manifest)), cancellationToken).ConfigureAwait(false);
+        var current = await provider.CaptureAsync(CaptureRequestForManifest(
+            project.RootPath, manifest, 100_000, 1), cancellationToken).ConfigureAwait(false);
         return (manifest, row, current, project);
     }
 
@@ -563,6 +565,23 @@ internal sealed class WorkspaceSnapshotService : IWorkspaceSnapshotService
 
     private IReadOnlyList<WorkspaceSourceRoot>? SnapshotSources(WorkspaceSnapshotDocument manifest) => manifest.Roots is null ? null
         : (_bundle ?? throw new InvalidOperationException("Workspace bundle authorization is unavailable.")).AuthorizedSources(manifest);
+
+    private WorkspaceSnapshotCaptureRequest CaptureRequestForManifest(
+        string root,
+        WorkspaceSnapshotDocument manifest,
+        int maxFiles,
+        long maxBytes)
+    {
+        var sources = SnapshotSources(manifest);
+        return new WorkspaceSnapshotCaptureRequest(
+            root,
+            manifest.IncludeHidden,
+            maxFiles,
+            maxBytes,
+            SourceRoots: sources?.Where(source => Directory.Exists(source.Path)).ToArray(),
+            SourceFiles: sources?.Where(source => File.Exists(source.Path))
+                .Select(source => new WorkspaceFileGrant(source.Id, source.Path)).ToArray());
+    }
     private (string RootPath, string Qualified, string Relative) ResolveSnapshotFile(string legacyRoot, WorkspaceSnapshotDocument manifest, string path)
     {
         if (manifest.Roots is null)
@@ -573,6 +592,12 @@ internal sealed class WorkspaceSnapshotService : IWorkspaceSnapshotService
         var separator = path.IndexOf('/');
         if (separator < 1) throw new WorkspaceSnapshotPathException(path);
         var root = SnapshotSources(manifest)!.SingleOrDefault(source => source.Id == path[..separator]) ?? throw new WorkspaceSnapshotPathException(path);
+        if (File.Exists(root.Path))
+        {
+            var expected = root.Id + "/" + Path.GetFileName(root.Path);
+            if (!string.Equals(path, expected, StringComparison.Ordinal)) throw new WorkspaceSnapshotPathException(path);
+            return (Path.GetDirectoryName(root.Path)!, expected, Path.GetFileName(root.Path));
+        }
         var local = ResolveRelativeInsideRoot(root.Path, path[(separator + 1)..]) ?? throw new WorkspaceSnapshotPathException(path);
         return (root.Path, root.Id + "/" + local, local);
     }

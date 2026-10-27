@@ -261,7 +261,9 @@ public sealed class ToolDispatcher : ILeaseFencedToolDispatcher
                 {
                     var snapshot = await _snapshots.CreateAsync(new WorkspaceSnapshotCreateRequest(
                         scope.ProjectId, $"execution:{execution.Id:N}:prewrite", SourceRoots: scope.ToolExecutionContext?.WorkspaceRoots is { Count: > 0 } roots
-                            ? roots.Select(root => new WorkspaceSourceRoot(root.Id, root.Path)).ToArray() : null), cancellationToken).ConfigureAwait(false);
+                            ? roots.Select(root => new WorkspaceSourceRoot(root.Id, root.Path)).ToArray() : null,
+                        SourceFiles: scope.ToolExecutionContext?.WorkspaceFiles is { Count: > 0 } files
+                            ? files.Select(file => new WorkspaceFileGrant(file.Id, file.Path)).ToArray() : null), cancellationToken).ConfigureAwait(false);
                     execution = await _executions.BindWorkspaceSnapshotAsync(
                         execution.Id, snapshot.Id, snapshot.WorkspaceHash, cancellationToken).ConfigureAwait(false);
                 }

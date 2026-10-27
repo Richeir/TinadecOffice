@@ -100,6 +100,7 @@ internal interface IAcpAgentSession : IAsyncDisposable
     Exception? Fault { get; }
 
     Task<AcpTurnResult> PromptAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken);
+    Task<AcpTurnResult> PromptAsync(IReadOnlyList<AcpContentBlock> prompt, IAcpTurnObserver observer, CancellationToken cancellationToken);
 
     Task CancelTurnAsync(CancellationToken cancellationToken);
 
@@ -306,7 +307,10 @@ internal sealed class AcpSession : IAcpAgentSession
         };
     }
 
-    public async Task<AcpTurnResult> PromptAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken)
+    public Task<AcpTurnResult> PromptAsync(string prompt, IAcpTurnObserver observer, CancellationToken cancellationToken) =>
+        PromptAsync([new AcpContentBlock("text", prompt)], observer, cancellationToken);
+
+    public async Task<AcpTurnResult> PromptAsync(IReadOnlyList<AcpContentBlock> prompt, IAcpTurnObserver observer, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
@@ -328,7 +332,7 @@ internal sealed class AcpSession : IAcpAgentSession
         {
             await EnsureUsableAsync(cancellationToken).ConfigureAwait(false);
 
-            var @params = AcpWire.ToParams(new AcpPromptParams(SessionId, [new AcpContentBlock("text", prompt)]));
+            var @params = AcpWire.ToParams(new AcpPromptParams(SessionId, prompt));
             string? stopReason;
             try
             {

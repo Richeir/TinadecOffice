@@ -107,7 +107,8 @@ internal static class ToolResourcePathRegistry
         // A primary file such as "second/same.txt" and a secondary source's
         // "same.txt" must never yield the same resource identity. Preserve the
         // single-root envelope spelling, but qualify every source in a multi-root run.
-        if (executionContext?.WorkspaceRoots.Count > 1 && PathParameter(toolId) is { } sourceParameter
+        if (executionContext is not null && (executionContext.WorkspaceRoots.Count > 1 || executionContext.WorkspaceFiles.Count > 0)
+            && PathParameter(toolId) is { } sourceParameter
             && !string.IsNullOrWhiteSpace(parametersJson))
         {
             try
@@ -123,6 +124,11 @@ internal static class ToolResourcePathRegistry
                         if (!WorkspaceSkillDiscovery.IsContained(source.Path, absolute)) continue;
                         var relative = Path.GetRelativePath(source.Path, absolute).Replace('\\', '/');
                         return new("resource.access", mutating ? "mutate" : "read", $"path://{source.Id}/{relative}");
+                    }
+                    foreach (var file in executionContext.WorkspaceFiles)
+                    {
+                        if (!SamePath(file.Path, absolute)) continue;
+                        return new("resource.access", mutating ? "mutate" : "read", $"file://{file.Id}");
                     }
                 }
             }
@@ -145,6 +151,12 @@ internal static class ToolResourcePathRegistry
                         if (!WorkspaceSkillDiscovery.IsContained(source.Path, path)) continue;
                         var relative = Path.GetRelativePath(source.Path, Path.GetFullPath(path)).Replace('\\', '/');
                         return new("resource.access", mutating ? "mutate" : "read", $"path://{source.Id}/{relative}");
+                    }
+                if (Path.IsPathRooted(path))
+                    foreach (var file in executionContext.WorkspaceFiles)
+                    {
+                        if (!SamePath(file.Path, path)) continue;
+                        return new("resource.access", mutating ? "mutate" : "read", $"file://{file.Id}");
                     }
                 if (!mutating && toolId is "read_file" or "ls" or "stat" && Path.IsPathRooted(path))
                     foreach (var root in executionContext.ReadRoots)
@@ -179,6 +191,10 @@ internal static class ToolResourcePathRegistry
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException or UnauthorizedAccessException) { return false; }
     }
+
+    private static bool SamePath(string left, string right) =>
+        string.Equals(Path.GetFullPath(left), Path.GetFullPath(right),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>
     /// Read the workspace-relative target a resource claim carries

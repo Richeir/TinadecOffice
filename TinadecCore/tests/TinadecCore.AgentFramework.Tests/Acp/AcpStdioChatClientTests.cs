@@ -51,6 +51,24 @@ public sealed class AcpStdioChatClientTests : IDisposable
     private static ChatMessage[] Ask(string text) => [new ChatMessage(ChatRole.User, text)];
 
     [Fact]
+    public void PromptBlocks_MapLocalImageDataWithoutGuessingTheMediaType()
+    {
+        var message = new ChatMessage(ChatRole.User,
+        [
+            new TextContent("look at this"),
+            new DataContent(new byte[] { 1, 2, 3, 4 }, "image/png") { Name = "shot.png" }
+        ]);
+
+        var blocks = AcpStdioChatClient.PromptBlocks([message]);
+
+        Assert.Equal("text", blocks[0].Type);
+        Assert.Equal("look at this", blocks[0].Text);
+        Assert.Equal("image", blocks[1].Type);
+        Assert.Equal("image/png", blocks[1].MimeType);
+        Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2, 3, 4 }), blocks[1].Data);
+    }
+
+    [Fact]
     public async Task GetResponseAsync_ReturnsTheAnswerTheAgentStreamed()
     {
         var (host, pool) = CreateHost();

@@ -376,6 +376,12 @@ const MOCK_ATTACHMENT_SUMMARY = {
   media_type: 'text/plain',
   content_hash: 'a'.repeat(64),
   content_length: 4_128,
+  origin: 'composer',
+  project_id: null,
+  source_path: null,
+  delivered_to_model: false,
+  delivered_run_id: null,
+  delivered_at: null,
   created_at: iso(-60 * 5),
   bound_at: iso(-60 * 4),
 }

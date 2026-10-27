@@ -20,12 +20,14 @@ public interface IAcpHarnessProber
     /// the identity the session's scratch directory is derived from; a provider that is not stored yet
     /// passes <c>null</c> and is probed under a throwaway identity.
     /// </summary>
-    Task ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default);
+    Task<AcpHarnessProbeResult> ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default);
 }
+
+public sealed record AcpHarnessProbeResult(bool LoadSession, bool ImageInput, bool SessionFork);
 
 internal sealed class AcpHarnessProber(IAcpSessionHost sessions) : IAcpHarnessProber
 {
-    public async Task ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default)
+    public async Task<AcpHarnessProbeResult> ProbeAsync(Guid? providerInstanceId, string harnessId, string binaryPath, string? homePath, CancellationToken cancellationToken = default)
     {
         // Resolved before anything is spawned: a driver the catalog gives no ACP argv for must not reach
         // the transport with a guessed command line, and there is then no session to clean up.
@@ -34,13 +36,15 @@ internal sealed class AcpHarnessProber(IAcpSessionHost sessions) : IAcpHarnessPr
         try
         {
             // Reaching a session is the whole test: `initialize` answered and `session/new` succeeded.
-            _ = await sessions.AcquireAsync(new AcpSessionRequest(
+            var session = await sessions.AcquireAsync(new AcpSessionRequest(
                 probeId,
                 harnessId,
                 binaryPath,
                 argv,
                 sessions.ScratchDirectoryFor(probeId),
                 string.IsNullOrWhiteSpace(homePath) ? null : new Dictionary<string, string?> { ["HOME"] = homePath }), cancellationToken).ConfigureAwait(false);
+            var capabilities = session.Capabilities;
+            return new(capabilities.LoadSession, capabilities.ImageInput, capabilities.SessionFork);
         }
         finally
         {

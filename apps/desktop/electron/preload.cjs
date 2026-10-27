@@ -1,4 +1,8 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+// `webUtils.getPathForFile` exists from Electron 32; the optional call keeps a preload loaded by an
+// older runtime from throwing at require time and taking the whole bridge down.
+const electronWebUtils = webUtils ?? null;
 
 contextBridge.exposeInMainWorld('tinadec', {
   gatewayUrl: () => process.env.TINADEC_RESOLVED_GATEWAY_URL ?? process.env.TINADEC_GATEWAY_URL ?? 'http://127.0.0.1:48730',
@@ -18,6 +22,13 @@ contextBridge.exposeInMainWorld('tinadec', {
   discoverServices: () => ipcRenderer.invoke('tinadec:discover-services'),
   restartApp: () => ipcRenderer.invoke('tinadec:restart'),
   selectWorkspaceFolders: (title) => ipcRenderer.invoke('tinadec:select-workspace-folders', title),
+  importWorkspaceFiles: (input) => ipcRenderer.invoke('tinadec:import-workspace-files', input),
+  // Synchronous by necessity: the absolute path of a dropped file is only reachable during the
+  // drop handler, and a Promise could not be awaited before the browser clears the FileList.
+  // Empty when Electron gives no path (a synthetic File, a detached window without the bridge).
+  pathForFile: (file) => {
+    try { return electronWebUtils?.getPathForFile?.(file) ?? ''; } catch { return ''; }
+  },
   minimizeWindow: () => ipcRenderer.send('tinadec:minimize'),
   maximizeWindow: () => ipcRenderer.send('tinadec:maximize'),
   closeWindow: () => ipcRenderer.send('tinadec:close'),

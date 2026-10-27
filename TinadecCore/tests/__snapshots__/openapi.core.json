@@ -3307,6 +3307,23 @@
             "format": "date-time",
             "type": "string"
           },
+          "delivered_at": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "delivered_run_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "delivered_to_model": {
+            "type": "boolean"
+          },
           "file_name": {
             "type": "string"
           },
@@ -3322,8 +3339,24 @@
               "string"
             ]
           },
+          "origin": {
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "session_id": {
             "type": "string"
+          },
+          "source_path": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         },
         "type": "object"
@@ -3687,6 +3720,15 @@
           "color": {
             "default": "default",
             "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceFileGrant"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           },
           "icon": {
             "default": "folder",
@@ -6399,6 +6441,12 @@
               "string"
             ]
           },
+          "workspace_files": {
+            "items": {
+              "$ref": "#/components/schemas/ToolWorkspaceFileDto"
+            },
+            "type": "array"
+          },
           "workspace_roots": {
             "items": {
               "$ref": "#/components/schemas/ToolWorkspaceRootDto"
@@ -7181,6 +7229,17 @@
         },
         "type": "object"
       },
+      "ToolWorkspaceFileDto": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ToolWorkspaceRootDto": {
         "properties": {
           "id": {
@@ -7513,6 +7572,12 @@
             "default": "default",
             "type": "string"
           },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceFileGrant"
+            },
+            "type": "array"
+          },
           "icon": {
             "default": "folder",
             "type": "string"
@@ -7534,6 +7599,21 @@
           "name",
           "roots",
           "primary_root_id"
+        ],
+        "type": "object"
+      },
+      "WorkspaceFileGrant": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path"
         ],
         "type": "object"
       },
@@ -11466,6 +11546,49 @@
         },
         "tags": [
           "TinadecCore.Api"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectId}/exposures": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageAttachmentDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem\u002Bjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Attachments"
         ]
       }
     },
@@ -16527,6 +16650,104 @@
           "TinadecCore.Api"
         ]
       }
+    },
+    "/auth/begin": {
+      "get": {
+        "description": "Returns the authorization URL and state; the system browser completes the flow.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Begin Logto login",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/callback": {
+      "get": {
+        "description": "Exchanges the authorization code and records the session for polling.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "OIDC callback",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/check": {
+      "get": {
+        "description": "Returns the session token once the authorization callback has completed.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Poll login result",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/login": {
+      "get": {
+        "description": "302 redirect to the Logto authorization endpoint.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Start Logto login",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "Revokes the X-Tinadec-Session token.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Revoke a session",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Resolves X-Tinadec-Session to the logged-in identity.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Current identity",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
+    },
+    "/auth/profile": {
+      "patch": {
+        "description": "Writes nickname/avatar to Logto\u0027s Account API and refreshes the session identity.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Update the account profile",
+        "tags": [
+          "AuthEndpoints"
+        ]
+      }
     }
   },
   "servers": [
@@ -16537,6 +16758,9 @@
   "tags": [
     {
       "name": "TinadecCore.Api"
+    },
+    {
+      "name": "Attachments"
     },
     {
       "name": "CorrectionEndpoints"
@@ -16557,7 +16781,7 @@
       "name": "ToolExecutions"
     },
     {
-      "name": "Attachments"
+      "name": "AuthEndpoints"
     },
     {
       "name": "Tool Skills"

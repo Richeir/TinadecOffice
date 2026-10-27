@@ -117,7 +117,15 @@ public sealed class ControlPlaneService
         JsonElement Value(string key) => cfg != null && cfg.TryGetValue(key, out var v) ? v : default;
         string? String(string key) => Value(key).ValueKind == JsonValueKind.String ? Value(key).GetString() : null;
         string[] Models() => Value("models").ValueKind == JsonValueKind.Array ? Value("models").EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToArray() : Array.Empty<string>();
-        return new { id = row.Id, driver = row.Driver, protocol = HarnessCatalog.ResolveProtocol(String("protocol"), row.Driver, String("channel")), channel = String("channel"), display_name = row.DisplayName, connection_kind = row.ConnectionKind, base_url = String("base_url"), model = String("model"), models = Models(), model_parameters = ModelParameters.ReadMap(Value("model_parameters")), has_api_key = row.SecretReference != null && _secrets.ExistsAsync(row.SecretReference).GetAwaiter().GetResult(), binary_path = String("binary_path"), home_path = String("home_path"), server_url = String("server_url"), launch_args = String("launch_args"), capabilities = cfg != null && cfg.TryGetValue("capabilities", out var c) && c.ValueKind == JsonValueKind.Array ? c.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : Array.Empty<string>(), enabled = row.Enabled, status = row.Enabled ? "configured" : "disabled", status_message = "Persisted configuration", revision = row.Revision, scope = row.Scope, created_at = row.CreatedAt, updated_at = row.UpdatedAt }; }
+        var protocol = HarnessCatalog.ResolveProtocol(String("protocol"), row.Driver, String("channel"));
+        var configElement = JsonSerializer.SerializeToElement(cfg ?? new Dictionary<string, JsonElement>());
+        var imageInput = ImageInputCapability.Resolve(configElement, protocol, String("model"));
+        var imageBase = ImageInputCapability.ResolveBase(configElement, protocol);
+        var acpSnapshot = protocol == ChatProtocols.Acp;
+        var imageOverrides = Value("image_input").ValueKind == JsonValueKind.Object
+            && Value("image_input").TryGetProperty("model_overrides", out var overrides)
+            && overrides.ValueKind == JsonValueKind.Object ? overrides.Clone() : (JsonElement?)null;
+        return new { id = row.Id, driver = row.Driver, protocol, channel = String("channel"), display_name = row.DisplayName, connection_kind = row.ConnectionKind, base_url = String("base_url"), model = String("model"), models = Models(), model_parameters = ModelParameters.ReadMap(Value("model_parameters")), image_input = new { enabled = imageInput.Enabled, max_image_bytes = imageInput.MaxImageBytes, max_images_per_turn = imageInput.MaxImagesPerTurn, base_enabled = imageBase.Enabled, base_max_image_bytes = imageBase.MaxImageBytes, base_max_images_per_turn = imageBase.MaxImagesPerTurn, editable = !acpSnapshot && protocol is ChatProtocols.OpenAiChat or ChatProtocols.OpenAiResponses or ChatProtocols.AnthropicMessages, source = acpSnapshot ? "acp_snapshot" : protocol is ChatProtocols.OpenAiChat or ChatProtocols.OpenAiResponses or ChatProtocols.AnthropicMessages ? "config" : "protocol_unsupported", model_overrides = imageOverrides }, has_api_key = row.SecretReference != null && _secrets.ExistsAsync(row.SecretReference).GetAwaiter().GetResult(), binary_path = String("binary_path"), home_path = String("home_path"), server_url = String("server_url"), launch_args = String("launch_args"), capabilities = cfg != null && cfg.TryGetValue("capabilities", out var c) && c.ValueKind == JsonValueKind.Array ? c.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : Array.Empty<string>(), enabled = row.Enabled, status = row.Enabled ? "configured" : "disabled", status_message = "Persisted configuration", revision = row.Revision, scope = row.Scope, created_at = row.CreatedAt, updated_at = row.UpdatedAt }; }
 
     public async Task<IResult> RefreshProviderModels(Guid id, CancellationToken ct)
     {
@@ -294,6 +302,7 @@ public sealed class ControlPlaneService
         }
 
         OpencodeServeEndpoint? endpoint = null;
+        AcpHarnessProbeResult? acpCapabilities = null;
         var existing = await ExistingCliProviderAsync(driver, channel, protocol, ct);
         if (protocol == ChatProtocols.Acp)
         {
@@ -302,7 +311,7 @@ public sealed class ControlPlaneService
             // probe never proved is what let a provider look connected while it could not start.
             try
             {
-                await ProbeAcpHandshakeAsync(driver, binaryPath, Get("home_path"), existing?.Id, ct);
+                acpCapabilities = await ProbeAcpHandshakeAsync(driver, binaryPath, Get("home_path"), existing?.Id, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -336,6 +345,13 @@ public sealed class ControlPlaneService
             home_path = Get("home_path"),
             server_url = endpoint?.ServerUrl,
             launch_args = Get("launch_args") ?? (protocol == ChatProtocols.OpencodeServe ? $"serve --port {port}" : null),
+            _capabilities = acpCapabilities is null ? null : new
+            {
+                image_input = acpCapabilities.ImageInput,
+                load_session = acpCapabilities.LoadSession,
+                session_fork = acpCapabilities.SessionFork,
+                source = "acp_initialize"
+            },
             enabled = true
         });
         // Internal system path: the CLI process just spawned is the source of truth, so the
@@ -348,7 +364,7 @@ public sealed class ControlPlaneService
     /// catalog's argv, the governed scratch directory it is allowed to work in — stays behind the
     /// prober port, because this file's job is the provider row, not the process shape.
     /// </summary>
-    private async Task ProbeAcpHandshakeAsync(string driver, string binaryPath, string? homePath, Guid? providerInstanceId, CancellationToken ct) =>
+    private async Task<AcpHarnessProbeResult> ProbeAcpHandshakeAsync(string driver, string binaryPath, string? homePath, Guid? providerInstanceId, CancellationToken ct) =>
         await _acp.ProbeAsync(providerInstanceId, driver, binaryPath, homePath, ct);
 
     private async Task<ModelProviderRecord?> ExistingCliProviderAsync(string driver, string? channel, string protocol, CancellationToken ct)
@@ -561,10 +577,11 @@ public sealed class ControlPlaneService
                         throw new ArgumentException("Anthropic temperature must be between 0 and 1.");
                 }
             }
+            ImageInputCapability.Validate(JsonSerializer.SerializeToElement(merged));
         }
         catch (Exception ex) when (ex is ArgumentException or JsonException)
         {
-            return Results.BadRequest(new { code = "invalid_model_parameters", message = ex.Message });
+            return Results.BadRequest(new { code = ex.Message.Contains("image_input", StringComparison.Ordinal) ? "invalid_image_input" : "invalid_model_parameters", message = ex.Message });
         }
         var isNew = row is null;
         if (isNew) row = new ModelProviderRecord { Id = id ?? Guid.NewGuid(), TenantId = Tenant.TenantId, WorkspaceId = Tenant.WorkspaceId, CreatedByPrincipalId = Tenant.PrincipalId, CreatedAt = now, Revision = 0 };

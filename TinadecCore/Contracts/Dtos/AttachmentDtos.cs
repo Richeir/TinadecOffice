@@ -14,6 +14,12 @@ public sealed class MessageAttachmentDto
     public string MediaType { get; init; } = string.Empty;
     public string ContentHash { get; init; } = string.Empty;
     public long ContentLength { get; init; }
+    public string Origin { get; init; } = "composer";
+    public Guid? ProjectId { get; init; }
+    public string? SourcePath { get; init; }
+    public bool DeliveredToModel { get; init; }
+    public Guid? DeliveredRunId { get; init; }
+    public DateTimeOffset? DeliveredAt { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset? BoundAt { get; init; }
 }

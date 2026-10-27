@@ -65,6 +65,7 @@ internal sealed record WorkspaceRootSet(string WritableRoot, IReadOnlyList<strin
     public bool IsAllowed(string path, bool writable = false) =>
         (IsWithin(WritableRoot, path)
             || (ToolExecutionContext.Current?.WorkspaceRoots.Any(root => IsWithin(root.Path, path)) == true)
+            || (ToolExecutionContext.Current?.WorkspaceFiles.Any(file => IsExactFile(file.Path, path)) == true)
             || (ToolExecutionContext.Current?.StorageRoot is not null && WorkspaceStoragePolicy.IsPublicScopePath(WritableRoot, path))
             || (!writable && ReadOnlyRoots.Any(root => IsWithin(root, path)))
             || (ToolExecutionContext.Current is { ProjectStorageWrite: true, StorageRoot: { } storage }
@@ -87,6 +88,7 @@ internal sealed record WorkspaceRootSet(string WritableRoot, IReadOnlyList<strin
     public (string Root, string Relative) OwningRoot(string path) =>
         OwningRootIn(path, new[] { WritableRoot }.Concat(ReadOnlyRoots)
             .Concat(ToolExecutionContext.Current?.WorkspaceRoots.Select(root => root.Path) ?? [])
+            .Concat(ToolExecutionContext.Current?.WorkspaceFiles.Select(file => file.Path) ?? [])
             .Concat(ToolExecutionContext.Current is { StorageRoot: { } storage } ? [storage] : Array.Empty<string>()).ToList(),
             static candidate => WorkspacePathForm.Canonical(candidate));
 
@@ -147,10 +149,15 @@ internal sealed record WorkspaceRootSet(string WritableRoot, IReadOnlyList<strin
         return path.StartsWith(prefix, PathComparison);
     }
 
+    private static bool IsExactFile(string root, string path) =>
+        string.Equals(Normalize(root), Normalize(path), PathComparison);
+
     public UnauthorizedAccessException OutsideWorkspace(string attempted, string resolved, bool writable)
     {
         var sources = ToolExecutionContext.Current?.WorkspaceRoots.Select(root => root.Path).ToArray() ?? [WritableRoot];
+        var files = ToolExecutionContext.Current?.WorkspaceFiles.Select(file => file.Path).ToArray() ?? [];
         var allowed = $"the authorized source folders ({string.Join(", ", sources.Select(root => $"'{root}'"))})";
+        if (files.Length > 0) allowed += $" or exact files ({string.Join(", ", files.Select(file => $"'{file}'"))})";
         if (!writable && ReadOnlyRoots.Count > 0)
             allowed += $" or a read-only root ({string.Join(", ", ReadOnlyRoots.Select(root => $"'{root}'"))})";
         return new UnauthorizedAccessException(

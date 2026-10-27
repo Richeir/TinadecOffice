@@ -33,6 +33,7 @@ export type TinaChatWorkspacePolicy = components['schemas']['TinaChatWorkspacePo
 
 export interface ProjectDto {
   roots?: import('@/lib/workspaces').WorkspaceRoot[] | null;
+  files?: import('@/lib/workspaces').WorkspaceFileGrant[] | null;
   primary_root_id?: string | null;
   icon?: string;
   color?: string;
@@ -400,6 +401,24 @@ export interface ModelParametersDto {
   max_output_tokens?: number | null;
 }
 
+export interface ImageInputSettingsDto {
+  enabled?: boolean;
+  max_image_bytes?: number;
+  max_images_per_turn?: number;
+  model_overrides?: Record<string, Omit<ImageInputSettingsDto, 'model_overrides'>>;
+}
+
+export interface ImageInputCapabilityDto extends ImageInputSettingsDto {
+  enabled: boolean;
+  max_image_bytes: number;
+  max_images_per_turn: number;
+  base_enabled: boolean;
+  base_max_image_bytes: number;
+  base_max_images_per_turn: number;
+  editable: boolean;
+  source: 'config' | 'acp_snapshot' | 'protocol_unsupported';
+}
+
 export interface ModelProviderInstanceDto {
   id: string;
   driver: string;
@@ -416,6 +435,7 @@ export interface ModelProviderInstanceDto {
   model?: string | null;
   models?: string[];
   model_parameters?: Record<string, ModelParametersDto>;
+  image_input?: ImageInputCapabilityDto;
   has_api_key: boolean;
   binary_path?: string | null;
   home_path?: string | null;
@@ -621,6 +641,7 @@ export interface SaveModelProviderInstanceInput {
   model?: string | null;
   models?: string[];
   model_parameters?: Record<string, ModelParametersDto> | null;
+  image_input?: ImageInputSettingsDto | null;
   api_key?: string | null;
   clear_api_key?: boolean;
   binary_path?: string | null;
@@ -998,6 +1019,7 @@ export interface ModelCenterApiConnectionDto {
   model?: string | null;
   models?: string[];
   model_parameters?: Record<string, ModelParametersDto>;
+  image_input?: ImageInputCapabilityDto;
   has_api_key: boolean;
   server_url?: string | null;
   capabilities: string[];
@@ -3507,9 +3529,13 @@ export const api = {
     bytes: Blob | ArrayBuffer | Uint8Array,
     fileName: string,
     mediaType?: string,
+    metadata: { origin?: 'composer' | 'workspace'; projectId?: string | null; sourcePath?: string } = {},
   ) => {
     const search = new URLSearchParams({ filename: fileName });
     if (mediaType) search.set('media_type', mediaType);
+    if (metadata.origin) search.set('origin', metadata.origin);
+    if (metadata.projectId) search.set('project_id', metadata.projectId);
+    if (metadata.sourcePath) search.set('source_path', metadata.sourcePath);
     return request<MessageAttachmentDto>(
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/attachments?${search.toString()}`,
       { method: 'POST', body: bytes as BodyInit, headers: { 'content-type': 'application/octet-stream' } },
@@ -3517,6 +3543,8 @@ export const api = {
   },
   listAttachments: (sessionId: string) =>
     request<MessageAttachmentDto[]>(`/api/v1/sessions/${encodeURIComponent(sessionId)}/attachments`),
+  listProjectExposures: (projectId: string) =>
+    request<MessageAttachmentDto[]>(`/api/v1/projects/${encodeURIComponent(projectId)}/exposures`),
   getAttachment: (attachmentId: string) =>
     request<MessageAttachmentDto>(`/api/v1/attachments/${encodeURIComponent(attachmentId)}`),
   deleteAttachment: (attachmentId: string) =>

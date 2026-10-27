@@ -37,6 +37,57 @@ public sealed class MultiFolderWorkspaceTests : IAsyncLifetime
         var roster = await client.GetFromJsonAsync<JsonElement>("/api/v1/projects"); Assert.Single(roster.EnumerateArray()); Assert.Equal("a", roster[0].GetProperty("primary_root_id").GetString());
         var existing = await client.PostAsJsonAsync("/api/v1/storage/scopes/preview", new { project_path = b }); existing.EnsureSuccessStatusCode(); Assert.True((await existing.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("exists").GetBoolean());
     }
+
+    [Fact] public async Task ExactFileGrantIsHostAuthorizedAndFrozenWithoutGrantingItsParentFolder() {
+        using var client = _factory.CreateClient();
+        var a = Folder("a");
+        var b = Folder("b");
+        var exact = Path.Combine(b, "selected.txt");
+        await File.WriteAllTextAsync(exact, "selected");
+        var response = await client.PostAsJsonAsync("/api/v1/storage/scopes/open", new
+        {
+            project_path = a,
+            name = "Exact grant",
+            roots = new[] { new { id = "a", path = a }, new { id = "b", path = b } },
+            files = new[] { new { id = "selected", path = exact } },
+            primary_root_id = "a"
+        });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        var scope = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var storageId = scope.GetProperty("storage_id").GetString()!;
+        var projectId = scope.GetProperty("project_id").GetGuid();
+        var file = Assert.Single(scope.GetProperty("workspace").GetProperty("files").EnumerateArray());
+        Assert.Equal("selected", file.GetProperty("id").GetString());
+        Assert.Equal(exact, file.GetProperty("path").GetString());
+        var registryText = await File.ReadAllTextAsync(Path.Combine(
+            _factory.Services.GetRequiredService<IStorageScopeRegistry>().User.State, "projects.toml"));
+        Assert.Contains("authorized_files", registryText, StringComparison.Ordinal);
+        Assert.Contains("selected.txt", registryText, StringComparison.Ordinal);
+
+        await using var lease = await _factory.Services.GetRequiredService<IStorageScopeRegistry>().AcquireAsync(storageId);
+        var frozen = await lease.Services.GetRequiredService<IToolConfigurationResolver>()
+            .ResolveForRunAsync(projectId, []);
+        var frozenFile = Assert.Single(frozen.SharedContext.WorkspaceFiles);
+        Assert.Equal("selected", frozenFile.Id);
+        Assert.Equal(exact, frozenFile.Path);
+
+        var workspace = _factory.Services.GetRequiredService<IWorkspaceRegistry>().ReadWorkspace(storageId, true);
+        var snapshots = lease.Services.GetRequiredService<IWorkspaceSnapshotService>();
+        var snapshot = await snapshots.CreateAsync(new(
+            projectId,
+            "exact-file-snapshot",
+            SourceRoots: workspace.Roots,
+            SourceFiles: workspace.Files));
+        var changes = await snapshots.ListFileChangesAsync(snapshot.Id);
+        Assert.Contains(changes, row => row.Path == "selected/selected.txt");
+
+        var manifest = Path.Combine(a, ".tinadec", "project.toml");
+        var text = await File.ReadAllTextAsync(manifest);
+        await File.WriteAllTextAsync(manifest, text.Replace("selected.txt", "unselected.txt", StringComparison.Ordinal));
+        var error = Assert.Throws<ConfigurationDocumentException>(() =>
+            _factory.Services.GetRequiredService<IWorkspaceRegistry>().ReadWorkspace(storageId, true));
+        Assert.Equal("workspace_authorization_required", error.Code);
+    }
     [Fact] public async Task ConditionalEditPreservesCommentsStorageAndHistoricalFrozenRoots() {
         using var client = _factory.CreateClient(); var a = Folder("a"); var b = Folder("b"); var scope = await Create(client, a, b);
         var id = scope.GetProperty("storage_id").GetString()!; var registry = _factory.Services.GetRequiredService<IWorkspaceRegistry>();

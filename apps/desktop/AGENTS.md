@@ -1,5 +1,43 @@
 # DESKTOP APP KNOWLEDGE
 
+## 2026-10-27 工作空间精确文件、附件曝光与延迟上传
+
+`WorkspaceRootsPanel` 现在同时管理工作目录与 `project.files[]`。拖入文件夹仍就地加入 roots；拖入文件默认绑定**原路径**，通过同一个 `saveWorkspace` 写入 `[[workspace.files]]`，不再为了读一个文件授权父目录。复制保留为显式按钮并继续走主进程 `workspaceImport`；第三条按钮“附到当前对话”只把文件放进作曲器待发状态，不创建会话。
+
+`pendingAttachments` 增加 `staged` 状态：无 session 时保留 `AttachableFile` 的内存引用和本地预览，发送路径创建 session 后 `flushStagedAttachments` 才上传。`pendingAttachmentCount` 负责发射按钮门禁，`attachmentsForSend` 仍只返回 Core 已确认的 row。附件上传 metadata 增加 `origin` / `project_id` / `source_path`；普通 composer 文件默认 `origin=composer`，工作空间按钮预填 `origin=workspace`。
+
+工作空间卡片新增“给 Agent 看过的东西”，读取 `GET /projects/{id}/exposures`，显示缩略图、文件、来源、会话、时间和 `delivered_to_model`。送达状态来自 Core，不由前端根据“上传成功”猜。`WorkspaceEditorDialog` 不编辑精确文件，但控制器在普通工作区编辑时保留已有 `files`，避免改名字/颜色清空文件授权。
+
+模型参数编辑器新增图片输入轴：HTTP 可编辑 `enabled`、单图字节、每轮张数并写 `model_overrides[model]`；ACP 显示上次 initialize 快照且只读；OpenCode/TUI/Headless 明确 unsupported。`ModelProviderInstanceDto` / snapshot 投影保留 `image_input`。
+
+**门禁**：Desktop 相关 vitest 237/237（pendingAttachments、ComposerBar、WorkspaceRootsPanel、HomeController、ModelParametersEditor、ConversationView、i18nParity），`vue-tsc` 0，生产 `vite build` exit 0；Gateway 109/109。未做真实 Electron 拖放与真实视觉模型。完整边界见根 `.tinadec_dev/reports/2026-10-27-image-attachments.zh-CN.md`。
+
+## 2026-10-26 工作空间卡片：源文件夹的第二个入口
+
+右侧功能面板新增 `workspace` 卡片（UIE descriptor，singleton，见 `apps/TinadecUI/AGENTS.md`），主体是 `apps/desktop/src/components/WorkspaceRootsPanel.vue`。它读 `homeController.currentProject`（`roots` / `primary_root_id` / `configuration_hash` / `storage_id`）与 `homeController.currentPermission`（发送框的权限设置，准入时冻结进 run），**不持有第二份工作区状态**：加/减源文件夹走 `homeController` 新增的四个读—改—写动作（`updateWorkspaceRoots` / `addWorkspaceFolderPaths` / `removeWorkspaceRoot` / `setPrimaryWorkspaceRoot`），它们最终都落到既有的 `api.saveWorkspace(storageId, input, hash)`——也就是 `PUT /api/v1/storage/scopes/{id}/workspace`，同一份 `project.toml`、同一个 `If-Match` 摘要、同一条宿主授权发布路径。**没有新 Core 端点，OpenAPI 契约零漂移。**
+
+四个动作共用 `applyWorkspaceRoots` 做守卫，而不是各自校验：目录不得重复（`folderIdentity`，Windows 大小写不敏感）、不得为零、不超过 32（与 `WorkspaceEditorDialog` 同一个上限，Core 的 `WorkspaceDefinition.Validate` 是权威兜底）、主文件夹被移除时回落到剩下的第一个。`configuration_hash` 缺失时先 `api.readWorkspace` 读一次再带 `If-Match`，**不发空摘要**——Core 会以 428 拒掉，而那看起来像「保存坏了」。412（`configuration_conflict`）经 `run()` 的既有错误通知呈现原因；卡片没有草稿，恢复手段是卡头的重新读取（`refreshProjectsAndSessions`），即编辑窗口「载入最新配置并替换草稿」在无草稿场景下的等价物。
+
+**加源文件夹只放宽资源边界，不放宽审批门。** 卡片因此只陈述当前会话权限模式与后果（`default` / `auto-approve` / `full-access` 各一句，三种委派模式复用发送框既有的 `permission.delegateConversationHint`，不另写一份），切换入口指向发送框的权限菜单，**不提供「为本工作区免审批」的开关**。写 `full-access` 本身也要落在冻结的权限模式上：`ToolApprovalCoordinator` 只对冻结值 `full-access` 免逐次审批，`ToolApprovalPolicy` 的自动批准开关是另一层；`write_file` 属高风险，`auto-approve` 不放行。文案里不得出现「不需要授权」「免审批」这种会被审批门推翻的绝对说法。
+
+**改动只对新运行生效。** 目录集合在准入时冻结，并进入工具进程的 `processKey`（`TinadecToolsProcessManager` 用存储 ID + 目录集合 + 主目录 + 存储写策略算摘要），所以新集合自然起一个新进程；正在跑的 run、既有终端与已完成的 run 保持原集合。保存成功不等于「当前这一轮已经能读新目录」，卡片必须把这句话写出来。
+
+拖入有两种语义，别合并：**文件夹是就地引用**（追加 `roots`，这是「建立链接」的语义），**文件是复制**。不复制就只能把文件所在目录整体加为源文件夹（拖一张图片等于授权整层目录），而工具层拒绝一切经过符号链接的路径（`TinadecTools/Tools/FileRW/FileToolRuntime.cs` 的 `EnsureNoLinkTraversal`），链接进来的文件智能体永远读不到。类型判定只能用 `DataTransferItem.webkitGetAsEntry()` 的 `isDirectory`——它是 drop 里唯一能在解析路径前分辨文件夹与文件的手段；`pathForFile` 解析不到路径的条目按名称报为未复制，**不能当成功**（空结果会被读成「没有要复制的」）。
+
+复制走主进程 IPC 而不是 `write_file`：`write_file` 逐文件审批且是文本管线，复制照片既不适用也会把每次拖拽变成一串审批。渲染层拿不到 `File` 的真实路径（`File.path` 早已移除），必须先经 preload 的 `pathForFile`（内部 `webUtils.getPathForFile`）解析，再交给 `importWorkspaceFiles({ destDir, files })`。守卫按不可信输入处理：**只接受可信主页面**（与 `selectWorkspaceFolders` 同一个 `isTrustedHostSender` 门）、目标目录必须是已存在的绝对目录、来源必须是绝对路径的普通文件、拒绝符号链接、单批上限（超出逐项作为跳过报告而不是静默丢弃）、**只用 `COPYFILE_EXCL` 创建新文件、从不覆盖**（同名项报 `exists` 跳过，大小写不敏感的平台上再按小写归一去重），逐项返回 `imported`（名称 / 落点 / 字节数）与 `skipped`（稳定原因码，措辞归渲染层——主进程不写用户可见语言）。
+
+**诚实边界**：这条 IPC 新增的能力是「在已存在的绝对目录里创建新文件」。渲染层本来就有用户自己的终端（`node-pty`），所以它不扩大 blast radius；但也别把它当成审批门的一部分——它**在**审批门之外，这正是它坚持从不覆盖的原因。
+
+**本轮实际跑过的与未验证的**：契约级事实（32 个上限、`full-access` 才免逐次审批、目录集合进入 `processKey`、工具层拒绝链接、`saveWorkspace` 不需要新端点）逐条回源码核对过。命令级证据：`node --test apps/desktop/electron/workspaceImport.test.cjs` **7/7 通过**（复制并报告名称/落点/字节数、同名不覆盖且原件存活、链接/目录/缺失/相对路径各自不同的原因码、超量逐项报告、超过 64 MiB 单文件被拒且同批其余文件照常落地、仅大小写不同的两个文件不抢同一目标、非可信 sender 与非法目标目录被拒）；`npx vitest run src/locales/i18nParity.test.ts src/components/uieCardRegistry.test.ts src/components/WorkspaceCard.test.ts` **11/11 通过**（五语键与占位符齐全、descriptor 唯一性自动覆盖新卡、卡体确实渲染面板）；TinadecUI `featureCatalog.test.ts` **2/2 通过**。
+
+控制器侧证据（切片 B）：`npx vitest run src/controllers/HomeController.test.ts` **58/58 通过**，其中 11 例专钉五个新方法——加文件夹只发一次 `saveWorkspace`（不是新端点）、重复文件夹按 `folderIdentity` 拒绝、主文件夹不可移除、仅剩一个文件夹不可移除、非主文件夹可移除且主标记不变、`setPrimaryWorkspaceRoot` 只改标记不改 `path`、`configuration_hash` 为空串时先 `api.readWorkspace` 再带 `If-Match`、无工作区时明确报错而不是静默无操作、`importWorkspaceFiles` 过滤空白路径并把 `destDir` 定为主文件夹、缺 IPC 桥时报「需要桌面宿主」而不是返回空成功。**测试跑出一个真缺陷并已修**：`configuration_hash` 为空串时 `??` 不回退，会发出空 `If-Match` 被 Core 以 428 拒掉，现已改为 `||` 并补用例钉住。
+
+卡片正文证据（切片 C，`WorkspaceRootsPanel.vue`）：`npx vitest run src/components/WorkspaceRootsPanel.test.ts src/components/WorkspaceCard.test.ts` **20/20 通过**。**用例跑出两处真缺陷并已修**：① 只剩一个文件夹时先判「是不是主文件夹」，于是提示「请先把另一个设为主文件夹」——而根本没有另一个，改为先判数量；② 权限文案原本是 `computed`，包裹宿主的 `currentPermission` 后只求值一次，模式切换不重绘，改成渲染期直接读。另补一条用例覆盖不到的行为：拖入的**文件夹**若 `pathForFile` 解析不到路径，原先会被静默丢弃（拖了什么也没发生），现在与文件同样按名称报为未复制。`vue-tsc --noEmit` 零错误；`i18nParity` 8/8、`uieCardRegistry` 2/2、`HomeGitPlacement` 2/2、`HomeController` 58/58 同批复跑通过。
+
+**收尾复核又修掉三处（主代理复看源码发现，非子代理汇报）**：① **权限文案两句写反**——`accessModeDefault` 原写「按每一次调用的审批结果决定」，实际 `default` 下写操作一律等人批；`accessModeAutoApprove` 原写「低风险修改自动放行」，而 `write_file` 声明 `RequiresApproval = true` 且未指定 `Risk`，生成器（`ToolFunctionGenerator.cs:88`）默认判 **high**，`AutoApproveRiskMax` 默认 `medium` 放过不了它，`shell` 又在 `HumanOnlyTools` 里。两句按 `ToolApprovalCoordinator.cs:363` 与 `AutoApproveOptions.cs:21,46` 的事实重写，五语同步。② **`dropHint` 只说文件不说文件夹**，与「拖文件夹=就地引用」的主路径相反，改为两种都写。③ **`description` 被渲染两遍**（列表上方与权限块第一行），拆成 `accessTitle` + `accessReadBody`。另删掉一句凭空造的 `noSkillNeeded`（删时 `i18nParity` 立刻抓到面板仍在引用它，正好证明该门禁有效），并补上计划里写了、实现里漏掉的**单文件 64 MiB 上限**（`workspaceImport.cjs` 的 `MAX_FILE_BYTES`，新增稀疏文件用例，同批其余文件照常落地）。
+
+**未验证**：真实 Electron 里的拖放、复制落盘、保存后 `project.toml` 的 `roots` 变化，以及「新一轮对话能否 `ls` 到新目录、`default` 模式写文件仍出审批 / `full-access` 下直接写」这一整条实机链路——本轮没有运行中的 Core/CDP，不以组件与 IPC 单测替代。生产 `vite build` **跑了但未出结果**：`npx vite build`（`apps/desktop`）跑满 10 分钟无任何输出、`dist/index.html` 时间戳未更新，按超时终止；这与仓库既有记录的「本机卡在 render 阶段约 25 分钟未出产物」同形，**不得据此声称构建通过**。`vue-tsc --noEmit`（`apps/desktop`，走根 `node_modules/.bin/vue-tsc`）**exit 0、零错误**。`WorkspaceRootsPanel.vue` 已登记进 `i18nParity` 的 `panelSources`（本轮补上，否则这张卡的中文/英文键存在性只有它自己的组件用例守），登记后该套件 8/8 通过。
+
 ## 2026-10-26 开发伙伴模式第一片：一个窗口两种形态（胶囊 / 面板）
 
 设置「常规 → 伙伴模式」开关（`desktop.toml [companion] enabled`）打开后，屏幕边缘出现 24×108 胶囊；点击、或在胶囊上向内拖动 ≥26px 展开成 340×520 面板。面板第一版**只是空壳**（标题、占位、收起按钮），不含聊天或快捷入口；Esc 收起；焦点离开所有 TinadecOffice 窗口时自动收起，但焦点落到主窗口/分离面板时保持打开。窗口跨应用始终置顶。

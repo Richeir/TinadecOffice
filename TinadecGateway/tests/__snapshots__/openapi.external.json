@@ -2222,6 +2222,17 @@
             "nullable": true,
             "type": "string"
           },
+          "delivered_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "delivered_run_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "delivered_to_model": {
+            "type": "boolean"
+          },
           "file_name": {
             "type": "string"
           },
@@ -2235,7 +2246,18 @@
             "nullable": true,
             "type": "string"
           },
+          "origin": {
+            "type": "string"
+          },
+          "project_id": {
+            "nullable": true,
+            "type": "string"
+          },
           "session_id": {
+            "type": "string"
+          },
+          "source_path": {
+            "nullable": true,
             "type": "string"
           }
         },
@@ -2247,6 +2269,12 @@
           "media_type",
           "content_hash",
           "content_length",
+          "origin",
+          "project_id",
+          "source_path",
+          "delivered_to_model",
+          "delivered_run_id",
+          "delivered_at",
           "created_at",
           "bound_at"
         ],
@@ -2275,6 +2303,17 @@
             "nullable": true,
             "type": "string"
           },
+          "delivered_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "delivered_run_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "delivered_to_model": {
+            "type": "boolean"
+          },
           "file_name": {
             "type": "string"
           },
@@ -2282,6 +2321,17 @@
             "type": "string"
           },
           "media_type": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "project_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "source_path": {
+            "nullable": true,
             "type": "string"
           }
         },
@@ -2291,6 +2341,12 @@
           "media_type",
           "content_hash",
           "content_length",
+          "origin",
+          "project_id",
+          "source_path",
+          "delivered_to_model",
+          "delivered_run_id",
+          "delivered_at",
           "created_at",
           "bound_at"
         ],
@@ -10040,6 +10096,37 @@
         "summary": "Archive project",
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectId}/exposures": {
+      "get": {
+        "operationId": "getApiV1ProjectsByProjectIdExposures",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageAttachmentList"
+                }
+              }
+            },
+            "description": "Conversation attachments associated with the project."
+          }
+        },
+        "summary": "List project attachment exposures",
+        "tags": [
+          "Attachments"
         ]
       }
     },

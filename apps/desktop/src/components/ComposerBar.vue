@@ -28,7 +28,7 @@ import {
   formatAttachmentBytes,
   MAX_ATTACHMENT_BYTES,
   pendingAttachments,
-  readyAttachmentCount,
+  pendingAttachmentCount,
   reconcileSession,
   removePendingAttachment,
   TOO_LARGE_CODE,
@@ -454,7 +454,7 @@ const canAttach = computed(() => !attachmentPreparing.value && !props.settingsSa
  * run. So Send unlocks on either half. Only *ready* chips count - an upload still in flight
  * names no stored row, and sending early would drop the file.
  */
-const canSend = computed(() => Boolean(props.modelValue.trim()) || readyAttachmentCount() > 0)
+const canSend = computed(() => Boolean(props.modelValue.trim()) || pendingAttachmentCount() > 0)
 
 function openFilePicker(accept: string) {
   closeCommandPanel()
@@ -482,9 +482,11 @@ async function onFilesPicked(event: Event) {
   attachmentPreparing.value = true
   if (!props.sessionId) preparingFiles.value = files.map((file, index) => ({ key: `${index}:${file.name}`, name: file.name, size: file.size, type: file.type }))
   try {
-    const sessionId = props.sessionId ?? await homeController.ensureComposerSession()
-    if (disposed || projectId !== props.selectedProjectId || spatial !== props.spatial || props.sessionId && props.sessionId !== sessionId) return
-    await attachFiles(files, sessionId)
+    const sessionId = props.sessionId ?? null
+    if (disposed || projectId !== props.selectedProjectId || spatial !== props.spatial) return
+    // Attaching never creates a session. Without one the files stay staged and the
+    // send path creates the session, uploads them, then submits the message.
+    await attachFiles(files, sessionId, { projectId })
   } catch (error) {
     if (!disposed) attachmentError.value = `${t('commandPanel.attachmentError')} ${error instanceof Error ? error.message : String(error)}`
   } finally {
@@ -512,7 +514,11 @@ function attachmentHint(item: PendingAttachment): string {
 // Chips describe rows in the session the composer was attached to. immediate covers
 // a remount onto a different session, where no change is observed from inside this
 // component's lifetime.
-watch(() => props.sessionId, (id) => { reconcileSession(id ?? null) }, { immediate: true })
+watch(
+  () => [props.sessionId, props.selectedProjectId] as const,
+  ([id, projectId]) => { reconcileSession(id ?? null, projectId ?? null) },
+  { immediate: true },
+)
 
 async function toggleAskMenu() {
   showAskMenu.value = !showAskMenu.value

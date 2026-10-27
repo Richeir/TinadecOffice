@@ -79,7 +79,8 @@ public sealed record WorkspaceSnapshotCreateRequest(
     bool IncludeHidden = false,
     int MaxFiles = 10_000,
     long MaxBytes = 64 * 1024 * 1024,
-    IReadOnlyList<WorkspaceSourceRoot>? SourceRoots = null);
+    IReadOnlyList<WorkspaceSourceRoot>? SourceRoots = null,
+    IReadOnlyList<WorkspaceFileGrant>? SourceFiles = null);
 
 public sealed record WorkspaceRestoreRequest(
     string? IdempotencyKey = null,

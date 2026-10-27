@@ -201,7 +201,11 @@ describe('ConversationView edit-and-resend', () => {
 
 describe('ConversationView attachment strip', () => {
   function attachment(over: Partial<MessageAttachmentSummaryDto> = {}): MessageAttachmentSummaryDto {
-    return { id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain', content_hash: 'a'.repeat(64), content_length: 2048, created_at: '', bound_at: '', ...over }
+    return {
+      id: 'att-1', file_name: 'notes.txt', media_type: 'text/plain', content_hash: 'a'.repeat(64), content_length: 2048,
+      origin: 'composer', project_id: null, source_path: null, delivered_to_model: false, delivered_run_id: null, delivered_at: null,
+      created_at: '', bound_at: '', ...over,
+    }
   }
   const carrying = (rows: MessageAttachmentSummaryDto[]): FeedFixture => ({ name: 'files', messages: [user('u1', 'see files', { attachments: rows })], runs: [], events: [] })
 

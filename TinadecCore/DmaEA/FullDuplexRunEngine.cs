@@ -2824,7 +2824,8 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
                 : closeoutPrompt + "\n\n" + assembly.Instructions + dispatchSection + WorkerPatchProtocol,
             configuration.Context.RecentMessageLimit,
             cancellationToken,
-            task.Interruptions).ConfigureAwait(false);
+            task.Interruptions,
+            _services.GetService(typeof(IMessageAttachmentStore)) as IMessageAttachmentStore).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -5060,19 +5061,60 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             instructions += "\n\n" + LaneOpenProtocol;
         }
         var prompt = $"Interaction kind: {checkpoint.InteractionKind}\nUser message:\n{checkpoint.UserGoal}\n\n{targetSummary}";
+        var attachmentImages = await BuildAttachmentImageInputAsync(checkpoint, resolution, cancellationToken).ConfigureAwait(false);
         var turn = await Maf18RuntimeAdapter.RunGovernanceTurnAsync(
             await factory.CreateAsync(resolution, cancellationToken).ConfigureAwait(false),
             "operation.meeting",
             "meeting",
             "Produces the only formal user-facing response from governed evidence.",
             new ChatOptions { Instructions = instructions },
-            prompt,
-            cancellationToken).ConfigureAwait(false);
+            prompt + attachmentImages.PromptSuffix,
+            cancellationToken,
+            attachmentImages.Parts).ConfigureAwait(false);
+        await MarkAttachmentsDeliveredAsync(checkpoint, attachmentImages, cancellationToken).ConfigureAwait(false);
         checkpoint.ModelUsage = Maf18RuntimeAdapter.AddUsage(checkpoint.ModelUsage, turn.Usage);
         // The turn's answer is already reasoning-stripped, so thinking markup reaches neither
         // the user nor the lane-protocol line extraction below.
         if (!turn.HasAnswer) throw new InvalidOperationException("Meeting agent returned no output.");
         return await FinalizeInteractionTextAsync(run, configuration, checkpoint, turn.AnswerText, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<AttachmentImageInput> BuildAttachmentImageInputAsync(
+        FullDuplexCheckpointV1 checkpoint,
+        ChatResolution resolution,
+        CancellationToken cancellationToken)
+    {
+        if (checkpoint.TriggerMessageId == Guid.Empty
+            || _services.GetService(typeof(IMessageAttachmentStore)) is not IMessageAttachmentStore attachments)
+            return AttachmentImageInput.Empty;
+        return await AttachmentImageParts.BuildAsync(
+            attachments,
+            checkpoint.SessionId,
+            checkpoint.TriggerMessageId,
+            resolution,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task MarkAttachmentsDeliveredAsync(
+        FullDuplexCheckpointV1 checkpoint,
+        AttachmentImageInput images,
+        CancellationToken cancellationToken)
+    {
+        if (images.DeliveredAttachmentIds.Count == 0
+            || _services.GetService(typeof(IMessageAttachmentStore)) is not IMessageAttachmentStore attachments
+            || checkpoint.RunId == Guid.Empty)
+            return;
+        try
+        {
+            await attachments.MarkDeliveredAsync(images.DeliveredAttachmentIds, checkpoint.RunId, DateTimeOffset.UtcNow, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // The answer succeeded; losing the audit flip must be visible to operators rather
+            // than turning a completed model turn into a failed run.
+            _logger.LogWarning(ex, "Could not persist attachment delivery receipt for run {RunId}.", checkpoint.RunId);
+        }
     }
 
 
@@ -5965,14 +6007,17 @@ internal sealed partial class FullDuplexRunEngine : BackgroundService, IFullDupl
             + escalation;
         var prompt = $"Current user goal:\n{checkpoint.UserGoal}\n\nExecution evidence:\n{evidence}"
             + (findings is null ? string.Empty : $"\n\nSettled exploration findings:\n{findings}");
+        var attachmentImages = await BuildAttachmentImageInputAsync(checkpoint, resolution, cancellationToken).ConfigureAwait(false);
         var turn = await Maf18RuntimeAdapter.RunGovernanceTurnAsync(
             await factory.CreateAsync(resolution, cancellationToken).ConfigureAwait(false),
             "operation.meeting",
             "meeting",
             "Produces the only formal user-facing response from governed evidence.",
             new ChatOptions { Instructions = instructions },
-            prompt,
-            cancellationToken).ConfigureAwait(false);
+            prompt + attachmentImages.PromptSuffix,
+            cancellationToken,
+            attachmentImages.Parts).ConfigureAwait(false);
+        await MarkAttachmentsDeliveredAsync(checkpoint, attachmentImages, cancellationToken).ConfigureAwait(false);
         checkpoint.ModelUsage = Maf18RuntimeAdapter.AddUsage(checkpoint.ModelUsage, turn.Usage);
         // The only user-facing answer is already reasoning-stripped by the adapter.
         if (!turn.HasAnswer)

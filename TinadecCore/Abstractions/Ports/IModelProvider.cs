@@ -95,6 +95,10 @@ public sealed class ChatResolution
     public int CandidatePosition { get; init; }
     public string? StrategySource { get; init; }
     public ModelParameters? Parameters { get; init; }
+    /// <summary>Whether this exact provider/model route accepts image parts.</summary>
+    public bool SupportsImageInput { get; init; }
+    public long MaxImageBytes { get; init; } = ImageInputCapability.DefaultMaxImageBytes;
+    public int MaxImagesPerTurn { get; init; } = ImageInputCapability.DefaultMaxImagesPerTurn;
 }
 
 /// <summary>

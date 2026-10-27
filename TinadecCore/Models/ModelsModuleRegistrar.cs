@@ -165,6 +165,7 @@ internal sealed class ModelProvider : IModelProvider, IChatResolver
         var model = string.IsNullOrWhiteSpace(candidate.Model) ? String("model") : candidate.Model;
         if (string.IsNullOrWhiteSpace(model) && !harnessOwned) return Unavailable("Chat model name is not configured.");
         model ??= provider.Driver; // CLI runtimes select their own model; the route just names the runtime.
+        var imageInput = ImageInputCapability.Resolve(doc.RootElement, protocol, model);
 
         string? baseUrl = null;
         if (processBacked)
@@ -200,6 +201,9 @@ internal sealed class ModelProvider : IModelProvider, IChatResolver
             BaseUrl = baseUrl,
             Model = model,
             Parameters = ModelParameters.ForModel(doc.RootElement, model),
+            SupportsImageInput = imageInput.Enabled,
+            MaxImageBytes = imageInput.MaxImageBytes,
+            MaxImagesPerTurn = imageInput.MaxImagesPerTurn,
             ApiKey = apiKey,
             ModelId = $"{provider.Driver}/{model}",
             Protocol = protocol,

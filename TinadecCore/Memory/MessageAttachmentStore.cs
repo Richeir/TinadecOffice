@@ -48,8 +48,14 @@ public sealed class MessageAttachmentStore : IMessageAttachmentStore
 
         // The session must exist in THIS scope. A foreign session id and a missing one
         // answer identically (null), so an upload cannot probe other tenants' sessions.
+        Guid? sessionProjectId;
         await using (var probe = await _dbFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
         {
+            sessionProjectId = await probe.Sessions.AsNoTracking()
+                .Where(x => x.Id == request.SessionId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId)
+                .Select(x => x.ProjectId)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
             var ownsSession = await probe.Sessions.AsNoTracking()
                 .AnyAsync(x => x.Id == request.SessionId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId, cancellationToken)
                 .ConfigureAwait(false);
@@ -73,6 +79,10 @@ public sealed class MessageAttachmentStore : IMessageAttachmentStore
             ContentReference = written.Value,
             ContentHash = written.Sha256,
             ContentLength = written.Length,
+            Origin = request.Origin,
+            ProjectId = request.ProjectId ?? sessionProjectId,
+            SourcePath = request.SourcePath,
+            DeliveredToModel = false,
             CreatedByPrincipalId = scope.PrincipalId,
             CreatedAt = now,
             BoundAt = null,
@@ -108,6 +118,20 @@ public sealed class MessageAttachmentStore : IMessageAttachmentStore
             .FirstOrDefaultAsync(x => x.Id == attachmentId && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId, cancellationToken)
             .ConfigureAwait(false);
         return row is null ? null : ToStored(row);
+    }
+
+    public async Task<IReadOnlyList<StoredAttachment>> ListByProjectAsync(
+        Guid projectId,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = _tenantContext.Current;
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var rows = await db.MessageAttachments.AsNoTracking()
+            .Where(x => x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId && x.ProjectId == projectId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        rows.Sort((left, right) => right.CreatedAt.CompareTo(left.CreatedAt));
+        return rows.Select(ToStored).ToArray();
     }
 
     public async Task<Stream?> OpenContentAsync(
@@ -192,6 +216,29 @@ public sealed class MessageAttachmentStore : IMessageAttachmentStore
         return rows.Count;
     }
 
+    public async Task MarkDeliveredAsync(
+        IReadOnlyList<Guid> attachmentIds,
+        Guid runId,
+        DateTimeOffset deliveredAt,
+        CancellationToken cancellationToken = default)
+    {
+        var distinct = attachmentIds.Distinct().ToArray();
+        if (distinct.Length == 0) return;
+        if (runId == Guid.Empty) throw new ArgumentException("Run id is required.", nameof(runId));
+        var scope = _tenantContext.Current;
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var rows = await db.MessageAttachments
+            .Where(x => distinct.Contains(x.Id) && x.TenantId == scope.TenantId && x.WorkspaceId == scope.WorkspaceId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var row in rows.Where(x => !x.DeliveredToModel))
+        {
+            row.DeliveredToModel = true;
+            row.DeliveredRunId = runId;
+            row.DeliveredAt = deliveredAt;
+        }
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private static StoredAttachment ToStored(MessageAttachmentRecord record) => new(
         record.Id,
         record.SessionId,
@@ -201,5 +248,13 @@ public sealed class MessageAttachmentStore : IMessageAttachmentStore
         record.ContentHash,
         record.ContentLength,
         record.CreatedAt,
-        record.BoundAt);
+        record.BoundAt)
+    {
+        Origin = record.Origin,
+        ProjectId = record.ProjectId,
+        SourcePath = record.SourcePath,
+        DeliveredToModel = record.DeliveredToModel,
+        DeliveredRunId = record.DeliveredRunId,
+        DeliveredAt = record.DeliveredAt
+    };
 }
